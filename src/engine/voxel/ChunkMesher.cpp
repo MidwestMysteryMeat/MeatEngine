@@ -1,6 +1,7 @@
 #include "engine/voxel/ChunkMesher.h"
 
 #include <cstddef>
+#include <cstdint>
 
 namespace meat {
 namespace {
@@ -36,14 +37,37 @@ BlockId blockAcrossFace(const Chunk& chunk, const std::array<const Chunk*, 6>& n
     return n->at(local.x, local.y, local.z);
 }
 
-void emitFace(ChunkMeshData& mesh, glm::ivec3 voxel, int face, std::uint16_t tex) {
-    const FaceSpec& spec = kFaces[static_cast<std::size_t>(face)];
+// Voxel-coordinate contribution of walking t mask cells along a signed unit
+// axis. Negative directions count down from the far edge so that mask cell 0
+// always sits where the face's corner table starts — that keeps the merged
+// quad's winding and uv orientation identical to the single-voxel case.
+glm::ivec3 axisSteps(glm::ivec3 dir, int t) {
+    const int along = dir.x + dir.y + dir.z; // +1 or -1: dir is a signed unit axis
+    return dir * dir * (along > 0 ? t : kChunkSize - 1 - t);
+}
+
+std::size_t cellIndex(int u, int v) {
+    return static_cast<std::size_t>(u + v * kChunkSize);
+}
+
+void emitQuad(ChunkMeshData& mesh, const FaceSpec& spec, glm::ivec3 baseVoxel, glm::ivec3 uDir,
+              glm::ivec3 vDir, int w, int h, std::uint16_t tex) {
+    // The quad is the single-voxel corner table stretched w cells along uDir
+    // and h cells along vDir; with w == h == 1 it reproduces the old
+    // per-voxel vertices exactly, so winding stays CCW from outside.
+    const glm::vec3 p0 = glm::vec3(baseVoxel + spec.corners[0]) * kVoxelSize;
+    const glm::vec3 uSpan = glm::vec3(uDir) * (kVoxelSize * static_cast<float>(w));
+    const glm::vec3 vSpan = glm::vec3(vDir) * (kVoxelSize * static_cast<float>(h));
+    const std::array<glm::vec3, 4> pos = {p0, p0 + uSpan, p0 + uSpan + vSpan, p0 + vSpan};
+
     const auto base = static_cast<std::uint32_t>(mesh.vertices.size());
     for (std::size_t c = 0; c < 4; ++c) {
         VoxelVertex vert;
-        vert.pos = glm::vec3(voxel + spec.corners[c]) * kVoxelSize;
+        vert.pos = pos[c];
         vert.normal = spec.normal;
-        vert.uv = kCornerUv[c];
+        // uv spans (0..w, 0..h): the atlas shader applies fract() per fragment,
+        // so the tile repeats once per voxel across the merged quad.
+        vert.uv = kCornerUv[c] * glm::vec2(static_cast<float>(w), static_cast<float>(h));
         vert.tex = tex;
         mesh.vertices.push_back(vert);
     }
@@ -56,20 +80,74 @@ void emitFace(ChunkMeshData& mesh, glm::ivec3 voxel, int face, std::uint16_t tex
 ChunkMeshData buildChunkMesh(const Chunk& chunk, const std::array<const Chunk*, 6>& neighbors,
                              const BlockRegistry& registry) {
     ChunkMeshData mesh;
-    for (int y = 0; y < kChunkSize; ++y) {
-        for (int z = 0; z < kChunkSize; ++z) {
-            for (int x = 0; x < kChunkSize; ++x) {
-                const BlockId id = chunk.at(x, y, z);
-                if (id == 0) continue;
-                const BlockDef& def = registry.get(id);
-                if (!def.solid) continue;
-                for (int face = 0; face < 6; ++face) {
-                    const glm::ivec3 across =
-                        glm::ivec3(x, y, z) + kFaces[static_cast<std::size_t>(face)].dir;
-                    const BlockId other = blockAcrossFace(chunk, neighbors, face, across);
-                    if (registry.get(other).solid) continue;
-                    emitFace(mesh, {x, y, z}, face,
-                             def.faceTex[static_cast<std::size_t>(face)]);
+
+    // Greedy meshing (0fps.net "Meshing in a Minecraft Game", Lysenko). For
+    // each of the six face directions we sweep the chunk one slice at a time
+    // along the face axis. A slice gets a 32x32 mask holding, per cell, the
+    // atlas tile of the face that must be drawn there (solid block with a
+    // non-solid block across the face) or kEmpty. The mask is then consumed
+    // by merging maximal rectangles of one tile id: extend right along the
+    // row while the tile repeats, extend that run downward while every full
+    // row still matches, emit one quad for the rectangle, and clear its
+    // cells. Tile id is the only merge key — lighting is per-vertex
+    // directional off the shared normal, so equal-tile faces are identical.
+    constexpr std::uint32_t kEmpty = 0xFFFFFFFFu;
+    std::array<std::uint32_t, static_cast<std::size_t>(kChunkSize) * kChunkSize> mask;
+
+    for (int face = 0; face < 6; ++face) {
+        const FaceSpec& spec = kFaces[static_cast<std::size_t>(face)];
+        // Mask basis derived from the corner table: cell (u, v) advances one
+        // voxel along the table's uv directions, so rectangles in mask space
+        // are exactly the voxel spans the emitted quad must cover.
+        const glm::ivec3 uDir = spec.corners[1] - spec.corners[0];
+        const glm::ivec3 vDir = spec.corners[3] - spec.corners[0];
+        const glm::ivec3 sliceAxis = spec.dir * spec.dir;
+
+        for (int s = 0; s < kChunkSize; ++s) {
+            bool sliceHasFaces = false;
+            for (int v = 0; v < kChunkSize; ++v) {
+                for (int u = 0; u < kChunkSize; ++u) {
+                    const glm::ivec3 p = sliceAxis * s + axisSteps(uDir, u) + axisSteps(vDir, v);
+                    std::uint32_t cell = kEmpty;
+                    const BlockId id = chunk.at(p.x, p.y, p.z);
+                    if (id != 0 && registry.get(id).solid) {
+                        const BlockId other =
+                            blockAcrossFace(chunk, neighbors, face, p + spec.dir);
+                        if (!registry.get(other).solid) {
+                            cell = registry.get(id).faceTex[static_cast<std::size_t>(face)];
+                            sliceHasFaces = true;
+                        }
+                    }
+                    mask[cellIndex(u, v)] = cell;
+                }
+            }
+            if (!sliceHasFaces) continue;
+
+            for (int v = 0; v < kChunkSize; ++v) {
+                for (int u = 0; u < kChunkSize;) {
+                    const std::uint32_t tile = mask[cellIndex(u, v)];
+                    if (tile == kEmpty) {
+                        ++u;
+                        continue;
+                    }
+                    int w = 1;
+                    while (u + w < kChunkSize && mask[cellIndex(u + w, v)] == tile) ++w;
+                    int h = 1;
+                    while (v + h < kChunkSize) {
+                        bool rowMatches = true;
+                        for (int k = 0; k < w && rowMatches; ++k)
+                            rowMatches = mask[cellIndex(u + k, v + h)] == tile;
+                        if (!rowMatches) break;
+                        ++h;
+                    }
+                    for (int dv = 0; dv < h; ++dv)
+                        for (int du = 0; du < w; ++du) mask[cellIndex(u + du, v + dv)] = kEmpty;
+
+                    const glm::ivec3 baseVoxel =
+                        sliceAxis * s + axisSteps(uDir, u) + axisSteps(vDir, v);
+                    emitQuad(mesh, spec, baseVoxel, uDir, vDir, w, h,
+                             static_cast<std::uint16_t>(tile));
+                    u += w;
                 }
             }
         }

@@ -45,6 +45,8 @@ public:
 
     glm::vec3 position() const; // feet (capsule bottom), meters
     glm::vec3 velocity() const; // m/s
+    // Authoritative correction (net reconciliation / spawn): teleport, no sweep.
+    void setState(glm::vec3 feetPos, glm::vec3 vel);
     bool onGround() const;      // ground state supported
     bool crouched() const;
     float eyeHeight() const; // meters above position(), smoothed for the camera

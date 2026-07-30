@@ -24,6 +24,7 @@ target_link_libraries(MeatEngine PRIVATE
     lua_static
     sol2::sol2
     imgui
+    enet
     stb
     miniaudio
     nlohmann_json::nlohmann_json

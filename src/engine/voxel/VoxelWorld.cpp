@@ -115,7 +115,12 @@ void VoxelWorld::update(glm::vec3 playerPos, JobQueue& jobs) {
                          std::abs(p.z - center.z) > kStreamRadiusH + kUnloadPad ||
                          std::abs(p.y - center.y) > kStreamRadiusV + kUnloadPad;
         // Erasing while a mesh job is in flight is safe: the job owns a copy.
-        it = out ? m_chunks.erase(it) : std::next(it);
+        if (out) {
+            if (m_chunkUnloaded) m_chunkUnloaded(p);
+            it = m_chunks.erase(it);
+        } else {
+            ++it;
+        }
     }
 
     for (auto& [pos, chunk] : m_chunks) {
@@ -165,6 +170,10 @@ void VoxelWorld::setGenerator(std::function<void(Chunk&, ChunkPos)> generator) {
 
 void VoxelWorld::setMeshReadyCallback(std::function<void(ChunkPos, ChunkMeshData)> callback) {
     m_meshReady = std::move(callback);
+}
+
+void VoxelWorld::setChunkUnloadedCallback(std::function<void(ChunkPos)> callback) {
+    m_chunkUnloaded = std::move(callback);
 }
 
 std::optional<VoxelWorld::RayHit> VoxelWorld::raycast(glm::vec3 origin, glm::vec3 dir,

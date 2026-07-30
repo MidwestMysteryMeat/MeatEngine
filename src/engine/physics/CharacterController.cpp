@@ -173,6 +173,12 @@ glm::vec3 CharacterController::velocity() const {
     return glm::vec3(v.GetX(), v.GetY(), v.GetZ());
 }
 
+void CharacterController::setState(glm::vec3 feetPos, glm::vec3 vel) {
+    if (!m_impl->character) return;
+    m_impl->character->SetPosition(JPH::RVec3(feetPos.x, feetPos.y, feetPos.z));
+    m_impl->character->SetLinearVelocity(JPH::Vec3(vel.x, vel.y, vel.z));
+}
+
 bool CharacterController::onGround() const {
     return m_impl->character && m_impl->character->IsSupported();
 }

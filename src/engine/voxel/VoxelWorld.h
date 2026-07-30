@@ -42,6 +42,7 @@ public:
 
     void setGenerator(std::function<void(Chunk&, ChunkPos)> generator);
     void setMeshReadyCallback(std::function<void(ChunkPos, ChunkMeshData)> callback);
+    void setChunkUnloadedCallback(std::function<void(ChunkPos)> callback);
 
     BlockRegistry& blockRegistry() { return m_blocks; }
     const BlockRegistry& blockRegistry() const { return m_blocks; }
@@ -61,6 +62,7 @@ private:
     std::vector<VoxelEdit> m_edits;
     std::function<void(Chunk&, ChunkPos)> m_generator;
     std::function<void(ChunkPos, ChunkMeshData)> m_meshReady;
+    std::function<void(ChunkPos)> m_chunkUnloaded;
     BlockRegistry m_blocks;
 };
 

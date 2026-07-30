@@ -12,19 +12,19 @@ loopback transport.
 ## Phase 1 — Core loop & modules ⏳
 - [x] Core spine: EntityRegistry, JobQueue, EventBus, logging
 - [x] Platform: window, raw mouse, PlayerCommand (agent-built, integrated)
-- [x] Voxel: chunks, face-culled mesher (pure/worker-safe), DDA raycast, streaming (agent-built)
+- [x] Voxel: chunks, greedy mesher (0fps algorithm, pure/worker-safe), DDA raycast, streaming (agent-built)
 - [x] Render: GL wrappers, forward Blinn-Phong, PSX pipeline, shaders (agent-built)
 - [x] Physics: Jolt world, chunk colliders, CharacterVirtual controller (agent-built)
 - [x] Engine integration: fixed 60 Hz tick, all modules wired, walkable flat world
 - [ ] Feel checkpoint #1 — HUMAN PLAYTEST (mouse feel, jump arc, accel)
 
 ## Phase 2 — Netcode foundation (before gameplay, so nothing is built wrong)
-- [ ] Transport interface: LoopbackTransport + EnetTransport (ENet, reliable+unreliable)
-- [ ] ServerSim / Client split; single-player = in-process listen server over loopback
-- [ ] Snapshots 20 Hz (full-state MVP), client-side prediction + reconciliation for own player
-- [ ] Remote entity interpolation (100 ms); voxel edits as broadcast ops
-- [ ] `--host` / `--join <addr>` / `--server` (headless dedicated)
-- [ ] Two-process smoke test on localhost
+- [x] Transport interface: LoopbackTransport + EnetTransport (ENet, reliable+unreliable)
+- [x] ServerSim / Client split; single-player = in-process listen server over loopback
+- [x] Snapshots 20 Hz (full-state MVP), client-side prediction + rewind-replay reconciliation
+- [x] Voxel edits as server-validated broadcast ops (remote interp buffers land with player meshes)
+- [x] `--host` / `--join <addr>` / `--server` (headless dedicated)
+- [x] Two-process smoke test on localhost (host=player 1, joiner=player 2, shared seed)
 
 ## Phase 3 — FPS gameplay core (server-authoritative)
 - [ ] Hitscan weapon, voxel damage, health/death/respawn, crosshair, muzzle light pulse

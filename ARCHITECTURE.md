@@ -245,6 +245,48 @@ class CharacterController {                // Jolt CharacterVirtual
 };
 ```
 
+### net/
+```cpp
+using PeerId = std::uint32_t;               // assigned by transport; 0 = invalid
+struct NetEvent {
+    enum class Type { Connected, Disconnected, Packet };
+    Type type; PeerId peer; std::vector<std::byte> data;   // data only for Packet
+};
+class Transport {                            // interface; no game knowledge
+    virtual ~Transport() = default;
+    virtual void poll(std::vector<NetEvent>& out) = 0;     // drain pending events
+    virtual void send(PeerId peer, std::span<const std::byte> bytes, bool reliable) = 0;
+    virtual void disconnect(PeerId peer) = 0;
+};
+class LoopbackPair {                         // in-process pair, connected on construction
+    Transport& serverEnd(); Transport& clientEnd();
+};
+class EnetServerTransport final : public Transport { bool listen(std::uint16_t port); };
+class EnetClientTransport final : public Transport {
+    bool connect(const std::string& host, std::uint16_t port); bool connected() const; };
+```
+`ByteWriter`/`ByteReader` (net/ByteStream.h): little-endian, POD + string(u16 len) +
+vector(u32 len) + glm types; reader is bounds-checked and returns false on overrun —
+malformed remote data must never crash the process.
+
+Messages (net/Messages.h): packet = `[u8 MsgType][payload]`.
+`Hello{string name}` → `Welcome{PeerId playerId, u32 worldSeed, u64 serverTick}` (reliable);
+`Command{PlayerCommand}` client→server every tick (unreliable);
+`Snapshot{u64 tick, u64 lastCmdTick, vector<PlayerState>}` server→clients 20 Hz (unreliable),
+`PlayerState{PeerId, vec3 pos, vec3 vel, float yaw, pitch, bool onGround, crouched}`;
+`VoxelOp{ivec3 voxel, BlockId block}` (reliable, both directions — client sends intent,
+server validates, applies, broadcasts).
+
+### game/ServerSim + game/Client
+`ServerSim` owns the authoritative sim (VoxelWorld, PhysicsWorld, per-player
+CharacterController) and a `Transport&`. `Client` owns connection state plus its own
+prediction mirror (VoxelWorld + PhysicsWorld + CharacterController built from the same
+seed), a command ring buffer, and remote-player interpolation buffers (100 ms).
+Reconciliation: on snapshot, rewind own character to server state, replay commands newer
+than `lastCmdTick`; corrections under 1 mm are ignored. Engine composes them by mode:
+Game = ServerSim + Client over LoopbackPair; Host = same + ENet listen;
+Join = Client + EnetClientTransport; Dedicated = ServerSim + ENet, no window/renderer.
+
 ### Save format (save/)
 `saves/<slot>/meta.json`: player transform, health, inventory, equipped, dungeon seed,
 tick. `saves/<slot>/chunks.bin`: `[ChunkPos][u32 rleCount][(BlockId,u16 run)...]` for every
