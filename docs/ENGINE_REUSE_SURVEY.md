@@ -226,6 +226,105 @@ the recommendations target **real gaps**, not things already built.
   reference for the editor/entity layer); its `bob` build tool + live Lua hot-reload (reference for
   the sol2 iteration loop).
 
+### 13. Torque3D — MIT (COPYABLE) — HIGH RELEVANCE
+- **Repo:** `github.com/TorqueGameEngines/Torque3D`. **License:** **MIT** verified from `LICENSE.md`
+  (`Copyright (c) 2012-2016 GarageGames, LLC`; GitHub shows NOASSERTION only because appended
+  third-party notices follow the MIT block). **Activity:** very active (2026-07-28).
+- **Netcode (the famous part, in `Engine/source/sim/`):** `netObject.cpp/h`, `netGhost.cpp`,
+  `netConnection.cpp/h`, `netEvent.cpp`, `netInterface.cpp`, plus move-based prediction in
+  `T3D/gameBase/std/stdMoveList.*`. Architecture: **ghosting/scoping** (per-connection ghost
+  records; objects scoped in/out by relevance, then **priority-ranked against a per-packet bandwidth
+  budget** so only the most important objects update each tick); **delta compression** over
+  bitstreams (only changed bits); a separate **NetEvent** layer for guaranteed/ordered events; and
+  **move-based client prediction** (`stdMoveList`).
+- **Concrete borrowing:** reimplement the **NetObject + ghost-manager scope→prioritize→
+  bandwidth-budget→delta pipeline** on ENet. This is the proven answer to "which of N objects do I
+  replicate this tick" — exactly what MeatEngine's full-list-every-tick `SnapshotMsg` lacks, and
+  what raw ENet does not solve. Caveat: tightly coupled to Torque's `BitStream` / `SimObject` RTTI,
+  so treat as a strong **architecture reference to port**, not a file-level copy (MIT permits either).
+
+### 14. Esoterica — MIT (COPYABLE) — HIGH RELEVANCE for animation
+- **Repo:** `github.com/BobbyAnguelov/Esoterica`. **License:** **MIT** verified from `LICENSE`
+  (`Copyright (c) 2022-2026 Bobby Anguelov`). **Activity:** active (2026-07-22). A AAA-style C++20
+  engine by an ex-IO Interactive animation programmer.
+- **Concrete borrowing:** the **animation graph runtime** — `Code/Engine/Animation/Graph` plus
+  `IK`, `AnimationBlender`, `AnimationBoneMask`, `AnimationSyncTrack`, `AnimationRootMotion`,
+  `TaskSystem`. A self-contained, purpose-built **state-machine + blend-tree** pose/task pipeline
+  with sync tracks, bone masks, root motion and IK (NOT ozz-based). Directly fills MeatEngine's
+  animation gap with far more than crossfade. Caveat: C++20 coupled to Esoterica's own math/resource
+  types — expect adaptation, not a clean lift.
+
+### 15. Cute Framework — zlib OR public-domain dual (COPYABLE)
+- **Repo:** `github.com/RandyGaul/cute_framework`. **License:** dual **zlib / Unlicense-PD** (verified
+  from LICENSE: "ALTERNATIVE A zlib / ALTERNATIVE B Public Domain"). **Activity:** active (2026-07-25).
+- **Concrete borrowing:** its **`cute_net`-style reliable-UDP + secure connection-token handshake**
+  (packet encryption, reliability layer). Dependency-light C, permissive — a reference or direct lift
+  to add the **secure connect-token flow ENet lacks** to MeatEngine's transport (a PUBLIC server
+  wants authenticated connects).
+
+### 16. Librebox — MIT (COPYABLE)
+- **Repo:** `github.com/StayBlue/librebox-demo` (the brief's `librebox-devs/librebox-demo` 404s).
+  **License:** **MIT** (verified). **Activity:** stale (2025-08-23). A C++ engine embedding **Luau**
+  (Roblox's Lua fork) to replicate the Roblox API; client-side demo, no server replication to study.
+- **Concrete borrowing:** its **Luau host-embedding pattern** as a hardened script sandbox. MeatEngine
+  runs vanilla Lua via sol2 with **no sandboxing** — Luau (also MIT) adds read-only tables, per-VM
+  memory/instruction budgets, and optional typechecking, which a PUBLIC engine wants before running
+  untrusted user scripts. Relevant *because MeatEngine is public and scriptable*.
+
+### 17. SFML — zlib (COPYABLE)
+- **Repo:** `github.com/SFML/SFML`. **License:** **zlib** (verified). **Activity:** active (2026-07-23).
+- **Verdict: mostly SKIP.** Its window/input layer doesn't beat GLFW (already used) and graphics is
+  2D-only. Its OpenAL-backed positional-audio module would be a clean zlib drop-in — **but MeatEngine
+  already has `engine/audio/AudioEngine`**, so even that is redundant. No action.
+
+### 18. Solarus — GPL-3.0 (⚠️ IDEAS ONLY)
+- **Repo:** `gitlab.com/solarus-games/solarus`. **License:** GPL-3.0 (verified on GitLab).
+  **Activity:** very active (2026-07-30). 2D Zelda-like ARPG engine. **Ideas only:** its **per-entity
+  Lua API design** (every entity is Lua userdata with lifecycle callbacks `on_update`/`on_created`/
+  `on_activated` and consistent `entity:get_x()/set_property()` accessors) — a clean *shape* reference
+  for structuring MeatEngine's sol2 entity bindings. Reimplement; copy nothing.
+
+### 19. Carimbo — MIT (COPYABLE) — SKIP
+- `github.com/willtobyte/carimbo`. MIT (verified), active (2026-06-23). 2D SDL sprite/arcade engine.
+  Wrong domain — no 3D/voxel/physics/netcode overlap worth grafting.
+
+### 20. Cocos2d-x — MIT · JNGL — zlib — both SKIP
+- **Cocos2d-x** `github.com/cocos2d/cocos2d-x` — MIT (verified from `licenses/LICENSE_cocos2d-x.txt`),
+  stale (2025-05-09). 2D-first mobile framework; nothing a desktop GL4.5 voxel FPS needs.
+- **JNGL** `github.com/jhasse/jngl` — zlib (verified), active (2026-07-22). 2D cross-platform game
+  library; wrong domain, no 3D subsystem to harvest.
+- **FIFE** (above) — LGPL, 2D iso — likewise SKIP.
+
+---
+
+## Complete license + activity table (all 20 C++ engines)
+
+| Engine | License (verified at source) | Last push | Copy-eligible | Role |
+|---|---|---|---|---|
+| Cafu | MIT (LICENSE.txt; GPLv3→MIT 2016) | 2019-10-29 | **Yes** | **Borrow** (netcode delta) |
+| Carimbo | MIT (API) | 2026-06-23 | Yes | Skip (2D) |
+| Cocos2d-x | MIT (LICENSE file) | 2025-05-09 | Yes | Skip (2D mobile) |
+| Cute Framework | zlib / PD dual (LICENSE) | 2026-07-25 | **Yes** | **Borrow** (secure UDP handshake) |
+| Defold | Defold License v1.0 (§4a no-engine-use) | 2026-07-30 | **No** | Ideas only |
+| Esoterica | MIT (LICENSE) | 2026-07-22 | **Yes** | **Borrow** (animation graph) |
+| FIFE | LGPL-2.1 (API) | 2026-07-29 | No | Skip (2D iso) |
+| JNGL | zlib (API) | 2026-07-22 | Yes | Skip (2D) |
+| Godot | MIT (LICENSE.txt) | 2026-07-30 | **Yes** | **Borrow** (replication config) |
+| Irrlicht (Luanti `irr/`) | zlib (irr/LICENSE) | 2026-07-30 | **Yes** | **Borrow** (skinned mesh + B3D) |
+| Librebox | MIT (LICENSE) | 2025-08-23 | **Yes** | **Borrow** (Luau sandbox) |
+| Luanti | LGPL-2.1+ (SPDX in src/) | 2026-07-30 | No | Ideas only (voxel/Lua) |
+| Nebula | BSD-2-clause (license.txt) | 2026-07-27 | **Yes** | **Borrow** (frame graph) |
+| O3DE | Apache-2.0 OR MIT (LICENSE.txt) | 2026-07-28 | **Yes**\* | **Borrow arch** (prediction/lag-comp) |
+| Ogre3D | MIT (API) | 2026-07-29 | **Yes** | **Borrow** (anim blend + serializer) |
+| SFML | zlib (API) | 2026-07-23 | Yes | Skip (2D; audio already covered) |
+| Serious Engine 1.10 | GPL-2.0 (API) | 2020-10-31 | No | Ideas only |
+| Solarus | GPL-3.0 (GitLab) | 2026-07-30 | No | Ideas only (Lua API shape) |
+| Spring → RecoilEngine | GPL-2.0+ (LICENSE) | 2026-07-29 | No | Ideas only (determinism) |
+| Torque3D | MIT (LICENSE.md) | 2026-07-28 | **Yes**\* | **Borrow arch** (ghost/scoping netcode) |
+
+\* Permissively licensed but framework-coupled (AZ core / Torque BitStream+SimObject RTTI) — realistic
+path is reimplement the pattern, not link/copy modules wholesale.
+
 ---
 
 ## RANKED SHORTLIST — top 6 concrete borrowings
@@ -236,21 +335,30 @@ cross-platform, asset pipeline). Effort = rough solo-dev hours to a working, tes
 | # | Borrowing | Source · License | Gap filled | Effort | License obligation |
 |---|-----------|------------------|------------|--------|--------------------|
 | 1 | **Snapshot delta compression** — port `Libs/Network/State.*` (baseline + changed-fields diff) into `engine/net/`; diff `SnapshotMsg` against last-acked baseline instead of sending full lists every tick | **Cafu** · MIT | Netcode (bandwidth) | **12–20 h** | Retain MIT notice on ported file(s); add to THIRD_PARTY.md |
-| 2 | **Animation blending + controller** — integrate **ozz-animation** (standalone, what ezEngine uses) as a crossfade/blend layer over the existing `Animator::samplePose`; feed ozz from `SkeletalModel` tracks | **ozz-animation** (via ezEngine) · MIT · *alt: lift `OgreAnimationState.cpp` blend math* | Animation (blend/state machine) | **16–30 h** (ozz) / 24–40 h (Ogre port) | MIT notice; ozz vendored as a dep |
-| 3 | **Server-side lag compensation** — implement frame-indexed input + time-rewind for hit registration, modeled on O3DE `NetworkTime`/`NetworkInput`; store a ring of authoritative states and rewind on the server for hitscan | **O3DE** · Apache/MIT (reimplement — AZ-coupled) | Netcode (FPS hit-reg) | **24–40 h** | None if clean-room; Apache/MIT if any snippet lifted |
-| 4 | **Declarative replication-set** — adopt Godot's `scene_replication_config` spawn-vs-sync split so entity/player fields are described declaratively instead of hand-encoded in `Messages.cpp`; pairs with #1 | **Godot** · MIT | Netcode (maintainability + delta) | **12–24 h** | MIT notice if code copied; free if pattern-only |
+| 2 | **Animation blend/state graph** — the #1 player-visible gap. Two routes: (lightweight) integrate **ozz-animation** as a crossfade/blend layer over `Animator::samplePose`, feeding it `SkeletalModel` tracks; (full) port **Esoterica's animation graph** (state machine + blend trees + sync tracks + bone masks + root motion + IK). Start with ozz; graduate to an Esoterica-style graph if AI/locomotion needs it | **ozz-animation** (via ezEngine) or **Esoterica** · both MIT · *alt: `OgreAnimationState.cpp` blend math* | Animation (blend/state machine, IK, root motion) | **16–30 h** (ozz) / 40–70 h (Esoterica graph) | MIT notice; ozz vendored as dep |
+| 3 | **Entity scoping + priority replication** — reimplement Torque3D's **scope→prioritize→bandwidth-budget→delta** ghost pipeline on ENet, so the server replicates only relevant entities ranked to a per-packet budget instead of the full `SnapshotMsg` list every tick. The direct fix for scaling past a handful of entities. Pairs with #1 (delta) | **Torque3D** · MIT (reimplement — BitStream/SimObject-coupled) *· Godot `scene_replication_config` as a declarative-field-set companion pattern* | Netcode (interest mgmt + bandwidth) | **24–40 h** | None if clean-room; MIT notice if Torque/Godot code lifted |
+| 4 | **Server-side lag compensation** — frame-indexed input + time-rewind for hit registration, modeled on O3DE `NetworkTime`/`NetworkInput`; store a ring of authoritative states and rewind on the server for hitscan | **O3DE** · Apache/MIT (reimplement — AZ-coupled) | Netcode (FPS hit-reg) | **24–40 h** | None if clean-room; Apache/MIT if any snippet lifted |
 | 5 | **Cooked native model format** — adopt Ogre's versioned `.mesh`/`.skeleton` serializer as an offline-cook + fast-load path, so runtime stops re-parsing FBX via Assimp | **Ogre3D** · MIT | Asset pipeline (load speed) | **16–24 h** | Retain MIT notice on ported serializer |
 | 6 | **Linux port + CI** — finish the existing `#ifdef _WIN32` POSIX branches in `HttpTiny.cpp`/`LanDiscovery.cpp`, add a Linux CMake preset + GitHub Actions job; windowing/input already portable via GLFW. Study **ezEngine `Foundation/Platform`** for the thin abstraction shape | in-house, informed by GLFW (zlib, already vendored) + ezEngine (MIT) | Cross-platform | **10–20 h** | None (own code) |
 
-**Sequencing note:** #1 and #4 are the same subsystem from two angles — do #4's declarative field
-description first, then #1's delta diff falls out of it naturally; budget them together (~24–36 h
-combined). #2 is the highest player-visible win and is independent of the netcode work. #6 is low-risk
-and unblocks the Linux testing hardware already on hand.
+**Sequencing note:** #1 and #3 are one netcode workstream — Cafu's per-field delta (#1) is the
+encoding, Torque's scope/priority (#3) is the "who gets what this tick" selection; build the delta
+first, then layer scoping on top (~36–60 h combined). #4 (lag-comp) is independent and can follow.
+#2 is the highest player-visible win and is independent of all netcode work — start with ozz. #6 is
+low-risk and unblocks the Linux testing hardware already on hand.
 
-**Honorable mentions (below the cut):** Nebula frame-graph (BSD, render-pipeline configurability);
-Irrlicht `CB3DMeshFileLoader` (zlib, simple PSX-friendly skeletal format as an Assimp-free import
-path); Luanti's versioned compressed mapblock serialization (LGPL — ideas only — for voxel streaming);
-Recoil's synced/unsynced Lua split (GPL — ideas only — for the sol2 server/client boundary).
+**Honorable mentions (below the cut):**
+- **Luau script sandbox** (Librebox pattern, MIT) — swap sol2's vanilla Lua for Luau to get read-only
+  tables + per-VM memory/instruction budgets before running untrusted user scripts. High value *because
+  MeatEngine is public + scriptable*; ~20–30 h. Bumped from the top 6 only because it's security, not a
+  stated gap.
+- **Secure connect-token handshake** (Cute Framework `cute_net`, zlib/PD) — authenticated UDP connects
+  that ENet doesn't provide; ~12–20 h.
+- **Nebula frame-graph** (BSD) — data-driven render-pass ordering for the PSX forward pipeline.
+- **Irrlicht `CB3DMeshFileLoader`** (zlib) — simple PSX-friendly skeletal format as an Assimp-free path.
+- **Ideas-only:** Luanti versioned/compressed mapblock serialization (voxel streaming); Recoil
+  synced/unsynced Lua split and Solarus per-entity Lua API (sol2 binding shape); O3DE `AzNetworking`
+  declarative auto-packet pattern.
 
 ---
 
@@ -268,9 +376,19 @@ Recoil's synced/unsynced Lua split (GPL — ideas only — for the sol2 server/c
   (relicensed from GPLv3 in 2016) and dormant since 2019.
 - **Fork correction:** the maintained Irrlicht is not the SourceForge original or `minetest/irrlicht`
   (archived) but the `irr/` subtree inside `luanti-org/luanti` (zlib, active).
+- **Coverage:** all **20 engines** in the source list's C++ section were evaluated (not just the 8
+  named in the brief); licenses for every one were verified at source. Torque3D and Esoterica were
+  NOASSERTION on the API but plainly MIT on inspection — both are high-value and would have been
+  missed by a metadata-only pass.
+- **Two more finds worth calling out:** **Torque3D's** ghost/scoping netcode is arguably the single
+  best MIT-licensed reference for the "which of N entities do I replicate" problem (now shortlist #3);
+  **Esoterica's** animation graph (state machine + IK + root motion, by an ex-IO Interactive animator)
+  is the most complete MIT animation runtime found (shortlist #2, full route).
 - **Grounding:** recommendations were checked against MeatEngine's actual source. Notably, the brief's
   framing understates the netcode — prediction/reconciliation/interpolation already exist in
-  `game/Client.h`; the true netcode gaps are **delta compression** and **lag compensation**. Likewise
-  **FBX loading is already solved by Assimp** — the animation gap is the runtime **blend/state graph**,
-  not the importer. Effort estimates assume a single developer already fluent in the codebase and
-  include test coverage but not design iteration.
+  `game/Client.h`; the true netcode gaps are **delta compression**, **entity scoping/interest
+  management**, and **lag compensation**. Likewise **FBX loading is already solved by Assimp** — the
+  animation gap is the runtime **blend/state graph**, not the importer — and MeatEngine **already has
+  an audio stack** (`engine/audio/AudioEngine`), so SFML's audio module is redundant. Effort estimates
+  assume a single developer already fluent in the codebase and include test coverage but not design
+  iteration.

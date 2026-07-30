@@ -243,3 +243,20 @@ loopback transport.
 ## Phase 12 — PvP hardening
 - [ ] Lag-compensated hitscan (server rewind), delta-compressed snapshots, interest management
 - [ ] 4–8 player arena on editor-built maps
+
+## Phase 13 — OSS engine borrowings (docs/ENGINE_REUSE_SURVEY.md)
+All 20 engines on the bobeff C++ list evaluated; licenses verified at source
+(GitHub API's NOASSERTION is unreliable — Cafu/O3DE/Nebula/Torque3D are genuinely
+permissive). COPY only MIT/BSD/zlib/Apache/PD; GPL/LGPL = ideas-only. Two traps:
+Defold's Apache derivative forbids reselling as an engine (ideas-only for us), and
+Luanti's permissive LICENSE covers media only — engine code is LGPL (ideas-only).
+Ranked, effort-estimated borrowings (feed the phases above, not net-new work):
+- [ ] Cafu `Libs/Network/State.*` delta compression — MIT, self-contained lift → Phase 12
+- [ ] ozz-animation / Esoterica blend-state graph — both MIT → Phase 7 (blend, not importer)
+- [ ] Torque3D ghost scope→priority→delta interest management — MIT, reimpl on ENet → Phase 12
+- [ ] O3DE NetworkTime/NetworkInput lag-compensation pattern — Apache/MIT, reimpl → Phase 12
+- [ ] Ogre3D cooked `.mesh`/`.skeleton` serializer for fast loads — MIT → Phase 7
+- [ ] Linux CMake + CI (only 2 files have Win32 sockets, both already #ifdef-branched;
+      GLFW windowing already portable) — informed by GLFW/ezEngine platform layer
+- Honorable mentions: Librebox Luau sandbox (security for public scriptable engine),
+  Cute Framework connect-token handshake, Nebula BSD frame-graph.
