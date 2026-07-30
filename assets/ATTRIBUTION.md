@@ -6,7 +6,8 @@ scale, retopo, rig) — CC-BY requires indicating changes.
 
 | Asset | Author | Source | License | Modified |
 |---|---|---|---|---|
-| _(none bundled yet — engine-generated placeholders only)_ | | | | |
+| models/prop_crate.obj | MeatEngine | this repo | Apache-2.0 (project) | authored for the repo |
+| _(vault FBX/GLB staged locally are gitignored until per-listing license is verified)_ | | | | |
 
 Process: `tools/stage_assets.py` copies an asset in, converts if needed, and appends a
 row here. An asset without a row (or a row without a human-verified license) fails

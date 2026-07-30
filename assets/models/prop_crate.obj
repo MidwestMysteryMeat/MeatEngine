@@ -1,0 +1,29 @@
+# prop_crate.obj — self-authored test prop (MIT, ships in the repo).
+# A 1 m beveled crate: verifies the OBJ path of the model loader end to end.
+mtllib prop_crate.mtl
+o crate
+v -0.5 0.0 -0.5
+v  0.5 0.0 -0.5
+v  0.5 0.0  0.5
+v -0.5 0.0  0.5
+v -0.5 1.0 -0.5
+v  0.5 1.0 -0.5
+v  0.5 1.0  0.5
+v -0.5 1.0  0.5
+vt 0.0 0.0
+vt 1.0 0.0
+vt 1.0 1.0
+vt 0.0 1.0
+usemtl crate
+f 1/1 2/2 3/3
+f 1/1 3/3 4/4
+f 5/1 8/4 7/3
+f 5/1 7/3 6/2
+f 1/1 5/4 6/3
+f 1/1 6/3 2/2
+f 2/1 6/4 7/3
+f 2/1 7/3 3/2
+f 3/1 7/4 8/3
+f 3/1 8/3 4/2
+f 4/1 8/4 5/3
+f 4/1 5/3 1/2

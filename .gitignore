@@ -1,6 +1,11 @@
 build/
 out/
 tools/fable_worker.py
+# Third-party model/texture binaries staged for local testing need per-listing
+# license verification before they can be committed (see assets/ATTRIBUTION.md).
+assets/models/*.fbx
+assets/models/*.glb
+assets/models/*.gltf
 .vs/
 .idea/
 .cache/

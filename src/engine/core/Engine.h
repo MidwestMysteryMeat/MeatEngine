@@ -79,6 +79,13 @@ private:
     std::unordered_map<ChunkPos, MeshHandle> m_chunkMeshes;
     MeshHandle m_remotePlayerMesh = 0; // box proxy until character meshes land
     MeshHandle m_pickupMesh = 0;       // small bobbing cube for item pickups
+    struct PropInstance {
+        MeshHandle mesh = 0;
+        MaterialHandle material{0};
+        glm::mat4 transform{1.0f};
+    };
+    std::vector<PropInstance> m_props; // static models placed in the world
+    void loadWorldProps();
     PlayerCommand m_lastCmd{};
     std::uint64_t m_tick = 0;
     glm::vec3 m_prevPlayerPos{0};

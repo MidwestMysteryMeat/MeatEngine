@@ -82,8 +82,11 @@ loopback transport.
 - [ ] Reachability diagnostics + access control (Phase 11.7), UPnP/punch/Steam providers
 
 ## Phase 7 — Models & animation
-- [ ] Assimp FBX/OBJ/GLB static + PNG/JPG materials
-- [ ] Skeletal: canonical Mixamo skeleton, shared clips, one animated NPC; viewmodel idle/fire
+- [x] 7a static: Assimp FBX/OBJ/GLB loader → existing mesh pipeline (node-baked transforms,
+      normal gen, scale/skeleton probe w/ cm→m warning, albedo discovery); world props;
+      self-authored OBJ smoke prop committed, vault binaries gitignored (license-pending)
+- [ ] 7b skeletal: canonical Mixamo skeleton, bone palette in mesh shader, clip sampling,
+      replace NPC/remote-player boxes with animated meshes; viewmodel idle/fire
 
 ## Phase 8 — Scripting
 - [ ] Lua (sol2) server-side gameplay: entity spawn, voxel edit, player/inventory/weapons,

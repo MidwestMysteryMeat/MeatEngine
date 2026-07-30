@@ -1,11 +1,13 @@
 #include "engine/core/Engine.h"
 #include "engine/core/Log.h"
 #include "engine/core/ViewMath.h"
+#include "engine/asset/ModelLoader.h"
 #include "engine/net/HttpTiny.h"
 
 #include <GLFW/glfw3.h>
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
@@ -141,7 +143,34 @@ void Engine::setupClientWorld() {
     }
     m_prevPlayerPos = m_currPlayerPos = kClientSpawn;
     m_clientWorldReady = true;
+    loadWorldProps();
     log::info("client world ready (seed {})", m_client.worldSeed());
+}
+
+void Engine::loadWorldProps() {
+    // Committed OBJ smoke-test prop, plus any locally-staged model (gitignored,
+    // license-pending). Each is a static Assimp import → the existing mesh path.
+    struct Candidate {
+        const char* path;
+        ModelImportOptions opts;
+        glm::vec3 place;
+    };
+    const glm::vec3 near = kClientSpawn + glm::vec3(3.0f, 0.0f, 0.0f);
+    const Candidate candidates[] = {
+        {"assets/models/prop_crate.obj", {.scale = 1.0f, .center = true}, near},
+        {"assets/models/test_male.fbx", {.scale = 0.01f, .center = true}, near + glm::vec3(2, 0, 0)},
+    };
+    for (const Candidate& c : candidates) {
+        if (!std::filesystem::exists(c.path)) continue;
+        const auto model = loadStaticModel(c.path, c.opts);
+        if (!model) continue;
+        MaterialDesc mat;
+        mat.tint = glm::vec3(0.9f);
+        if (!model->albedo.empty()) mat.albedo = m_renderer.loadTexture(model->albedo);
+        m_props.push_back({m_renderer.uploadChunkMesh(model->mesh), m_renderer.createMaterial(mat),
+                           glm::translate(glm::mat4(1.0f), c.place)});
+    }
+    log::info("loaded {} world props", m_props.size());
 }
 
 void Engine::simulateClientTick(const PlayerCommand& frameCmd) {
@@ -211,6 +240,9 @@ void Engine::render(float alpha) {
             break;
         }
     }
+
+    for (const PropInstance& prop : m_props)
+        m_renderer.submitMesh(prop.mesh, prop.transform, prop.material);
 
     for (const EditorLight& light : m_editorLights) { // placed lights are world lights
         if (light.type == 0)
