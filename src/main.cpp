@@ -82,6 +82,10 @@ meat::EngineConfig parseArgs(int argc, char** argv) {
             if (const char* d = next()) loadProject(config, d);
         } else if (arg == "--editor") {
             config.startEditor = true;
+        } else if (arg == "--animshot") {
+            config.mode = Mode::Game;
+            config.animBooth = true;
+            if (const char* s = next()) config.autoShot = s;
         } else {
             meat::log::warn("unknown argument '{}'", arg);
         }

@@ -95,12 +95,15 @@ loopback transport.
       skinning FIXED — bind globals derived from inverse(offset) (skin-deformer-authoritative)
       instead of the node chain, which drifted ~100x on the armature's baked FBX unit scale;
       now skinning≡I at bind for all weighted bones. SWAT operator renders as a clean T-pose.
-- [x] Animation PLAYING (R720 qwen3vl VLM-verified, ok x3 across the cycle): Animator::
-      idlePose sways the spine (delta rotation inserted BETWEEN bind rotation and scale, so
-      the non-uniform arm-bind-scale doesn't shear the mesh into spikes — the bug that broke
-      earlier attempts). Honest scope: spine-only breathing idle; arm/limb articulation needs
-      correct per-rig local axes or an authored clip (guessed axes sheared/hid limbs and the
-      R720 gate rightly failed them — do NOT re-guess). VLM gate = tools/vlm_gate_r720.py.
+- [x] VLM CAPTURE BOOTH: --animshot locks a fixed close, lit camera on the character so
+      the R720 gate sees it clearly (the SIE-booth idea). CRITICAL: the earlier distant
+      auto-spawn camera was too far to see mesh spikes, so "verified" grades were false.
+- [x] Static skeletal character CLEAN (booth-VLM ok): bind pose renders as a recognizable
+      armored humanoid — skinning is correct. idlePose currently returns bind pose (honest).
+- [ ] ANIMATION still broken: ANY procedural per-bone rotation shears the mesh into spikes
+      up close (rotateBone math wrong even for the spine). Fix = reworking bone-rotation /
+      keyframe application from reference-engine sources (ezEngine/Ogre/O3DE/Assimp), then
+      play a REAL Mixamo full-TRS clip via samplePose. Booth-VLM-gate every attempt.
 - [ ] Real mocap clip playback via samplePose (needs a full-TRS-keyed clip; the exact-matrix
       insight should fold back into samplePose's partial-track gap-fill), replace NPC/remote
       boxes with animated meshes, first-person viewmodel

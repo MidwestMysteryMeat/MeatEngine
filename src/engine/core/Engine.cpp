@@ -293,7 +293,21 @@ void Engine::render(float alpha) {
                        glm::vec3(0.0f, m_player.eyeHeight(), 0.0f);
     playerCamera.yaw = m_lastCmd.yaw; // freshest mouse sample, not the tick's
     playerCamera.pitch = m_lastCmd.pitch;
-    const Camera& camera = m_editorActive ? m_editorCamera : playerCamera;
+
+    // Animation booth: a fixed, close, deterministic framing of the anim actor so
+    // VLM grading is consistent (the SIE-booth idea) instead of hostage to where
+    // the auto-spawn camera happens to settle.
+    Camera boothCamera;
+    if (m_animBooth && m_animActor) {
+        const glm::vec3 base(m_animActor->transform[3]);
+        const glm::vec3 mid = base + glm::vec3(0.0f, 0.9f, 0.0f); // ~chest height
+        boothCamera.pos = mid + glm::vec3(0.0f, 0.0f, 2.6f);      // 2.6 m in front
+        boothCamera.yaw = 0.0f;   // faces -Z toward the actor
+        boothCamera.pitch = 0.0f; // level
+        boothCamera.fovY = glm::radians(45.0f); // tighter → the figure fills the frame
+    }
+    const Camera& camera =
+        m_animBooth && m_animActor ? boothCamera : (m_editorActive ? m_editorCamera : playerCamera);
 
     m_renderer.beginFrame(camera, alpha);
     for (const auto& [pos, mesh] : m_chunkMeshes)
@@ -330,6 +344,10 @@ void Engine::render(float alpha) {
     for (const PropInstance& prop : m_props)
         m_renderer.submitMesh(prop.mesh, prop.transform, prop.material);
 
+    if (m_animBooth && m_animActor) { // fill light so the dark PSX figure reads clearly
+        const glm::vec3 base(m_animActor->transform[3]);
+        m_renderer.submitPointLight(base + glm::vec3(0.0f, 1.2f, 2.0f), glm::vec3(2.4f), 8.0f);
+    }
     if (m_animActor && m_animActor->mesh != 0) { // Phase 7b proof: loop clip 0
         m_animActor->time += m_frameDt;
         const Pose pose =
@@ -718,6 +736,7 @@ int Engine::run(const EngineConfig& configIn) {
         log::error("engine init failed");
         return 1;
     }
+    m_animBooth = config.animBooth;
     if (config.mode == EngineConfig::Mode::Browse && !runMenu(config)) return 0;
     if (!initNetwork(config)) {
         log::error("network init failed");
