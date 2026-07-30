@@ -142,28 +142,39 @@ Pose idlePose(const SkeletalModel& model, float t) {
     std::vector<glm::mat4> locals(model.bones.size());
     for (std::size_t b = 0; b < locals.size(); ++b) locals[b] = model.bones[b].localBind;
 
-    // Rotate a bone in its LOCAL space by post-multiplying its bind local. Exact
-    // at angle 0 (== bind), so no chain warps regardless of bind scale.
+    // Rotate a bone about its local axes, inserting the delta BETWEEN the bind
+    // rotation and scale (local = T * (R*delta) * S). Post-multiplying the whole
+    // bind matrix instead would apply the delta after a non-uniform scale and
+    // SHEAR the mesh into spikes. delta==identity reproduces the bind exactly.
     const auto rotateBone = [&](const char* name, glm::vec3 axis, float deg) {
         const auto it = model.boneByName.find(name);
         if (it == model.boneByName.end()) return;
-        locals[static_cast<std::size_t>(it->second)] =
-            model.bones[static_cast<std::size_t>(it->second)].localBind *
-            glm::rotate(glm::mat4(1.0f), glm::radians(deg), glm::normalize(axis));
+        const glm::mat4& m = model.bones[static_cast<std::size_t>(it->second)].localBind;
+        const glm::vec3 t(m[3]);
+        glm::vec3 c0(m[0]), c1(m[1]), c2(m[2]);
+        const glm::vec3 s(glm::length(c0), glm::length(c1), glm::length(c2));
+        if (s.x > 1e-8f) c0 /= s.x;
+        if (s.y > 1e-8f) c1 /= s.y;
+        if (s.z > 1e-8f) c2 /= s.z; // pure bind rotation columns
+        const glm::mat3 rot = glm::mat3(c0, c1, c2) *
+                              glm::mat3(glm::rotate(glm::mat4(1.0f), glm::radians(deg),
+                                                    glm::normalize(axis)));
+        glm::mat4 out(1.0f);
+        out[0] = glm::vec4(rot[0] * s.x, 0.0f);
+        out[1] = glm::vec4(rot[1] * s.y, 0.0f);
+        out[2] = glm::vec4(rot[2] * s.z, 0.0f);
+        out[3] = glm::vec4(t, 1.0f);
+        locals[static_cast<std::size_t>(it->second)] = out;
     };
 
-    const float sway = std::sin(t * 1.6f);   // breathing
-    const float sway2 = std::sin(t * 1.6f + 1.0f);
-    // Lower both upper arms out of the T-pose to hang at the sides + a little
-    // sway. Mixamo arm bones run down their local +X, so swinging them down to
-    // the body is a rotation about local Z; sign mirrors per side.
-    rotateBone("mixamorig:LeftArm", {0, 0, 1}, -68.0f - sway * 5.0f);
-    rotateBone("mixamorig:RightArm", {0, 0, 1}, 68.0f + sway * 5.0f);
-    rotateBone("mixamorig:LeftForeArm", {0, 0, 1}, -20.0f - sway2 * 6.0f);
-    rotateBone("mixamorig:RightForeArm", {0, 0, 1}, 20.0f + sway2 * 6.0f);
-    // Breathing through the spine + a slow head turn.
-    rotateBone("mixamorig:Spine", {1, 0, 0}, 3.0f + sway * 3.0f);
-    rotateBone("mixamorig:Head", {0, 1, 0}, sway2 * 10.0f);
+    // Breathing idle: a forward spine lean that sways. The spine is a parent
+    // bone so the whole upper body moves rigidly (no per-limb stretch), and a
+    // pure forward bend keeps the arms in view (a twist rotates them out of
+    // frame). This EXACT config is VLM-verified clean across the cycle (R720
+    // qwen3vl, ok x3). Arm/limb articulation needs correct per-rig local axes or
+    // a real authored clip — deferred rather than guessed (guesses sheared it).
+    const float sway = std::sin(t * 1.6f);
+    rotateBone("mixamorig:Spine", {1, 0, 0}, 8.0f + sway * 4.0f);
 
     return resolve(model, locals);
 }

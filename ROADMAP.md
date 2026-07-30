@@ -95,10 +95,12 @@ loopback transport.
       skinning FIXED — bind globals derived from inverse(offset) (skin-deformer-authoritative)
       instead of the node chain, which drifted ~100x on the armature's baked FBX unit scale;
       now skinning≡I at bind for all weighted bones. SWAT operator renders as a clean T-pose.
-- [x] Animation PLAYING (VLM-verified): Animator::idlePose drives a looping idle by EXACT
-      bind-local matrix multiply (localBind * rotationDelta) — no TRS decompose, so deep
-      chains (arms/fingers) don't warp (the earlier sampler decompose path exploded them).
-      SWAT operator lowers arms from T-pose + breathing sway; motion confirmed across frames
+- [x] Animation PLAYING (R720 qwen3vl VLM-verified, ok x3 across the cycle): Animator::
+      idlePose sways the spine (delta rotation inserted BETWEEN bind rotation and scale, so
+      the non-uniform arm-bind-scale doesn't shear the mesh into spikes — the bug that broke
+      earlier attempts). Honest scope: spine-only breathing idle; arm/limb articulation needs
+      correct per-rig local axes or an authored clip (guessed axes sheared/hid limbs and the
+      R720 gate rightly failed them — do NOT re-guess). VLM gate = tools/vlm_gate_r720.py.
 - [ ] Real mocap clip playback via samplePose (needs a full-TRS-keyed clip; the exact-matrix
       insight should fold back into samplePose's partial-track gap-fill), replace NPC/remote
       boxes with animated meshes, first-person viewmodel

@@ -1,6 +1,8 @@
 build/
 out/
 tools/fable_worker.py
+# Contains LAN SSH credentials for the R720 VLM gate — never commit to the public repo.
+tools/vlm_gate_r720.py
 # Third-party model/texture binaries staged for local testing need per-listing
 # license verification before they can be committed (see assets/ATTRIBUTION.md).
 assets/models/*.fbx
