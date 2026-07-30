@@ -31,9 +31,9 @@ float valueNoise(float x, float z, float cellSize, std::uint32_t seed) {
 
 BlockPalette registerDefaultBlocks(BlockRegistry& blocks) {
     BlockPalette p;
-    p.stone = blocks.add({"stone", {1, 1, 1, 1, 1, 1}, true});
-    p.dirt = blocks.add({"dirt", {2, 2, 2, 2, 2, 2}, true});
-    p.grass = blocks.add({"grass", {4, 4, 3, 2, 4, 4}, true});
+    p.stone = blocks.add({"stone", {1, 1, 1, 1, 1, 1}, true, 100.0f, 45.0f});
+    p.dirt = blocks.add({"dirt", {2, 2, 2, 2, 2, 2}, true, 40.0f, 15.0f});
+    p.grass = blocks.add({"grass", {4, 4, 3, 2, 4, 4}, true, 30.0f, 12.0f});
     return p;
 }
 

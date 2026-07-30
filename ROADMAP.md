@@ -99,11 +99,13 @@ loopback transport.
 - [ ] Drop-on-death; interpolation for moving entities (with projectiles/NPCs)
 
 ## Phase 6.6 — Ballistics & destruction ("Siege but further", ARCHITECTURE §game/ballistics)
-- [ ] Material props on blocks (hp, penCost, reinforced variants)
-- [ ] Penetrating hitscan: ray-march w/ penetration budget, attenuated damage through cover
-- [ ] Sparse voxel damage map (chip destruction); explosives apply radial voxel damage
+- [x] Material props on blocks (hp, penCost: stone 100/45, dirt 40/15, grass 30/12)
+- [x] Penetrating hitscan: ray-march w/ penetration budget (weapon penBudget), 0.65×
+      damage attenuation per block, flesh stops bullets; GameRules toggles
+      (penetration, blockDamage → wire flags bits 2/3)
+- [x] Sparse voxel damage map (chip destruction — pistol needs 4 hits through stone)
+- [ ] Reinforced block variants; explosives radial voxel damage (lands with projectiles)
 - [ ] Structural integrity flood-fill collapse (GameRules toggle)
-- [ ] Reinforcement via place-onto-face upgrade
 
 ## Phase 6.7 — Weapon archetypes (ARCHITECTURE §game/weapons)
 - [ ] WeaponSpec: FireMode (semi/auto/burst/charge) + recoil/bloom model

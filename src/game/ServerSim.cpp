@@ -16,10 +16,8 @@ constexpr float kFixedDtServer = 1.0f / 60.0f;
 constexpr int kSnapshotEvery = 3; // 60 Hz sim → 20 Hz snapshots
 constexpr glm::vec3 kSpawnPos{8.0f, 8.0f, 8.0f};
 
-constexpr float kFireInterval = 0.15f;
 constexpr float kPlaceInterval = 0.20f;
 constexpr float kHitscanRange = 60.0f;
-constexpr float kHitDamage = 25.0f;
 constexpr float kCapsuleRadius = 0.35f; // keep in sync with CharacterTuning
 
 // Distance between a ray segment [ro, ro + rd*range] and segment [a, b];
@@ -86,6 +84,93 @@ void ServerSim::spawnDungeonLoot() {
     log::info("server: spawned {} loot pickups in dungeon rooms", m_entities.size());
 }
 
+// Penetrating hitscan: the ray marches through materials spending a penetration
+// budget; each block crossed attenuates damage; flesh stops the bullet. Chip
+// damage accumulates in the sparse map until a block breaks into a VoxelOp.
+void ServerSim::fireHitscan(Transport& transport, PeerId peer, Player& player,
+                            const ItemDef& weapon) {
+    const glm::vec3 eye =
+        player.controller.position() + glm::vec3(0, player.controller.eyeHeight(), 0);
+    const glm::vec3 dir = viewForward(player.lastCmd.yaw, player.lastCmd.pitch);
+
+    glm::vec3 origin = eye;
+    float remaining = kHitscanRange;
+    float budget = weapon.penBudget;
+    float damageScale = 1.0f;
+
+    for (int hop = 0; hop < 8 && remaining > 0.1f; ++hop) {
+        const auto voxelHit = m_voxels.raycast(origin, dir, remaining);
+        const float segmentEnd = voxelHit ? voxelHit->t : remaining;
+
+        // Closest player capsule within this air segment beats the wall.
+        Player* victim = nullptr;
+        PeerId victimPeer = 0;
+        float bestT = segmentEnd;
+        for (auto& [otherPeer, other] : m_players) {
+            if (otherPeer == peer || !other->spawned) continue;
+            const glm::vec3 feet = other->controller.position();
+            const float height = other->controller.crouched() ? 0.95f : 1.8f;
+            const glm::vec3 a = feet + glm::vec3(0, kCapsuleRadius, 0);
+            const glm::vec3 b = feet + glm::vec3(0, height - kCapsuleRadius, 0);
+            float tRay = 0;
+            if (raySegmentDistance(origin, dir, segmentEnd, a, b, tRay) <= kCapsuleRadius &&
+                tRay < bestT) {
+                bestT = tRay;
+                victim = other.get();
+                victimPeer = otherPeer;
+            }
+        }
+        if (victim) {
+            victim->health -= weapon.damage * damageScale;
+            if (victim->health <= 0.0f) {
+                log::info("server: player {} fragged player {}", peer, victimPeer);
+                victim->controller.setState(kSpawnPos, glm::vec3(0));
+                victim->health = 100.0f;
+            }
+            return; // flesh stops bullets (AP ammo types may change this later)
+        }
+        if (!voxelHit || voxelHit->block == 0) return;
+
+        // Chip the block.
+        const BlockDef& material = m_voxels.blockRegistry().get(voxelHit->block);
+        bool broke = !m_rules.blockDamage; // instant-break rules skip the hp model
+        if (m_rules.blockDamage) {
+            auto [entry, inserted] = m_voxelDamage.try_emplace(voxelHit->voxel, material.hp);
+            entry->second -= weapon.damage * damageScale;
+            if (entry->second <= 0.0f) {
+                m_voxelDamage.erase(entry);
+                broke = true;
+            }
+        }
+        if (broke) {
+            applyVoxelOp(transport, {voxelHit->voxel, 0});
+            if (m_rules.minedBlockDrops) {
+                player.inventory.add(m_defaultItems.stoneBlock, 1, m_items);
+                player.inventoryDirty = true;
+            }
+        }
+
+        // Penetrate or stop.
+        if (!m_rules.penetration || budget < material.penCost) return;
+        budget -= material.penCost;
+        damageScale *= 0.65f;
+
+        // Advance the ray past the exit face of this voxel (slab test).
+        const glm::vec3 lo = glm::vec3(voxelHit->voxel) * kVoxelSize;
+        const glm::vec3 hi = lo + kVoxelSize;
+        float exitT = remaining;
+        for (int axis = 0; axis < 3; ++axis) {
+            if (std::abs(dir[axis]) < 1e-8f) continue;
+            const float t = (dir[axis] > 0 ? hi[axis] - origin[axis]
+                                           : lo[axis] - origin[axis]) / dir[axis];
+            exitT = std::min(exitT, t);
+        }
+        const float advance = exitT + 0.001f;
+        origin += dir * advance;
+        remaining -= advance;
+    }
+}
+
 bool ServerSim::tryPickup(Transport& transport, PeerId peer, Player& player) {
     const glm::vec3 feet = player.controller.position();
     for (auto it = m_entities.begin(); it != m_entities.end(); ++it) {
@@ -93,7 +178,7 @@ bool ServerSim::tryPickup(Transport& transport, PeerId peer, Player& player) {
         const glm::vec3 d = it->pos - (feet + glm::vec3(0, 0.9f, 0));
         if (glm::dot(d, d) > 1.5f * 1.5f) continue;
         const std::uint16_t leftover = player.inventory.add(it->item, it->count, m_items);
-        if (leftover == it->count) return false; // bag full for this item
+        if (leftover == it->count) continue; // bag full for THIS item; try other loot
         if (leftover == 0) {
             m_entities.erase(it); // absent from the next snapshot = despawned
         } else {
@@ -138,6 +223,8 @@ void ServerSim::handlePacket(Transport& transport, PeerId peer,
     case MsgType::Hello: {
         HelloMsg hello;
         if (!decode(hello, reader)) return;
+        if (player.helloDone) return; // replayed Hello must not re-grant loadout
+        player.helloDone = true;
         WelcomeMsg welcome{peer, m_seed, m_tick,
                            static_cast<std::uint8_t>(m_rules.inventoryModel),
                            m_rules.flagsByte()};
@@ -165,7 +252,14 @@ void ServerSim::handlePacket(Transport& transport, PeerId peer,
     case MsgType::VoxelOp: {
         VoxelOpMsg op;
         if (!decode(op, reader)) return;
-        applyVoxelOp(transport, op); // client intent; server is the only writer
+        // Client intent (editor brushes). Validate: a hostile block id would hit
+        // the registry assert server-side. No range gate — the editor legitimately
+        // builds far from the player body; per-peer edit permissions are the TODO.
+        if (!m_voxels.blockRegistry().isValid(op.block)) return;
+        if (glm::abs(op.voxel.x) > 100000 || glm::abs(op.voxel.y) > 100000 ||
+            glm::abs(op.voxel.z) > 100000)
+            return;
+        applyVoxelOp(transport, op);
         break;
     }
     default:
@@ -201,6 +295,7 @@ void ServerSim::tick(Transport& transport) {
 }
 
 void ServerSim::applyVoxelOp(Transport& transport, const VoxelOpMsg& op) {
+    m_voxelDamage.erase(op.voxel); // chip damage dies with the block; fresh block = full hp
     m_voxels.setBlock(op.voxel, op.block);
     for (auto& [peer, unused] : m_players) transport.send(peer, pack(op), true);
 }
@@ -241,44 +336,7 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
                     player.inventory.remove(heldDef.ammoItem, 1);
                     player.inventoryDirty = true;
                 }
-
-                const auto voxelHit = m_voxels.raycast(eye, dir, kHitscanRange);
-                const float voxelT = voxelHit ? voxelHit->t : kHitscanRange;
-
-                // Closest player capsule in front of the voxel hit wins.
-                Player* victim = nullptr;
-                PeerId victimPeer = 0;
-                float bestT = voxelT;
-                for (auto& [otherPeer, other] : m_players) {
-                    if (otherPeer == peer || !other->spawned) continue;
-                    const glm::vec3 feet = other->controller.position();
-                    const float height = other->controller.crouched() ? 0.95f : 1.8f;
-                    const glm::vec3 a = feet + glm::vec3(0, kCapsuleRadius, 0);
-                    const glm::vec3 b = feet + glm::vec3(0, height - kCapsuleRadius, 0);
-                    float tRay = 0;
-                    if (raySegmentDistance(eye, dir, kHitscanRange, a, b, tRay) <=
-                            kCapsuleRadius &&
-                        tRay < bestT) {
-                        bestT = tRay;
-                        victim = other.get();
-                        victimPeer = otherPeer;
-                    }
-                }
-
-                if (victim) {
-                    victim->health -= heldDef.damage;
-                    if (victim->health <= 0.0f) {
-                        log::info("server: player {} fragged player {}", peer, victimPeer);
-                        victim->controller.setState(kSpawnPos, glm::vec3(0));
-                        victim->health = 100.0f;
-                    }
-                } else if (voxelHit && voxelHit->block != 0) {
-                    applyVoxelOp(transport, {voxelHit->voxel, 0});
-                    if (m_rules.minedBlockDrops) {
-                        player.inventory.add(m_defaultItems.stoneBlock, 1, m_items);
-                        player.inventoryDirty = true;
-                    }
-                }
+                fireHitscan(transport, peer, player, heldDef);
             }
         } else if (heldDef.type == ItemType::Block) {
             // Holding a block: LMB is the mining tool (short range, no player damage).
@@ -399,6 +457,20 @@ bool ServerSim::initFromSave(const std::string& path) {
     if (!init(j["seed"].get<std::uint32_t>())) return false;
     m_tick = j.value("tick", std::uint64_t{0});
 
+    // nlohmann throws on structural mismatch; a truncated or hand-edited save
+    // must not crash the server, so the replay is exception-bounded.
+    try {
+        loadSaveBody(j);
+    } catch (const nlohmann::json::exception& e) {
+        log::error("load: '{}' is structurally invalid ({}) — starting fresh", path, e.what());
+        m_pendingRestore.reset();
+    }
+    log::info("loaded '{}' (seed {}, {} edited chunks)", path, m_seed,
+              j.value("chunks", nlohmann::json::array()).size());
+    return true;
+}
+
+void ServerSim::loadSaveBody(const nlohmann::json& j) {
     for (const auto& entry : j.value("chunks", nlohmann::json::array())) {
         const auto& p = entry["pos"];
         const ChunkPos cp{p[0].get<int>(), p[1].get<int>(), p[2].get<int>()};
@@ -424,9 +496,6 @@ bool ServerSim::initFromSave(const std::string& path) {
             restored.inventory.slot(i) = {inv[i][0].get<ItemId>(), inv[i][1].get<std::uint16_t>()};
         m_pendingRestore = restored;
     }
-    log::info("loaded '{}' (seed {}, {} edited chunks)", path, m_seed,
-              j.value("chunks", nlohmann::json::array()).size());
-    return true;
 }
 
 void ServerSim::broadcastSnapshot(Transport& transport) {

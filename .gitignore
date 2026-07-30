@@ -1,5 +1,6 @@
 build/
 out/
+tools/fable_worker.py
 .vs/
 .idea/
 .cache/

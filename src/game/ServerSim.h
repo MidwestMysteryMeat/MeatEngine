@@ -10,6 +10,8 @@
 #include "game/Inventory.h"
 #include "game/WorldGen.h"
 
+#include <nlohmann/json_fwd.hpp>
+
 #include <memory>
 #include <optional>
 #include <string>
@@ -40,6 +42,7 @@ private:
         PlayerCommand lastCmd{};
         std::uint64_t lastCmdTick = 0;
         bool spawned = false;
+        bool helloDone = false; // guards Welcome/loadout against Hello replay
         float health = 100.0f;
         float fireCooldown = 0.0f;
         float placeCooldown = 0.0f;
@@ -63,13 +66,28 @@ private:
     void giveStartingLoadout(Player& player);
 
     void spawnDungeonLoot();
+    void loadSaveBody(const nlohmann::json& j); // may throw; initFromSave bounds it
     bool tryPickup(Transport& transport, PeerId peer, Player& player); // true if grabbed
+    void fireHitscan(Transport& transport, PeerId peer, Player& player,
+                     const ItemDef& weapon);
+
+    struct IVec3Hash {
+        std::size_t operator()(const glm::ivec3& v) const {
+            std::size_t h = static_cast<std::size_t>(v.x) * 73856093u;
+            h ^= static_cast<std::size_t>(v.y) * 19349663u;
+            h ^= static_cast<std::size_t>(v.z) * 83492791u;
+            return h;
+        }
+    };
 
     JobQueue m_jobs;         // server-side meshing feeds colliders only
     PhysicsWorld m_physics;
     VoxelWorld m_voxels;
     std::vector<WorldEntity> m_entities;
     std::uint32_t m_nextEntityId = 1;
+    // Sparse chip-damage: only voxels that have been shot, remaining hp. Entries
+    // die with the block; pristine blocks are implicit full-hp.
+    std::unordered_map<glm::ivec3, float, IVec3Hash> m_voxelDamage;
     std::unordered_map<PeerId, std::unique_ptr<Player>> m_players;
     BlockPalette m_palette;
     GameRules m_rules;

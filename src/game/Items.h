@@ -17,7 +17,8 @@ struct ItemDef {
     // Weapon fields
     float damage = 0.0f;
     float fireInterval = 0.0f;
-    ItemId ammoItem = 0; // consumed per shot when GameRules::finiteAmmo
+    float penBudget = 0.0f; // penetration budget spent on materials crossed
+    ItemId ammoItem = 0;    // consumed per shot when GameRules::finiteAmmo
     // Block field
     BlockId blockId = 0; // what placing this item builds
 };

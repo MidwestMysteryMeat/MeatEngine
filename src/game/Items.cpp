@@ -10,6 +10,7 @@ DefaultItems registerDefaultItems(ItemRegistry& items, BlockId stone) {
                           .maxStack = 1,
                           .damage = 25.0f,
                           .fireInterval = 0.15f,
+                          .penBudget = 20.0f, // punches dirt/grass, stopped by stone
                           .ammoItem = d.ammo9mm});
     d.medkit = items.add({.name = "medkit", .type = ItemType::Consumable, .maxStack = 4});
     d.stoneBlock = items.add(
