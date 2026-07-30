@@ -9,7 +9,7 @@ namespace meat {
 // Block ids registered identically on server and every client — chunk content
 // is derived, not transmitted, so both sides must agree exactly.
 struct BlockPalette {
-    BlockId stone = 0, dirt = 0, grass = 0;
+    BlockId stone = 0, dirt = 0, grass = 0, lamp = 0;
 };
 
 BlockPalette registerDefaultBlocks(BlockRegistry& blocks);

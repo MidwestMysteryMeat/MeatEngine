@@ -57,6 +57,11 @@ const Chunk* VoxelWorld::chunkAt(ChunkPos pos) const {
     return it != m_chunks.end() ? it->second.get() : nullptr;
 }
 
+Chunk* VoxelWorld::chunkAtMut(ChunkPos pos) {
+    const auto it = m_chunks.find(pos);
+    return it != m_chunks.end() ? it->second.get() : nullptr;
+}
+
 BlockId VoxelWorld::blockAt(glm::ivec3 voxel) const {
     const ChunkPos cp = voxelToChunk(voxel);
     const Chunk* chunk = chunkAt(cp);
@@ -85,6 +90,10 @@ Chunk& VoxelWorld::ensureChunk(ChunkPos pos) {
         if (const auto it = m_chunks.find(offsetChunk(pos, d)); it != m_chunks.end())
             it->second->markDirty();
     }
+    // Light this fresh chunk from its own emitters and from any already-lit
+    // neighbor bleeding across the seam (done after emplace so the BFS can
+    // reach it through chunkAtMut).
+    computeChunkLightOnLoad(pos);
     return ref;
 }
 
@@ -107,6 +116,141 @@ void VoxelWorld::setBlock(glm::ivec3 voxel, BlockId block) {
     if (l.y == m) touch({cp.x, cp.y + 1, cp.z});
     if (l.z == 0) touch({cp.x, cp.y, cp.z - 1});
     if (l.z == m) touch({cp.x, cp.y, cp.z + 1});
+
+    // Re-flow block-light for the edit: tear down light the old block carried,
+    // seed light the new block emits, and refill any air the edit exposed.
+    updateLightForEdit(voxel);
+}
+
+std::uint8_t VoxelWorld::voxelLight(glm::ivec3 v) const {
+    const ChunkPos cp = voxelToChunk(v);
+    const Chunk* chunk = chunkAt(cp);
+    if (!chunk) return 0;
+    const glm::ivec3 l = localInChunk(v, cp);
+    return chunk->lightAt(l.x, l.y, l.z);
+}
+
+void VoxelWorld::setVoxelLight(glm::ivec3 v, std::uint8_t level) {
+    const ChunkPos cp = voxelToChunk(v);
+    Chunk* chunk = chunkAtMut(cp);
+    if (!chunk) return; // never write light into an unloaded chunk
+    const glm::ivec3 l = localInChunk(v, cp);
+    chunk->setLight(l.x, l.y, l.z, level);
+    chunk->markDirty(); // light changed -> the chunk must re-mesh
+}
+
+std::uint8_t VoxelWorld::blockEmission(BlockId id) const {
+    // Tolerate ids the registry hasn't seen: chunk-load light runs inside
+    // ensureChunk, which can fire on the client mirror before setupClientWorld
+    // registers blocks (a server op applied during Client::pump). No registered
+    // block => nothing emits, so an unknown id contributes no light.
+    return m_blocks.isValid(id) ? m_blocks.get(id).lightEmission : 0;
+}
+
+bool VoxelWorld::voxelSolid(glm::ivec3 v) const {
+    const BlockId id = blockAt(v);
+    return m_blocks.isValid(id) && m_blocks.get(id).solid;
+}
+
+// Increasing BFS: each seeded voxel already holds its final light; spread it to
+// non-solid neighbors at level-1 wherever that is brighter than what they hold.
+// The max-plus rule makes the result independent of queue order (deterministic).
+void VoxelWorld::propagateLight(std::queue<glm::ivec3>& open) {
+    while (!open.empty()) {
+        const glm::ivec3 v = open.front();
+        open.pop();
+        const std::uint8_t level = voxelLight(v);
+        if (level <= 1) continue; // nothing left to give
+        for (const glm::ivec3& d : kFaceDirs) {
+            const glm::ivec3 n = v + d;
+            if (!chunkAtMut(voxelToChunk(n))) continue; // stay inside loaded chunks
+            if (voxelSolid(n)) continue;                // light stops at solids
+            if (voxelLight(n) + 1 < level) {            // neighbor dimmer than level-1
+                setVoxelLight(n, static_cast<std::uint8_t>(level - 1));
+                open.push(n);
+            }
+        }
+    }
+}
+
+// Removal BFS (classic un-light then re-light): zero every voxel that was fed by
+// the removed source (strictly dimmer than the wave), and collect any voxel that
+// is as-bright-or-brighter as a surviving source to re-flood from afterwards.
+void VoxelWorld::relightAfterRemoval(glm::ivec3 voxel, std::uint8_t oldLevel) {
+    std::queue<std::pair<glm::ivec3, std::uint8_t>> dark;
+    std::queue<glm::ivec3> relight;
+    setVoxelLight(voxel, 0);
+    dark.push({voxel, oldLevel});
+    while (!dark.empty()) {
+        const auto [v, level] = dark.front();
+        dark.pop();
+        for (const glm::ivec3& d : kFaceDirs) {
+            const glm::ivec3 n = v + d;
+            if (!chunkAtMut(voxelToChunk(n))) continue;
+            const std::uint8_t nl = voxelLight(n);
+            if (nl != 0 && nl < level) {
+                setVoxelLight(n, 0);
+                dark.push({n, nl});
+            } else if (nl >= level) {
+                relight.push(n); // a competing/surviving source
+            }
+        }
+    }
+    propagateLight(relight);
+}
+
+void VoxelWorld::updateLightForEdit(glm::ivec3 voxel) {
+    const std::uint8_t oldLevel = voxelLight(voxel);
+    if (oldLevel > 0) relightAfterRemoval(voxel, oldLevel);
+
+    std::queue<glm::ivec3> open;
+    const std::uint8_t emission = blockEmission(blockAt(voxel));
+    if (emission > 0) {
+        setVoxelLight(voxel, emission);
+        open.push(voxel);
+    }
+    // If the edit opened air (e.g. a solid was removed), let bright neighbors
+    // flow back into the newly exposed voxel.
+    for (const glm::ivec3& d : kFaceDirs) {
+        const glm::ivec3 n = voxel + d;
+        if (voxelLight(n) > 1) open.push(n);
+    }
+    propagateLight(open);
+}
+
+void VoxelWorld::computeChunkLightOnLoad(ChunkPos pos) {
+    Chunk* chunk = chunkAtMut(pos);
+    if (!chunk) return;
+    const glm::ivec3 base{pos.x * kChunkSize, pos.y * kChunkSize, pos.z * kChunkSize};
+
+    std::queue<glm::ivec3> open;
+    // Seed every emissive voxel in the chunk at its emission level.
+    for (int y = 0; y < kChunkSize; ++y)
+        for (int z = 0; z < kChunkSize; ++z)
+            for (int x = 0; x < kChunkSize; ++x) {
+                const std::uint8_t emission = blockEmission(chunk->at(x, y, z));
+                if (emission > 0) {
+                    chunk->setLight(x, y, z, emission);
+                    open.push(base + glm::ivec3(x, y, z));
+                }
+            }
+
+    // Bleed light in from already-loaded neighbors: seed each lit voxel that sits
+    // just across one of this chunk's six boundary planes; propagateLight then
+    // spills it one step (level-1) into the fresh chunk and onward.
+    const auto seedNeighbor = [&](glm::ivec3 nWorld) {
+        if (voxelLight(nWorld) > 1) open.push(nWorld);
+    };
+    for (int a = 0; a < kChunkSize; ++a)
+        for (int b = 0; b < kChunkSize; ++b) {
+            seedNeighbor(base + glm::ivec3(-1, a, b));
+            seedNeighbor(base + glm::ivec3(kChunkSize, a, b));
+            seedNeighbor(base + glm::ivec3(a, -1, b));
+            seedNeighbor(base + glm::ivec3(a, kChunkSize, b));
+            seedNeighbor(base + glm::ivec3(a, b, -1));
+            seedNeighbor(base + glm::ivec3(a, b, kChunkSize));
+        }
+    propagateLight(open);
 }
 
 void VoxelWorld::update(glm::vec3 playerPos, JobQueue& jobs) {

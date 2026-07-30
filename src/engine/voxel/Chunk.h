@@ -38,6 +38,19 @@ public:
         m_dirty = true;
     }
 
+    // Per-voxel block-light level, 0..15. Computed on the main/edit thread by
+    // VoxelWorld's flood-fill; the mesher only READS it (via the by-value chunk
+    // snapshot), keeping meshing pure and worker-safe.
+    std::uint8_t lightAt(int x, int y, int z) const {
+        assert(inBounds(x, y, z));
+        return m_light[index(x, y, z)];
+    }
+
+    void setLight(int x, int y, int z, std::uint8_t level) {
+        assert(inBounds(x, y, z));
+        m_light[index(x, y, z)] = level;
+    }
+
     bool dirty() const { return m_dirty; }
     void markDirty() { m_dirty = true; }
     void clearDirty() { m_dirty = false; }
@@ -52,6 +65,8 @@ private:
     }
 
     std::array<BlockId, static_cast<std::size_t>(kChunkSize) * kChunkSize * kChunkSize> m_blocks{};
+    std::array<std::uint8_t, static_cast<std::size_t>(kChunkSize) * kChunkSize * kChunkSize>
+        m_light{};
     bool m_dirty = false;
 };
 

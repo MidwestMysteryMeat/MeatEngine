@@ -2,6 +2,7 @@
 
 Engine-made placeholder art (no external assets). Tiles:
   0 debug magenta/black checker | 1 stone | 2 dirt | 3 grass top | 4 grass side
+  5 lamp (emissive glow — warm yellow)
 Deterministic hash noise so the output is reproducible.
 """
 from pathlib import Path
@@ -31,6 +32,11 @@ def tile_pixel(tile, px, py):
         if py < 3 + int(noise(px, 0, 4) * 2):
             return shade((88, 140, 62), noise(px, py, 3), 0.20)
         return shade((115, 82, 58), noise(px, py, 2), 0.22)
+    if tile == 5:  # lamp: bright warm core with a darker frame, reads as a light
+        edge = px == 0 or py == 0 or px == TILE - 1 or py == TILE - 1
+        if edge:
+            return (120, 78, 20)
+        return shade((255, 224, 130), noise(px, py, 5), 0.12)
     return (255, 0, 255) if (px // 4 + py // 4) % 2 == 0 else (16, 16, 16)  # debug
 
 

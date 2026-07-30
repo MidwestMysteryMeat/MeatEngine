@@ -37,6 +37,20 @@ BlockId blockAcrossFace(const Chunk& chunk, const std::array<const Chunk*, 6>& n
     return n->at(local.x, local.y, local.z);
 }
 
+// Block-light level of the (air) voxel a face is exposed to. Same in-bounds /
+// neighbor-fallback logic as blockAcrossFace; light of an unloaded neighbor
+// reads as 0 (dark), so chunk seams gracefully fade rather than glow.
+std::uint8_t lightAcrossFace(const Chunk& chunk, const std::array<const Chunk*, 6>& neighbors,
+                             int face, glm::ivec3 p) {
+    if (p.x >= 0 && p.x < kChunkSize && p.y >= 0 && p.y < kChunkSize && p.z >= 0 &&
+        p.z < kChunkSize)
+        return chunk.lightAt(p.x, p.y, p.z);
+    const Chunk* n = neighbors[static_cast<std::size_t>(face)];
+    if (!n) return 0;
+    const glm::ivec3 local = p - kFaces[static_cast<std::size_t>(face)].dir * kChunkSize;
+    return n->lightAt(local.x, local.y, local.z);
+}
+
 // Voxel-coordinate contribution of walking t mask cells along a signed unit
 // axis. Negative directions count down from the far edge so that mask cell 0
 // always sits where the face's corner table starts — that keeps the merged
@@ -51,7 +65,7 @@ std::size_t cellIndex(int u, int v) {
 }
 
 void emitQuad(ChunkMeshData& mesh, const FaceSpec& spec, glm::ivec3 baseVoxel, glm::ivec3 uDir,
-              glm::ivec3 vDir, int w, int h, std::uint16_t tex) {
+              glm::ivec3 vDir, int w, int h, std::uint16_t tex, std::uint8_t light) {
     // The quad is the single-voxel corner table stretched w cells along uDir
     // and h cells along vDir; with w == h == 1 it reproduces the old
     // per-voxel vertices exactly, so winding stays CCW from outside.
@@ -69,6 +83,7 @@ void emitQuad(ChunkMeshData& mesh, const FaceSpec& spec, glm::ivec3 baseVoxel, g
         // so the tile repeats once per voxel across the merged quad.
         vert.uv = kCornerUv[c] * glm::vec2(static_cast<float>(w), static_cast<float>(h));
         vert.tex = tex;
+        vert.light = light; // uniform across the quad: light is part of the merge key
         mesh.vertices.push_back(vert);
     }
     mesh.indices.insert(mesh.indices.end(),
@@ -89,10 +104,12 @@ ChunkMeshData buildChunkMesh(const Chunk& chunk, const std::array<const Chunk*, 
     // by merging maximal rectangles of one tile id: extend right along the
     // row while the tile repeats, extend that run downward while every full
     // row still matches, emit one quad for the rectangle, and clear its
-    // cells. Tile id is the only merge key — lighting is per-vertex
-    // directional off the shared normal, so equal-tile faces are identical.
+    // cells. Merge key = (tile id, block-light level): only faces with the
+    // SAME light merge, so the per-voxel torch gradient survives greedy
+    // meshing (a lit face never fuses with a dark one of the same tile).
     constexpr std::uint32_t kEmpty = 0xFFFFFFFFu;
     std::array<std::uint32_t, static_cast<std::size_t>(kChunkSize) * kChunkSize> mask;
+    std::array<std::uint8_t, static_cast<std::size_t>(kChunkSize) * kChunkSize> lightMask{};
 
     for (int face = 0; face < 6; ++face) {
         const FaceSpec& spec = kFaces[static_cast<std::size_t>(face)];
@@ -115,6 +132,8 @@ ChunkMeshData buildChunkMesh(const Chunk& chunk, const std::array<const Chunk*, 
                             blockAcrossFace(chunk, neighbors, face, p + spec.dir);
                         if (!registry.get(other).solid) {
                             cell = registry.get(id).faceTex[static_cast<std::size_t>(face)];
+                            lightMask[cellIndex(u, v)] =
+                                lightAcrossFace(chunk, neighbors, face, p + spec.dir);
                             sliceHasFaces = true;
                         }
                     }
@@ -130,13 +149,18 @@ ChunkMeshData buildChunkMesh(const Chunk& chunk, const std::array<const Chunk*, 
                         ++u;
                         continue;
                     }
+                    const std::uint8_t light = lightMask[cellIndex(u, v)];
+                    const auto matches = [&](int cu, int cv) {
+                        return mask[cellIndex(cu, cv)] == tile &&
+                               lightMask[cellIndex(cu, cv)] == light;
+                    };
                     int w = 1;
-                    while (u + w < kChunkSize && mask[cellIndex(u + w, v)] == tile) ++w;
+                    while (u + w < kChunkSize && matches(u + w, v)) ++w;
                     int h = 1;
                     while (v + h < kChunkSize) {
                         bool rowMatches = true;
                         for (int k = 0; k < w && rowMatches; ++k)
-                            rowMatches = mask[cellIndex(u + k, v + h)] == tile;
+                            rowMatches = matches(u + k, v + h);
                         if (!rowMatches) break;
                         ++h;
                     }
@@ -146,7 +170,7 @@ ChunkMeshData buildChunkMesh(const Chunk& chunk, const std::array<const Chunk*, 
                     const glm::ivec3 baseVoxel =
                         sliceAxis * s + axisSteps(uDir, u) + axisSteps(vDir, v);
                     emitQuad(mesh, spec, baseVoxel, uDir, vDir, w, h,
-                             static_cast<std::uint16_t>(tile));
+                             static_cast<std::uint16_t>(tile), light);
                     u += w;
                 }
             }

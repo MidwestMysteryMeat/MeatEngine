@@ -16,6 +16,7 @@ struct VoxelVertex {
     glm::i8vec3 normal;
     glm::vec2 uv;
     std::uint16_t tex;
+    std::uint8_t light; // block-light level 0..15 of the air voxel this face faces
 };
 
 struct ChunkMeshData {

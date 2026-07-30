@@ -47,7 +47,13 @@ OSS we lean on (license-verified in docs/ENGINE_REUSE_SURVEY.md) and its verific
   hitscan** (O3DE NetworkTime pattern). Gate: rewind hits register; distant entities culled.
 
 ### Roll 4 — Systems depth
-- [ ] **7. Voxel light propagation** (torch flood-fill). OSS: Luanti/Minetest light BFS (ideas).
+- [x] **7. Voxel light propagation** (torch flood-fill): per-voxel block-light (0..15) in
+  Chunk; a main/edit-thread BFS floods emissive blocks at level-1 per air voxel and stops at
+  solids, with an un-light + re-light BFS on edits and neighbor bleed-in on chunk load. The
+  mesher stays pure — it reads a by-value light snapshot and keys greedy merges on (tile,
+  light); the shader darkens terrain away from sources (skylight out of scope). An emissive
+  "lamp" block (emission 15, atlas tile 5) seeds it near spawn. OSS: Luanti/Minetest light BFS
+  (ideas only, original code). VLM-verified (qwen3vl 0.95: localized glow, darker with distance).
 - [ ] **8. Recast/Detour navmesh** (zlib) replacing hand-rolled A*.
 - [ ] **9. Abilities / GAS-lite** (effect executors) + **10. game-mode framework** (Breach/Horde).
 - [ ] **11. Destruction depth** — reinforced blocks, radial voxel damage, structural collapse.

@@ -24,6 +24,7 @@ in VsOut {
     vec3 normal;
     vec2 uv;
     float fog;
+    float blockLight; // 0..1 torch flood-fill brightness
     flat uint tex;
 } fs;
 
@@ -82,5 +83,11 @@ void main() {
     vec3 n = normalize(fs.normal);
     vec3 v = normalize(uCamPos.xyz - fs.worldPos);
     vec3 lit = shade(albedo.rgb, n, v, fs.worldPos);
+    // Voxel block-light gate (torch flood-fill): faces near an emissive block
+    // keep full shading; faces the light never reached fall to kMinLight, so the
+    // world visibly darkens away from light sources. Skylight is out of scope,
+    // so kMinLight is the only floor keeping unlit terrain readable.
+    const float kMinLight = 0.10;
+    lit *= max(fs.blockLight, kMinLight);
     oColor = vec4(mix(lit, uFogColor.rgb, fs.fog), albedo.a);
 }

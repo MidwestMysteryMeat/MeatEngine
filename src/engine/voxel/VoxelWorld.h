@@ -5,9 +5,11 @@
 
 #include <glm/glm.hpp>
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <queue>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -57,8 +59,25 @@ public:
 private:
     Chunk& ensureChunk(ChunkPos pos);
     const Chunk* chunkAt(ChunkPos pos) const;
+    Chunk* chunkAtMut(ChunkPos pos);
     void enqueueMeshJob(ChunkPos pos, Chunk& chunk, JobQueue& jobs);
     void onMeshDone(ChunkPos pos, ChunkMeshData mesh);
+
+    // --- Block-light flood-fill (torch light) --------------------------------
+    // Runs on the main/edit thread only; writes each affected voxel's light into
+    // its owning loaded chunk and marks that chunk dirty so it re-meshes. The
+    // mesher then reads the light off its by-value chunk snapshot. Skylight is
+    // out of scope — this is emissive-block light only. Technique: the standard
+    // increasing-BFS + removal-BFS block-light spread (as in Luanti/Minetest's
+    // voxel lighting; ideas only, original code here).
+    std::uint8_t voxelLight(glm::ivec3 v) const;
+    void setVoxelLight(glm::ivec3 v, std::uint8_t level); // sets + marks chunk dirty
+    bool voxelSolid(glm::ivec3 v) const;
+    std::uint8_t blockEmission(BlockId id) const; // 0 for ids the registry lacks
+    void propagateLight(std::queue<glm::ivec3>& open);    // spread from seeded voxels
+    void relightAfterRemoval(glm::ivec3 voxel, std::uint8_t oldLevel);
+    void computeChunkLightOnLoad(ChunkPos pos);           // seed emitters + neighbor bleed-in
+    void updateLightForEdit(glm::ivec3 voxel);            // add/remove a source or blocker
 
     std::unordered_map<ChunkPos, std::unique_ptr<Chunk>> m_chunks;
     std::unordered_set<ChunkPos> m_inFlight;

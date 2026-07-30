@@ -19,6 +19,10 @@ struct BlockDef {
     bool solid = true;
     float hp = 50.0f;
     float penCost = 20.0f;
+    // Block-light emission at the source, 0..15 (0 = not a light). A torch/lamp
+    // block seeds the flood-fill BFS at this level; light falls off -1 per voxel
+    // through air and stops at solids. Read on the main/edit thread only.
+    std::uint8_t lightEmission = 0;
 };
 
 // Register block types at startup, before streaming begins: workers read the

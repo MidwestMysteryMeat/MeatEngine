@@ -34,6 +34,9 @@ BlockPalette registerDefaultBlocks(BlockRegistry& blocks) {
     p.stone = blocks.add({"stone", {1, 1, 1, 1, 1, 1}, true, 100.0f, 45.0f});
     p.dirt = blocks.add({"dirt", {2, 2, 2, 2, 2, 2}, true, 40.0f, 15.0f});
     p.grass = blocks.add({"grass", {4, 4, 3, 2, 4, 4}, true, 30.0f, 12.0f});
+    // Emissive lamp: a solid block whose lightEmission seeds the torch flood-fill
+    // at the max level (15). Atlas tile 5 is the warm glow tile (tools/gen_atlas.py).
+    p.lamp = blocks.add({"lamp", {5, 5, 5, 5, 5, 5}, true, 20.0f, 8.0f, /*lightEmission*/ 15});
     return p;
 }
 
@@ -67,6 +70,15 @@ std::function<void(Chunk&, ChunkPos)> makeTerrainGenerator(std::uint32_t seed,
                                        : wy >= surface - 2    ? palette.dirt
                                                               : palette.stone;
                     chunk.set(x, y, z, id);
+                }
+                // Plant a 2-voxel lamp pillar just ahead of the spawn view
+                // (camera ~(8,9.6,8) looking -Z) so the block-light glow is
+                // framed in --shot. Column chosen ~9 m in front, on the surface.
+                if (wx == 16 && wz == -2) {
+                    for (int up = 1; up <= 2; ++up) {
+                        const int ly = surface + up - chunkLo.y;
+                        if (ly >= 0 && ly < kChunkSize) chunk.set(x, ly, z, palette.lamp);
+                    }
                 }
             }
         }
