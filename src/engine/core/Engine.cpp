@@ -154,6 +154,7 @@ void Engine::setupClientWorld() {
     m_clientWorldReady = true;
     loadWorldProps();
     loadAnimTestActor();
+    loadNpcActor();
     log::info("client world ready (seed {})", m_client.worldSeed());
 }
 
@@ -274,6 +275,70 @@ void Engine::loadAnimTestActor() {
     log::info("no assets/models/anim_test.{{fbx,glb}} staged — skeletal proof skipped");
 }
 
+void Engine::loadNpcActor() {
+    // Optional (gitignored) skinned character for in-game NPCs/companions. When present it
+    // replaces the box proxies with an animated humanoid; absent → NPCs stay boxes (no
+    // regression). Same load path as the anim actor, but the transform stores only the
+    // upright-fit (normalize + orient) — the render adds each entity's world pos + yaw.
+    const char* charPath = "assets/models/npc_char.fbx";
+    const char* clipPath = "assets/models/npc_walk.fbx";
+    if (!std::filesystem::exists(charPath)) {
+        log::info("no assets/models/npc_char.fbx staged — NPCs render as box proxies");
+        return;
+    }
+    auto model = loadSkeletalModel(charPath, {.scale = 1.0f});
+    if (!model) return;
+
+    auto actor = std::make_unique<AnimActor>();
+    actor->mesh = m_renderer.uploadSkinnedMesh(model->vertices, model->indices);
+    MaterialDesc mat;
+    if (!model->albedo.empty()) mat.albedo = m_renderer.loadTexture(model->albedo);
+    // The skinned draw path REQUIRES a texture (untextured draws are skipped → invisible),
+    // so fall back to the neutral body texture, then the atlas, exactly like the anim actor.
+    if (mat.albedo == 0 && std::filesystem::exists("assets/models/anim_test_body.png"))
+        mat.albedo = m_renderer.loadTexture("assets/models/anim_test_body.png");
+    if (mat.albedo == 0) mat.albedo = m_atlasTexture;
+    mat.tint = mat.albedo == m_atlasTexture ? glm::vec3(0.55f, 0.57f, 0.63f) : glm::vec3(1.0f);
+    actor->material = m_renderer.createMaterial(mat);
+
+    const glm::vec3 ext = model->boundsMax - model->boundsMin;
+    glm::mat4 orient(1.0f);
+    float upExtent = ext.y;
+    if (ext.z >= ext.x && ext.z >= ext.y) {
+        orient = glm::rotate(glm::mat4(1.0f), -glm::half_pi<float>(), glm::vec3(1, 0, 0));
+        upExtent = ext.z;
+    } else if (ext.x > ext.y && ext.x > ext.z) {
+        orient = glm::rotate(glm::mat4(1.0f), glm::half_pi<float>(), glm::vec3(0, 0, 1));
+        upExtent = ext.x;
+    }
+    const float norm = 1.8f / std::max(0.01f, upExtent); // ~human height; base at model origin
+    actor->transform = glm::scale(glm::mat4(1.0f), glm::vec3(norm)) * orient; // NO world placement
+
+    actor->model = std::move(*model);
+    if (std::filesystem::exists(clipPath)) {
+        // Retarget handles BOTH exact- and variant-bind characters (PSX, etc.) cleanly, so a
+        // staged character animates without the variant-rig shard hand; fall back to a direct
+        // merge only if nothing mapped.
+        if (retargetClipsFromFile(actor->model, clipPath, {.scale = 1.0f}) == 0) {
+            appendClipsFromFile(actor->model, clipPath, {.scale = 1.0f});
+        }
+    }
+    actor->clipIndex = 0;
+    for (int i = 1; i < static_cast<int>(actor->model.clips.size()); ++i) {
+        const AnimClip& c = actor->model.clips[i];
+        const AnimClip& best = actor->model.clips[actor->clipIndex];
+        if (c.duration / c.ticksPerSec > best.duration / best.ticksPerSec) actor->clipIndex = i;
+    }
+    actor->hasRealClip = !actor->model.clips.empty() &&
+                         actor->model.clips[actor->clipIndex].duration /
+                                 actor->model.clips[actor->clipIndex].ticksPerSec >=
+                             0.02f;
+    m_npcActor = std::move(actor);
+    log::info("NPC actor up: {} verts, {} clips, {} (norm x{:.3f})", m_npcActor->model.vertices.size(),
+              m_npcActor->model.clips.size(), m_npcActor->hasRealClip ? "animated" : "static bind",
+              norm);
+}
+
 void Engine::simulateClientTick(const PlayerCommand& frameCmd) {
     PlayerCommand cmd = frameCmd;
     cmd.tick = m_tick; // unique per tick even when one frame spans several ticks
@@ -350,6 +415,27 @@ void Engine::render(float alpha) {
     for (const PlayerState& remote : remotes)
         m_renderer.submitChunk(m_remotePlayerMesh, remote.pos);
 
+    // Shared animated humanoid for NPCs/companions. One clip, sampled per-instance at a
+    // per-id phase so a room of NPCs isn't lock-stepped; placed at the entity's pos + yaw.
+    // Falls back to the box proxy when no npc_char.fbx is staged.
+    if (m_npcActor && m_npcActor->mesh != 0) m_npcActor->time += m_frameDt;
+    const auto submitHumanoid = [&](const glm::vec3& pos, float yaw, std::uint32_t id) {
+        if (m_npcActor && m_npcActor->mesh != 0) {
+            const float t = m_npcActor->time + 0.37f * static_cast<float>(id % 13);
+            const Pose pose =
+                m_npcActor->hasRealClip
+                    ? samplePose(m_npcActor->model,
+                                 m_npcActor->model.clips[m_npcActor->clipIndex], t)
+                    : idlePose(m_npcActor->model, t);
+            const glm::mat4 xform = glm::translate(glm::mat4(1.0f), pos) *
+                                    glm::rotate(glm::mat4(1.0f), yaw, glm::vec3(0, 1, 0)) *
+                                    m_npcActor->transform;
+            m_renderer.submitSkinned(m_npcActor->mesh, xform, pose, m_npcActor->material);
+        } else {
+            m_renderer.submitChunk(m_remotePlayerMesh, pos);
+        }
+    };
+
     const float bobPhase = static_cast<float>(m_tick % 120) / 120.0f * glm::two_pi<float>();
     for (const EntityState& e : m_client.entities()) {
         switch (e.archetype) {
@@ -365,17 +451,17 @@ void Engine::render(float alpha) {
             m_renderer.submitChunk(m_pickupMesh, e.pos);
             m_renderer.submitPointLight(e.pos, glm::vec3(1.0f, 0.1f, 0.1f), 4.0f);
             break;
-        case 4: // NpcChaser / NpcShooter: box proxies until character meshes land
+        case 4: // NpcChaser / NpcShooter: animated humanoid (or box if none staged)
         case 5:
-            m_renderer.submitChunk(m_remotePlayerMesh, e.pos);
+            submitHumanoid(e.pos, e.yaw, e.id);
             break;
         case 6: // Turret: small box + a blue status light
             m_renderer.submitChunk(m_pickupMesh, e.pos);
             m_renderer.submitPointLight(e.pos + glm::vec3(0, 0.5f, 0),
                                         glm::vec3(0.2f, 0.5f, 1.0f), 5.0f);
             break;
-        case 7: // Companion: humanoid proxy + a friendly green light
-            m_renderer.submitChunk(m_remotePlayerMesh, e.pos);
+        case 7: // Companion: animated humanoid + a friendly green light
+            submitHumanoid(e.pos, e.yaw, e.id);
             m_renderer.submitPointLight(e.pos + glm::vec3(0, 1.6f, 0),
                                         glm::vec3(0.2f, 1.0f, 0.35f), 5.0f);
             break;
@@ -391,7 +477,9 @@ void Engine::render(float alpha) {
         const glm::vec3 base(m_animActor->transform[3]);
         m_renderer.submitPointLight(base + glm::vec3(0.0f, 1.2f, 2.0f), glm::vec3(2.4f), 8.0f);
     }
-    if (m_animActor && m_animActor->mesh != 0) { // Phase 7b proof: loop the chosen clip
+    // The anim proof actor is a BOOTH asset (--animshot / --animmodel). Only render it in
+    // booth mode so it doesn't stand in the middle of normal gameplay as a static T-pose.
+    if (m_animBooth && m_animActor && m_animActor->mesh != 0) {
         m_animActor->time += m_frameDt;
         const Pose pose =
             m_animActor->hasRealClip

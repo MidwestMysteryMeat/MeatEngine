@@ -18,3 +18,7 @@ assets/models/*.jpg
 imgui.ini
 saves/
 CMakeUserPresets.json
+
+# staged licensed NPC character (Mixamo)
+assets/models/npc_char.fbx
+assets/models/npc_walk.fbx

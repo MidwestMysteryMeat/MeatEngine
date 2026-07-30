@@ -114,6 +114,12 @@ private:
     };
     std::unique_ptr<AnimActor> m_animActor;
     void loadAnimTestActor();
+    // Shared skinned character used to render every humanoid NPC / companion instead of a
+    // box proxy. Its `transform` holds ONLY the normalize+orient (no world placement); the
+    // render composes translate(entity.pos) * rotY(entity.yaw) per instance, and `time`
+    // advances globally (each instance samples at a per-id phase so they aren't lock-stepped).
+    std::unique_ptr<AnimActor> m_npcActor;
+    void loadNpcActor();
     bool m_animBooth = false; // fixed camera framing the anim actor (VLM capture)
     std::string m_animModel;  // --animmodel override path (else the default proof asset)
     std::string m_animClip;   // --animclip: animation file merged onto the model by bone name
