@@ -5,6 +5,7 @@
 #include "engine/core/JobQueue.h"
 #include "engine/core/TickRate.h"
 #include "engine/asset/SkeletalModel.h"
+#include "engine/audio/AudioEngine.h"
 #include "engine/net/EnetTransport.h"
 #include "engine/net/LanDiscovery.h"
 #include "engine/net/LoopbackTransport.h"
@@ -62,6 +63,7 @@ private:
     Input m_input;
     JobQueue m_jobs;
     Renderer m_renderer;
+    AudioEngine m_audio;
     PhysicsWorld m_physics;   // client mirror
     VoxelWorld m_voxels;      // client mirror
     EntityRegistry m_entities;
@@ -108,6 +110,9 @@ private:
     glm::vec3 m_currPlayerPos{0};
     float m_localFireCooldown = 0.0f; // cosmetic mirror of the server's cooldown
     float m_muzzleFlash = 0.0f;
+    float m_footstepTimer = 0.0f;     // paces footstep SFX while moving on ground
+    float m_prevHealth = 100.0f;      // detect damage for hit SFX
+    std::size_t m_prevInvHash = 0;    // detect inventory change for pickup SFX
     std::uint8_t m_selectedSlot = 0; // hotbar index, sent in every command
     bool m_showBackpack = false;     // Tab
     bool m_imguiReady = false;

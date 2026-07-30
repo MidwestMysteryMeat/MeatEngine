@@ -139,7 +139,11 @@ loopback transport.
       (orbit model thumb, image, audio play); Mixamo-conformance report on rigs
 
 ## Phase 9 — Audio + polish
-- [ ] miniaudio: footsteps, gunshot, UI; README/build docs pass
+- [x] Audio (miniaudio): AudioEngine w/ 6 PROCEDURALLY-SYNTHESIZED sounds (gunshot,
+      footstep, pickup, hit, explosion, ui-click — no bundled files, license-clean),
+      voice-pool overlap, best-effort init (silent if no device); wired to fire/movement/
+      damage/inventory/UI from client-side state deltas; pimpl (miniaudio out of headers)
+- [ ] Positional 3D audio (remote gunshots/footsteps by distance), music, README polish
 
 ## Phase 10 — Packaging & game-project SDK
 - [ ] Game-as-project model: engine exe + `game/` folder (Lua, assets, config) via `--project <dir>`

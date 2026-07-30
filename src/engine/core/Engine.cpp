@@ -63,6 +63,7 @@ bool Engine::initClientSystems() {
     m_window.setRelativeMouse(true);
     if (!m_renderer.init(m_window)) return false;
     if (!m_physics.init()) return false;
+    m_audio.init(); // best-effort: a failed init just runs silent
     m_jobs.start(std::thread::hardware_concurrency());
 
     m_voxels.setMeshReadyCallback([this](ChunkPos pos, ChunkMeshData data) {
@@ -246,9 +247,23 @@ void Engine::simulateClientTick(const PlayerCommand& frameCmd) {
     if (cmd.fire && m_localFireCooldown <= 0.0f) {
         m_localFireCooldown = kFireInterval;
         m_muzzleFlash = 0.08f;
+        m_audio.play(Sound::Gunshot, 0.6f);
     }
 
     m_player.update(cmd, kFixedDt, m_physics);
+
+    // Footsteps: paced by horizontal speed while grounded.
+    const glm::vec3 vel = m_player.velocity();
+    const float speed = glm::length(glm::vec2(vel.x, vel.z));
+    if (m_player.onGround() && speed > 1.0f) {
+        m_footstepTimer -= kFixedDt;
+        if (m_footstepTimer <= 0.0f) {
+            m_footstepTimer = cmd.sprint ? 0.30f : 0.45f;
+            m_audio.play(Sound::Footstep, 0.5f);
+        }
+    } else {
+        m_footstepTimer = 0.0f;
+    }
     m_physics.step(kFixedDt);
     if (m_player.position().y < kFallResetY)
         m_player.setState(kClientSpawn, glm::vec3(0)); // fell out (colliders pending)
@@ -652,9 +667,15 @@ int Engine::run(const EngineConfig& configIn) {
                 m_window.setRelativeMouse(true);
             }
         }
-        if (m_input.pressed(GLFW_KEY_TAB)) m_showBackpack = !m_showBackpack;
+        if (m_input.pressed(GLFW_KEY_TAB)) {
+            m_showBackpack = !m_showBackpack;
+            m_audio.play(Sound::UiClick, 0.5f);
+        }
         for (int i = 0; i < Inventory::kHotbar; ++i)
-            if (m_input.pressed(GLFW_KEY_1 + i)) m_selectedSlot = static_cast<std::uint8_t>(i);
+            if (m_input.pressed(GLFW_KEY_1 + i)) {
+                m_selectedSlot = static_cast<std::uint8_t>(i);
+                m_audio.play(Sound::UiClick, 0.4f);
+            }
         if (const int scroll = m_input.consumeScrollSteps(); scroll != 0)
             m_selectedSlot = static_cast<std::uint8_t>(
                 (m_selectedSlot + Inventory::kHotbar - (scroll % Inventory::kHotbar)) %
@@ -666,6 +687,19 @@ int Engine::run(const EngineConfig& configIn) {
         }
         m_client.pump(m_voxels, m_physics, m_player);
         if (!m_clientWorldReady && m_client.welcomed()) setupClientWorld();
+
+        if (m_clientWorldReady) { // audio cues from authoritative state deltas
+            const float hp = m_client.health();
+            if (hp < m_prevHealth - 0.5f) m_audio.play(Sound::Hit, 0.7f);
+            m_prevHealth = hp;
+            std::size_t invHash = 0;
+            for (int i = 0; i < Inventory::kSlots; ++i) {
+                const ItemStack& s = m_client.inventory().slot(i);
+                invHash = invHash * 1099511628211u ^ (s.id * 65537u + s.count);
+            }
+            if (m_prevInvHash != 0 && invHash != m_prevInvHash) m_audio.play(Sound::Pickup, 0.6f);
+            m_prevInvHash = invHash;
+        }
 
         const auto now = Clock::now();
         const double frameDt =
