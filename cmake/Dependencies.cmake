@@ -43,6 +43,7 @@ set(TARGET_SAMPLES OFF CACHE BOOL "" FORCE)
 set(TARGET_VIEWER OFF CACHE BOOL "" FORCE)
 set(ENABLE_ALL_WARNINGS OFF CACHE BOOL "" FORCE)
 set(INTERPROCEDURAL_OPTIMIZATION OFF CACHE BOOL "" FORCE)
+set(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF CACHE BOOL "" FORCE)  # match /MD used project-wide
 FetchContent_Declare(joltphysics
     GIT_REPOSITORY https://github.com/jrouwe/JoltPhysics
     GIT_TAG v5.2.0 GIT_SHALLOW ON
@@ -63,9 +64,13 @@ FetchContent_Declare(sol2
 FetchContent_Declare(imgui_src
     GIT_REPOSITORY https://github.com/ocornut/imgui
     GIT_TAG docking GIT_SHALLOW ON)
+# SOURCE_SUBDIR points at a nonexistent dir so MakeAvailable skips ImGuizmo's own
+# CMakeLists (it builds a duplicate target without imgui includes); we compile
+# ImGuizmo.cpp into our imgui target below instead.
 FetchContent_Declare(imguizmo_src
     GIT_REPOSITORY https://github.com/CedricGuillemet/ImGuizmo
-    GIT_TAG master GIT_SHALLOW ON)
+    GIT_TAG master GIT_SHALLOW ON
+    SOURCE_SUBDIR _skip_own_cmake)
 
 # ---- Header-only: stb, miniaudio, json --------------------------------------
 FetchContent_Declare(stb_src
@@ -101,9 +106,9 @@ add_library(imgui STATIC
     ${imgui_src_SOURCE_DIR}/imgui_demo.cpp
     ${imgui_src_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
     ${imgui_src_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
-    ${imguizmo_src_SOURCE_DIR}/ImGuizmo.cpp)
+    ${imguizmo_src_SOURCE_DIR}/src/ImGuizmo.cpp)
 target_include_directories(imgui PUBLIC
-    ${imgui_src_SOURCE_DIR} ${imgui_src_SOURCE_DIR}/backends ${imguizmo_src_SOURCE_DIR})
+    ${imgui_src_SOURCE_DIR} ${imgui_src_SOURCE_DIR}/backends ${imguizmo_src_SOURCE_DIR}/src)
 target_link_libraries(imgui PUBLIC glfw)
 
 add_library(stb INTERFACE)

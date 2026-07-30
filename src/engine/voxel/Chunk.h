@@ -1,0 +1,60 @@
+#pragma once
+#include "engine/voxel/Block.h"
+
+#include <array>
+#include <cassert>
+#include <cstddef>
+#include <functional>
+
+namespace meat {
+
+inline constexpr int kChunkSize = 32;
+inline constexpr float kVoxelSize = 0.5f;
+
+struct ChunkPos {
+    int x, y, z;
+    auto operator<=>(const ChunkPos&) const = default;
+};
+
+class Chunk {
+public:
+    BlockId at(int x, int y, int z) const {
+        assert(inBounds(x, y, z));
+        return m_blocks[index(x, y, z)];
+    }
+
+    void set(int x, int y, int z, BlockId id) {
+        assert(inBounds(x, y, z));
+        m_blocks[index(x, y, z)] = id;
+        m_dirty = true;
+    }
+
+    bool dirty() const { return m_dirty; }
+    void markDirty() { m_dirty = true; }
+    void clearDirty() { m_dirty = false; }
+
+    static std::size_t index(int x, int y, int z) {
+        return static_cast<std::size_t>(x + z * kChunkSize + y * kChunkSize * kChunkSize);
+    }
+
+private:
+    static bool inBounds(int x, int y, int z) {
+        return x >= 0 && x < kChunkSize && y >= 0 && y < kChunkSize && z >= 0 && z < kChunkSize;
+    }
+
+    std::array<BlockId, static_cast<std::size_t>(kChunkSize) * kChunkSize * kChunkSize> m_blocks{};
+    bool m_dirty = false;
+};
+
+} // namespace meat
+
+template <> struct std::hash<meat::ChunkPos> {
+    std::size_t operator()(const meat::ChunkPos& p) const noexcept {
+        // FNV-style mix; chunk coords are small so low-bit spread matters most.
+        std::uint64_t h = 0xCBF29CE484222325ull;
+        h = (h ^ static_cast<std::uint32_t>(p.x)) * 0x100000001B3ull;
+        h = (h ^ static_cast<std::uint32_t>(p.y)) * 0x100000001B3ull;
+        h = (h ^ static_cast<std::uint32_t>(p.z)) * 0x100000001B3ull;
+        return static_cast<std::size_t>(h);
+    }
+};

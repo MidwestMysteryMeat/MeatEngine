@@ -1,8 +1,12 @@
 # MeatEngine Architecture
 
-A single-player voxel FPS engine. One executable, three modes: **Game** (default),
-**Editor** (F1 toggle, Room Designer), **Capture** (`--capture`, headless render for
-asset QA). C++20, OpenGL 4.5 core, CMake + FetchContent.
+A voxel FPS engine, **multiplayer-native**: the simulation always runs in a server
+(in-process for single-player, listen server for co-op/PvP, headless for dedicated),
+and the client is a renderer + predictor talking to it through a transport. One
+executable, modes: **Game** (default: loopback listen server), **Host** (`--host`),
+**Join** (`--join <addr>`), **Dedicated** (`--server`, headless), **Editor** (F1,
+Room Designer), **Capture** (`--capture`, headless render for asset QA).
+C++20, OpenGL 4.5 core, CMake + FetchContent.
 
 This file is the **contract**. Code that doesn't match the signatures, ownership rules,
 or threading rules here is wrong even if it works.
@@ -28,6 +32,7 @@ src/engine/anim/       Skeletal animation (canonical Mixamo-named skeleton)
 src/engine/asset/      Assimp model loading (FBX/OBJ/GLB), textures (stb), audio (miniaudio)
 src/engine/script/     Lua (sol2) host + bindings
 src/engine/save/       Save/load (meta.json + chunks.bin)
+src/engine/net/        Transport (loopback + ENet UDP), messages, snapshots, replication
 src/game/              Gameplay: player, weapons, inventory, items, enemies, dungeon gen
 src/editor/            Room Designer. NOTHING in src/engine or src/game includes this.
 tools/                 autorig CLI, asset staging/audit scripts (Python)
@@ -74,13 +79,36 @@ while (!window.shouldClose()) {
 }
 ```
 
-## Network-shape rules (no netcode, right shape)
+## Networking model (in the MVP)
 
+Server-authoritative, client-predicted — the Quake/Source lineage:
+
+- **The sim is the server.** Voxel world, physics, gameplay systems tick at 60 Hz inside
+  `ServerSim`. Single-player runs `ServerSim` in-process behind a `LoopbackTransport`
+  (zero-copy queue) — there is no separate single-player code path, ever.
+- **Client sends `PlayerCommand`s** (stamped with tick), server applies them, and
+  broadcasts **snapshots at 20 Hz** (full state per relevant entity for MVP; delta
+  compression is a later optimization slot).
+- **Client predicts its own movement**: it runs the same `CharacterController` locally,
+  keeps a ring buffer of unacked commands, and on each snapshot rewinds to the server
+  state and replays — divergence corrections smooth over 100 ms.
+- **Remote entities interpolate** 100 ms behind the newest snapshot.
+- **Voxel edits are server-applied ops** broadcast to clients; chunks themselves never
+  travel when clean — clients regenerate identical chunks from `(params, seed)` and the
+  server sends only modified-chunk deltas (RLE, same encoding as the save format).
+- **Transport**: `Transport` interface with two impls — `LoopbackTransport` and
+  `EnetTransport` (ENet UDP, reliable + unreliable channels). Nothing above the
+  transport knows which is in use.
+- Shooting is lag-compensated later (PvP phase); co-op MVP uses server-side hit tests
+  against interpolated positions.
+
+Shape rules this rests on (were true from day one):
 1. Identity is `EntityId` (u64, generation in high 16 bits). Never a pointer.
 2. All input funnels through `PlayerCommand` — nothing reads GLFW state in gameplay.
-3. Gameplay state lives in components serialized by the save system. A save is a snapshot.
-4. World mutations are ops: `VoxelEdit {ivec3, BlockId}`, damage events, pickup events —
-   emitted through `EventBus`, applied in one place each.
+3. Gameplay state lives in components serialized by the save system. A save, a snapshot,
+   and a net update are the same serialization.
+4. World mutations are ops (`VoxelEdit`, damage, pickup) via `EventBus`, applied in one
+   place each — that place is the server.
 5. Dungeon generation is a pure function of `(DungeonParams, seed)`.
 
 ## Key contracts (namespace `meat`)

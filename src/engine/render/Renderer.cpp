@@ -1,0 +1,366 @@
+#include "engine/render/Renderer.h"
+
+#include "engine/core/Log.h"
+#include "engine/platform/Window.h"
+
+// glad must precede GLFW; Renderer.h pulls <glad/gl.h> in via GlObjects.h.
+#include <GLFW/glfw3.h>
+#include <glm/gtc/matrix_transform.hpp>
+#include <stb_image.h>
+
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+
+namespace meat {
+namespace {
+
+// Guard the C++ mirror against drifting from the std140 block in the shaders.
+static_assert(sizeof(glm::vec4) == 16 && sizeof(glm::mat4) == 64);
+
+constexpr GLuint kFrameUboBinding = 0;
+constexpr const char* kShaderDir = "assets/shaders";
+
+// Crosshair is two fixed lines; not worth disk files or hot reload.
+constexpr const char* kCrosshairVert = R"(#version 450 core
+layout(location = 0) in vec2 aOffsetPx;
+uniform vec2 uViewport;
+void main() { gl_Position = vec4(2.0 * aOffsetPx / uViewport, 0.0, 1.0); }
+)";
+constexpr const char* kCrosshairFrag = R"(#version 450 core
+out vec4 oColor;
+void main() { oColor = vec4(1.0); }
+)";
+
+} // namespace
+
+bool Renderer::init(Window& window) {
+    static_assert(sizeof(FrameUbo) == 1632, "FrameUbo must match the std140 FrameData block");
+    static_assert(sizeof(GpuPointLight) == 32 && sizeof(GpuSpotLight) == 48);
+
+    m_window = &window;
+    (void)window.handle(); // context creation/current-ness is Window's job
+
+    if (gladLoadGL(glfwGetProcAddress) == 0) {
+        log::error("renderer: gladLoadGL failed — no GL 4.5 context?");
+        return false;
+    }
+    log::info("renderer: GL {} on {}", reinterpret_cast<const char*>(glGetString(GL_VERSION)),
+              reinterpret_cast<const char*>(glGetString(GL_RENDERER)));
+
+    glEnable(GL_DEPTH_TEST);
+    // Face culling stays off until the mesher's winding is locked down;
+    // flipping it on is a one-line perf win later, not a correctness need.
+
+    m_frameUbo.create();
+    glNamedBufferStorage(m_frameUbo.id(), sizeof(FrameUbo), nullptr, GL_DYNAMIC_STORAGE_BIT);
+    glBindBufferBase(GL_UNIFORM_BUFFER, kFrameUboBinding, m_frameUbo.id());
+
+    if (!m_chunkShader.load(kShaderDir, "chunk") || !m_meshShader.load(kShaderDir, "mesh") ||
+        !m_resolveShader.load(kShaderDir, "resolve")) {
+        return false;
+    }
+    if (!m_crosshairProgram.compile(kCrosshairVert, kCrosshairFrag, "crosshair")) {
+        return false;
+    }
+
+    m_fullscreenVao.create(); // attribute-less; resolve.vert synthesizes the triangle
+
+    // Crosshair: two lines crossing at screen center, offsets in target pixels.
+    const glm::vec2 crosshair[4] = {{-6.0f, 0.0f}, {6.0f, 0.0f}, {0.0f, -6.0f}, {0.0f, 6.0f}};
+    m_crosshairVbo.create();
+    glNamedBufferStorage(m_crosshairVbo.id(), sizeof(crosshair), crosshair, 0);
+    m_crosshairVao.create();
+    glVertexArrayVertexBuffer(m_crosshairVao.id(), 0, m_crosshairVbo.id(), 0, sizeof(glm::vec2));
+    glEnableVertexArrayAttrib(m_crosshairVao.id(), 0);
+    glVertexArrayAttribFormat(m_crosshairVao.id(), 0, 2, GL_FLOAT, GL_FALSE, 0);
+    glVertexArrayAttribBinding(m_crosshairVao.id(), 0, 0);
+
+    // Sane default light so a scene renders before gameplay sets one.
+    m_frame.dirLightDir = glm::vec4(glm::normalize(glm::vec3(-0.35f, -0.85f, -0.40f)), 0.0f);
+    m_frame.dirLightColor = glm::vec4(1.0f, 0.97f, 0.92f, 0.0f);
+    return true;
+}
+
+void Renderer::reloadShaders() {
+    // Each Shader keeps its previous program if the recompile fails.
+    m_chunkShader.reload();
+    m_meshShader.reload();
+    m_resolveShader.reload();
+}
+
+void Renderer::ensurePsxTarget(glm::ivec2 framebufferSize) {
+    const glm::ivec2 want =
+        glm::max(glm::ivec2(1, 1),
+                 glm::ivec2(glm::vec2(framebufferSize) * std::max(psx.internalScale, 0.05f)));
+    if (want == m_psxSize && m_psxFbo) {
+        return;
+    }
+    m_psxSize = want;
+
+    m_psxColor.create(GL_TEXTURE_2D);
+    glTextureStorage2D(m_psxColor.id(), 1, GL_RGBA8, m_psxSize.x, m_psxSize.y);
+    glTextureParameteri(m_psxColor.id(), GL_TEXTURE_MIN_FILTER, GL_NEAREST); // nearest upscale
+    glTextureParameteri(m_psxColor.id(), GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTextureParameteri(m_psxColor.id(), GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(m_psxColor.id(), GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    m_psxDepth.create(GL_TEXTURE_2D);
+    glTextureStorage2D(m_psxDepth.id(), 1, GL_DEPTH_COMPONENT24, m_psxSize.x, m_psxSize.y);
+
+    m_psxFbo.create();
+    glNamedFramebufferTexture(m_psxFbo.id(), GL_COLOR_ATTACHMENT0, m_psxColor.id(), 0);
+    glNamedFramebufferTexture(m_psxFbo.id(), GL_DEPTH_ATTACHMENT, m_psxDepth.id(), 0);
+    if (glCheckNamedFramebufferStatus(m_psxFbo.id(), GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        log::error("renderer: PSX target incomplete at {}x{}", m_psxSize.x, m_psxSize.y);
+    } else {
+        log::info("renderer: PSX target {}x{}", m_psxSize.x, m_psxSize.y);
+    }
+}
+
+MeshHandle Renderer::uploadChunkMesh(const ChunkMeshData& data) {
+    if (data.vertices.empty() || data.indices.empty()) {
+        return 0;
+    }
+    GpuMesh mesh;
+    mesh.vbo.create();
+    glNamedBufferStorage(mesh.vbo.id(),
+                         static_cast<GLsizeiptr>(data.vertices.size() * sizeof(VoxelVertex)),
+                         data.vertices.data(), 0);
+    mesh.ibo.create();
+    glNamedBufferStorage(mesh.ibo.id(),
+                         static_cast<GLsizeiptr>(data.indices.size() * sizeof(std::uint32_t)),
+                         data.indices.data(), 0);
+    mesh.vao.create();
+    const GLuint vao = mesh.vao.id();
+    glVertexArrayVertexBuffer(vao, 0, mesh.vbo.id(), 0, sizeof(VoxelVertex));
+    glVertexArrayElementBuffer(vao, mesh.ibo.id());
+    for (GLuint attrib = 0; attrib < 4; ++attrib) {
+        glEnableVertexArrayAttrib(vao, attrib);
+        glVertexArrayAttribBinding(vao, attrib, 0);
+    }
+    glVertexArrayAttribFormat(vao, 0, 3, GL_FLOAT, GL_FALSE,
+                              static_cast<GLuint>(offsetof(VoxelVertex, pos)));
+    glVertexArrayAttribFormat(vao, 1, 3, GL_BYTE, GL_TRUE, // i8 -> normalized float
+                              static_cast<GLuint>(offsetof(VoxelVertex, normal)));
+    glVertexArrayAttribFormat(vao, 2, 2, GL_FLOAT, GL_FALSE,
+                              static_cast<GLuint>(offsetof(VoxelVertex, uv)));
+    glVertexArrayAttribIFormat(vao, 3, 1, GL_UNSIGNED_SHORT, // integer attrib, no conversion
+                               static_cast<GLuint>(offsetof(VoxelVertex, tex)));
+    mesh.indexCount = static_cast<GLsizei>(data.indices.size());
+
+    const MeshHandle handle = m_nextMesh++;
+    m_meshes.emplace(handle, std::move(mesh));
+    return handle;
+}
+
+void Renderer::destroyMesh(MeshHandle mesh) {
+    m_meshes.erase(mesh); // GlObjects RAII releases the GPU side
+}
+
+TextureHandle Renderer::loadTexture(const std::filesystem::path& path) {
+    const std::string pathUtf8 = path.string();
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+    stbi_set_flip_vertically_on_load(1); // GL's uv origin is bottom-left
+    stbi_uc* pixels = stbi_load(pathUtf8.c_str(), &width, &height, &channels, 4);
+    if (pixels == nullptr) {
+        log::error("loadTexture '{}': {}", pathUtf8, stbi_failure_reason());
+        return 0;
+    }
+
+    const int levels =
+        psx.nearestFiltering
+            ? 1
+            : 1 + static_cast<int>(std::floor(std::log2(static_cast<float>(std::max(width, height)))));
+    GlTexture tex;
+    tex.create(GL_TEXTURE_2D);
+    glTextureStorage2D(tex.id(), levels, GL_RGBA8, width, height);
+    glTextureSubImage2D(tex.id(), 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    stbi_image_free(pixels);
+
+    if (psx.nearestFiltering) {
+        glTextureParameteri(tex.id(), GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTextureParameteri(tex.id(), GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    } else {
+        glGenerateTextureMipmap(tex.id());
+        glTextureParameteri(tex.id(), GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTextureParameteri(tex.id(), GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    }
+    glTextureParameteri(tex.id(), GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTextureParameteri(tex.id(), GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    const TextureHandle handle = m_nextTexture++;
+    m_textures.emplace(handle, std::move(tex));
+    log::info("loadTexture '{}' {}x{} ({} mips)", pathUtf8, width, height, levels);
+    return handle;
+}
+
+void Renderer::setAtlas(TextureHandle atlas) {
+    m_atlas = atlas;
+}
+
+void Renderer::beginFrame(const Camera& camera, float alpha) {
+    (void)alpha; // callers pass interpolated transforms; kept for contract parity
+
+    m_fbSize = m_window->framebufferSize();
+    m_fbSize = glm::max(m_fbSize, glm::ivec2(1, 1));
+    m_usePsxTarget = psx.internalScale != 1.0f;
+
+    if (m_usePsxTarget) {
+        ensurePsxTarget(m_fbSize);
+        glBindFramebuffer(GL_FRAMEBUFFER, m_psxFbo.id());
+        glViewport(0, 0, m_psxSize.x, m_psxSize.y);
+    } else {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, m_fbSize.x, m_fbSize.y);
+    }
+    glClearColor(psx.fogColor.r, psx.fogColor.g, psx.fogColor.b, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    const float aspect = static_cast<float>(m_fbSize.x) / static_cast<float>(m_fbSize.y);
+    m_frame.view = camera.view();
+    m_frame.proj = camera.proj(aspect);
+    m_frame.camPos = glm::vec4(camera.pos, 1.0f);
+    m_frame.fogParams = glm::vec4(psx.fogStart, psx.fogEnd, psx.fog ? 1.0f : 0.0f, 0.0f);
+    m_frame.fogColor = glm::vec4(psx.fogColor, 1.0f);
+    m_pointCount = 0;
+    m_spotCount = 0;
+    m_frame.lightCounts = glm::ivec4(0);
+    glNamedBufferSubData(m_frameUbo.id(), 0, sizeof(FrameUbo), &m_frame);
+
+    m_chunkDraws.clear();
+    m_meshDraws.clear();
+    m_crosshairRequested = false;
+}
+
+void Renderer::submitChunk(MeshHandle mesh, glm::vec3 originWorld) {
+    if (mesh != 0) {
+        m_chunkDraws.push_back({mesh, originWorld});
+    }
+}
+
+void Renderer::submitMesh(MeshHandle mesh, const glm::mat4& transform, TextureHandle albedo) {
+    if (mesh != 0) {
+        m_meshDraws.push_back({mesh, transform, albedo});
+    }
+}
+
+void Renderer::setDirectionalLight(glm::vec3 dir, glm::vec3 color) {
+    m_frame.dirLightDir = glm::vec4(glm::normalize(dir), 0.0f);
+    m_frame.dirLightColor = glm::vec4(color, 0.0f);
+}
+
+void Renderer::submitPointLight(glm::vec3 pos, glm::vec3 color, float radius) {
+    if (m_pointCount >= kMaxPointLights) {
+        return; // extras beyond the UBO budget are dropped
+    }
+    m_frame.pointLights[m_pointCount].posRadius = glm::vec4(pos, radius);
+    m_frame.pointLights[m_pointCount].color = glm::vec4(color, 0.0f);
+    ++m_pointCount;
+}
+
+void Renderer::submitSpotLight(glm::vec3 pos, glm::vec3 dir, glm::vec3 color, float radius,
+                               float angle) {
+    if (m_spotCount >= kMaxSpotLights) {
+        return;
+    }
+    m_frame.spotLights[m_spotCount].posRadius = glm::vec4(pos, radius);
+    // angle = half-angle of the cone in radians; shader compares against its cosine
+    m_frame.spotLights[m_spotCount].dirCosAngle =
+        glm::vec4(glm::normalize(dir), std::cos(angle));
+    m_frame.spotLights[m_spotCount].color = glm::vec4(color, 0.0f);
+    ++m_spotCount;
+}
+
+void Renderer::drawCrosshair() {
+    m_crosshairRequested = true; // drawn on top of the scene passes in endFrame
+}
+
+void Renderer::endFrame() {
+    if (m_window == nullptr) {
+        return;
+    }
+    // Light lists are complete now; push the final UBO before the scene passes.
+    m_frame.lightCounts = glm::ivec4(m_pointCount, m_spotCount, 0, 0);
+    glNamedBufferSubData(m_frameUbo.id(), 0, sizeof(FrameUbo), &m_frame);
+
+    flushScenePasses();
+    if (m_crosshairRequested) {
+        drawCrosshairPass(m_usePsxTarget ? m_psxSize : m_fbSize);
+    }
+    if (m_usePsxTarget) {
+        resolveToBackbuffer();
+    }
+}
+
+void Renderer::flushScenePasses() {
+    // Chunk pass: one shader, one atlas, per-draw translation.
+    if (!m_chunkDraws.empty()) {
+        const auto atlasIt = m_textures.find(m_atlas);
+        if (atlasIt == m_textures.end()) {
+            static bool warned = false;
+            if (!warned) {
+                log::warn("renderer: chunk draws submitted with no atlas set — skipping");
+                warned = true;
+            }
+        } else {
+            glUseProgram(m_chunkShader.id());
+            glBindTextureUnit(0, atlasIt->second.id());
+            for (const ChunkDraw& draw : m_chunkDraws) {
+                const auto meshIt = m_meshes.find(draw.mesh);
+                if (meshIt == m_meshes.end()) {
+                    continue;
+                }
+                m_chunkShader.program().setUniform(
+                    "uModel", glm::translate(glm::mat4(1.0f), draw.origin));
+                glBindVertexArray(meshIt->second.vao.id());
+                glDrawElements(GL_TRIANGLES, meshIt->second.indexCount, GL_UNSIGNED_INT, nullptr);
+            }
+        }
+    }
+
+    // Mesh pass: per-draw transform + albedo.
+    if (!m_meshDraws.empty()) {
+        glUseProgram(m_meshShader.id());
+        for (const MeshDraw& draw : m_meshDraws) {
+            const auto meshIt = m_meshes.find(draw.mesh);
+            const auto texIt = m_textures.find(draw.albedo);
+            if (meshIt == m_meshes.end() || texIt == m_textures.end()) {
+                continue;
+            }
+            m_meshShader.program().setUniform("uModel", draw.transform);
+            glBindTextureUnit(0, texIt->second.id());
+            glBindVertexArray(meshIt->second.vao.id());
+            glDrawElements(GL_TRIANGLES, meshIt->second.indexCount, GL_UNSIGNED_INT, nullptr);
+        }
+    }
+    glBindVertexArray(0);
+}
+
+void Renderer::drawCrosshairPass(glm::ivec2 targetSize) {
+    glDisable(GL_DEPTH_TEST);
+    glUseProgram(m_crosshairProgram.id());
+    m_crosshairProgram.setUniform("uViewport", glm::vec2(targetSize));
+    glBindVertexArray(m_crosshairVao.id());
+    glDrawArrays(GL_LINES, 0, 4);
+    glBindVertexArray(0);
+    glEnable(GL_DEPTH_TEST);
+}
+
+void Renderer::resolveToBackbuffer() {
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, m_fbSize.x, m_fbSize.y);
+    glDisable(GL_DEPTH_TEST);
+    glUseProgram(m_resolveShader.id());
+    glBindTextureUnit(0, m_psxColor.id()); // sampler is NEAREST — the chunky upscale
+    m_resolveShader.program().setUniform("uDither", psx.dither ? 1 : 0);
+    m_resolveShader.program().setUniform("uSourceSize", glm::vec2(m_psxSize));
+    glBindVertexArray(m_fullscreenVao.id());
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glBindVertexArray(0);
+    glEnable(GL_DEPTH_TEST);
+}
+
+} // namespace meat

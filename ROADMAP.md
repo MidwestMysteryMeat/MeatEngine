@@ -1,61 +1,69 @@
 # Roadmap
 
-Vertical slice goal: spawn in a hand-built room → pick up weapon + items → shoot →
-enter a procedural dungeon → manage inventory → save and reload.
+Vertical slice goal: host a game, friend joins → spawn in a hand-built room → pick up
+weapons + items → shoot (server-authoritative, client-predicted) → enter a procedural
+dungeon → manage inventory → save and reload. Single-player is the same flow over a
+loopback transport.
 
-## Phase 0 — Scaffold ✅ (in progress)
+## Phase 0 — Scaffold ✅
 - [x] Repo, license, docs, CMake + FetchContent (GLFW, glad, glm, Assimp, Jolt, Lua+sol2, ImGui, ImGuizmo, stb, miniaudio, nlohmann-json)
-- [ ] Dependencies compile on MSVC/Ninja; stub window opens
+- [x] Dependencies compile on MSVC/Ninja (ImGuizmo layout + CRT fixes)
 
-## Phase 1 — Core loop & feel foundation
-- [ ] Engine spine: fixed 60 Hz tick, JobQueue, EntityRegistry, EventBus, logging
-- [ ] Window + raw mouse input + PlayerCommand + FPS camera (feel checkpoint #1)
+## Phase 1 — Core loop & modules ⏳
+- [x] Core spine: EntityRegistry, JobQueue, EventBus, logging
+- [x] Platform: window, raw mouse, PlayerCommand (agent-built, integrated)
+- [x] Voxel: chunks, face-culled mesher (pure/worker-safe), DDA raycast, streaming (agent-built)
+- [x] Render: GL wrappers, forward Blinn-Phong, PSX pipeline, shaders (agent-built)
+- [x] Physics: Jolt world, chunk colliders, CharacterVirtual controller (agent-built)
+- [ ] Engine integration: fixed 60 Hz tick, all modules wired, walkable flat world
+- [ ] Feel checkpoint #1 — HUMAN PLAYTEST (mouse feel, jump arc, accel)
 
-## Phase 2 — Voxel world
-- [ ] Chunks (32³, 0.5 m voxels), block registry, face-culled meshing (greedy later)
-- [ ] Worker-thread meshing via JobQueue; streaming around player
-- [ ] DDA raycast; place/break blocks
+## Phase 2 — Netcode foundation (before gameplay, so nothing is built wrong)
+- [ ] Transport interface: LoopbackTransport + EnetTransport (ENet, reliable+unreliable)
+- [ ] ServerSim / Client split; single-player = in-process listen server over loopback
+- [ ] Snapshots 20 Hz (full-state MVP), client-side prediction + reconciliation for own player
+- [ ] Remote entity interpolation (100 ms); voxel edits as broadcast ops
+- [ ] `--host` / `--join <addr>` / `--server` (headless dedicated)
+- [ ] Two-process smoke test on localhost
 
-## Phase 3 — Physics
-- [ ] Jolt world; chunk MeshShape colliders synced with remesh
-- [ ] CharacterVirtual capsule controller (feel checkpoint #2 — HUMAN PLAYTEST)
+## Phase 3 — FPS gameplay core (server-authoritative)
+- [ ] Hitscan weapon, voxel damage, health/death/respawn, crosshair, muzzle light pulse
+- [ ] Co-op hit tests server-side; PvP lag compensation deferred to Phase 12
 
-## Phase 4 — Rendering
-- [ ] Forward Blinn-Phong: directional + point/spot UBO
-- [ ] PSX pipeline: half-res target, nearest, dither, vertex fog (runtime toggleable)
-- [ ] Crosshair, texture atlas, shader hot-reload
+## Phase 4 — Inventory + Save/Load
+- [ ] Slot inventory, pickups, equip/use, Tab UI; server owns inventory truth
+- [ ] Save/load: meta.json + RLE chunks.bin (same encoding as net chunk deltas), F5/F9
 
-## Phase 5 — FPS gameplay core
-- [ ] Hitscan weapon, voxel damage, player health, muzzle flash (light pulse)
+## Phase 5 — Room Designer editor (F1, host/single-player only)
+- [ ] Free-fly camera, grid snap, modular tools (wall/floor/ceiling/doorway/platform)
+- [ ] Lights w/ live preview, outliner, properties, ImGuizmo gizmos
+- [ ] Dungeon-seed volumes; save room/world; exit → sensible player spawn
 
-## Phase 6 — Inventory + Save/Load
-- [ ] Slot inventory (weapons/ammo/consumables/keys), pickup, equip, use, Tab UI (ImGui)
-- [ ] Save/load: meta.json + RLE chunks.bin, F5/F9, --load
+## Phase 6 — Procedural dungeons
+- [ ] Seeded rooms+corridors (size range, corridor width, branching, loops, verticality)
+- [ ] Room templates/themes; blend with authored areas; workers; clients regen from seed
 
-## Phase 7 — Room Designer editor (F1)
-- [ ] Free-fly camera, grid snap, modular tools (wall/floor/ceiling/doorway/platform brushes over voxels)
-- [ ] Lights placement w/ live preview, outliner, properties, gizmos (ImGuizmo)
-- [ ] Dungeon-seed volumes; save room/world; exit spawns player sensibly
+## Phase 7 — Models & animation
+- [ ] Assimp FBX/OBJ/GLB static + PNG/JPG materials
+- [ ] Skeletal: canonical Mixamo skeleton, shared clips, one animated NPC; viewmodel idle/fire
 
-## Phase 8 — Procedural dungeons
-- [ ] Seeded rooms+corridors gen (size range, corridor width, branching, loops, verticality)
-- [ ] Room templates/themes; blend with authored areas; runs on workers
+## Phase 8 — Scripting
+- [ ] Lua (sol2) server-side gameplay: entity spawn, voxel edit, player/inventory/weapons,
+      events, dungeon params; weapons/pickups/dummy enemy in assets/scripts/
 
-## Phase 9 — Models & animation
-- [ ] Assimp FBX/OBJ/GLB static meshes + PNG/JPG materials
-- [ ] Skeletal: canonical Mixamo skeleton, shared clip set, one animated NPC
-- [ ] Viewmodel (idle/fire)
+## Phase 9 — Audio + polish
+- [ ] miniaudio: footsteps, gunshot, UI; README/build docs pass
 
-## Phase 10 — Scripting
-- [ ] Lua via sol2: entity spawn, voxel edit, player/inventory/weapons, events, dungeon params
-- [ ] Weapons + pickups + a dummy enemy defined in assets/scripts/
+## Phase 10 — Packaging & game-project SDK
+- [ ] Game-as-project model: engine exe + `game/` folder (Lua, assets, config) via `--project <dir>`
+- [ ] `tools/package` — one command: engine build + project → shippable dist/ zip
+- [ ] New-game template (`tools/new_project`) so users import assets, script, and push a game fast
 
-## Phase 11 — Audio + polish
-- [ ] miniaudio: footsteps, gunshot, UI clicks
-- [ ] README build docs, demo content pass
+## Phase 11 — Tools
+- [ ] tools/autorig: Pinocchio core + Mixamo map CLI
+- [ ] tools/audit_assets.py: skeleton/scale/texture/attribution gate; --capture + VLM QA
+- [ ] Asset staging from verified CC-BY sources + ATTRIBUTION.md automation
 
-## Phase 12 — Tools (post-slice)
-- [ ] tools/autorig: Pinocchio core + Mixamo skeleton map CLI (auto-rig humanoid meshes)
-- [ ] tools/audit_assets.py: skeleton naming, scale, textures, attribution checks
-- [ ] --capture headless mode → external VLM QA gate
-- [ ] Asset staging from CC-BY sources + ATTRIBUTION.md automation
+## Phase 12 — PvP hardening
+- [ ] Lag-compensated hitscan (server rewind), delta-compressed snapshots, interest management
+- [ ] 4–8 player arena on editor-built maps
