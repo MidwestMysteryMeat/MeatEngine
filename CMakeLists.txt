@@ -34,6 +34,8 @@ target_link_libraries(MeatEngine PRIVATE
     stb
     miniaudio
     nlohmann_json::nlohmann_json
+    Recast
+    Detour
 )
 
 if(MSVC)

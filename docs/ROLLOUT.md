@@ -61,7 +61,22 @@ OSS we lean on (license-verified in docs/ENGINE_REUSE_SURVEY.md) and its verific
   light); the shader darkens terrain away from sources (skylight out of scope). An emissive
   "lamp" block (emission 15, atlas tile 5) seeds it near spawn. OSS: Luanti/Minetest light BFS
   (ideas only, original code). VLM-verified (qwen3vl 0.95: localized glow, darker with distance).
-- [ ] **8. Recast/Detour navmesh** (zlib) replacing hand-rolled A*.
+- [x] **8. Recast/Detour navmesh** (zlib) — added as an OPTIONAL, fallback-safe path provider
+  (not a replacement): recastnavigation v1.6.0 via FetchContent (demo/tests/examples OFF, links
+  Recast+Detour). New `game/NavMesh.{h,cpp}` runs a solo-mesh Recast build (rasterize → compact
+  heightfield → regions → contours → poly mesh → Detour) over the world's chunk collision meshes
+  — the SAME triangle soup ServerSim hands the physics colliders, captured off the mesh-ready
+  callback; build is LAZY + throttled (≤1 bounded build per 2 s, off the streaming path).
+  ServerSim::planPath tries `NavMesh::queryPath` (world corners → snapped to standable voxel
+  cells so the existing cell-follow logic is reused verbatim) and falls back to the voxel A*
+  (`findPath`) on ANY miss, so NPC/companion behaviour never regresses. Determinism: NPC pathing
+  is host-authoritative (runs only on the server; clients get snapshots), so Detour adds no
+  cross-peer nondeterminism — the simplest safe choice. STATIC navmesh this pass (rebuild-on-edit
+  deferred; A* stays instantly edit-aware). Build clean under MSVC (no new engine-source warnings).
+  Smoke (`--play --seed 777`): alive, 15 NPCs, world ready, no crash; instrumented run showed the
+  navmesh build (434 polys / 28216 tris / 322 chunks, then a throttled rebuild at 416 chunks),
+  32 Detour path hits + A* fallback engaging, and NPCs stepping toward the player (aggro+path OK).
+  OSS: RecastDemo Sample_SoloMesh (zlib), technique-only.
 - [ ] **9. Abilities / GAS-lite** (effect executors) + **10. game-mode framework** (Breach/Horde).
 - [ ] **11. Destruction depth** — reinforced blocks, radial voxel damage, structural collapse.
 

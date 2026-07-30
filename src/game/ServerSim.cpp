@@ -49,13 +49,18 @@ bool ServerSim::init(std::uint32_t worldSeed) {
     m_defaultItems = registerDefaultItems(m_items, m_palette.stone);
     m_voxels.setGenerator(makeTerrainGenerator(m_seed, m_palette));
     m_voxels.setMeshReadyCallback([this](ChunkPos pos, ChunkMeshData data) {
-        if (!data.indices.empty())
+        if (!data.indices.empty()) {
             m_physics.syncChunkCollider(pos, data);
-        else
+            m_navmesh.addChunk(pos, data); // same geometry feeds the optional navmesh
+        } else {
             m_physics.removeChunkCollider(pos);
+            m_navmesh.removeChunk(pos);
+        }
     });
-    m_voxels.setChunkUnloadedCallback(
-        [this](ChunkPos pos) { m_physics.removeChunkCollider(pos); });
+    m_voxels.setChunkUnloadedCallback([this](ChunkPos pos) {
+        m_physics.removeChunkCollider(pos);
+        m_navmesh.removeChunk(pos);
+    });
     spawnDungeonLoot();
     spawnDungeonNpcs();
     setupScripting();
@@ -189,6 +194,29 @@ void ServerSim::dropPlayerLoot(Player& player, glm::vec3 pos) {
     if (dropped > 0) player.inventoryDirty = true; // flushed on the victim's next combat tick
 }
 
+std::vector<glm::ivec3> ServerSim::planPath(glm::vec3 fromPos, glm::vec3 toPos, glm::ivec3 fromCell,
+                                            glm::ivec3 toCell) {
+    // Optional Detour navmesh first. Its string-pulled world corners are snapped
+    // back onto standable voxel cells so the existing cell-follow logic is reused
+    // verbatim. Any miss (no navmesh yet, unmapped endpoint, an unsnappable corner)
+    // falls through to the voxel A* — the guaranteed, edit-aware fallback.
+    std::vector<glm::vec3> corners;
+    if (m_navmesh.queryPath(fromPos, toPos, corners) && corners.size() >= 2) {
+        std::vector<glm::ivec3> cells{fromCell};
+        bool ok = true;
+        for (const glm::vec3& corner : corners) {
+            glm::ivec3 c;
+            if (!snapToStandable(m_voxels, corner, c)) {
+                ok = false;
+                break;
+            }
+            if (cells.back() != c) cells.push_back(c);
+        }
+        if (ok && cells.size() >= 2) return cells;
+    }
+    return findPath(m_voxels, fromCell, toCell, 1500);
+}
+
 void ServerSim::updateNpcs(Transport& transport) {
     constexpr float kAggroRange = 18.0f, kChaserSpeed = 3.2f, kShooterSpeed = 2.2f;
     constexpr float kMeleeRange = 1.4f, kShootRange = 14.0f;
@@ -263,7 +291,7 @@ void ServerSim::updateNpcs(Transport& transport) {
             glm::ivec3 from, to;
             if (snapToStandable(m_voxels, npc.pos, from) &&
                 snapToStandable(m_voxels, targetPos, to)) {
-                npc.path = findPath(m_voxels, from, to, 1500);
+                npc.path = planPath(npc.pos, targetPos, from, to);
                 npc.pathIndex = npc.path.size() > 1 ? 1 : 0; // [0] is where we stand
             } else {
                 npc.path.clear();
@@ -378,7 +406,7 @@ void ServerSim::updateCompanions(Transport& transport) {
             c.repathTimer = 0.5f + 0.01f * static_cast<float>(c.id % 16);
             glm::ivec3 from, to;
             if (snapToStandable(m_voxels, c.pos, from) && snapToStandable(m_voxels, goal, to)) {
-                c.path = findPath(m_voxels, from, to, 1500);
+                c.path = planPath(c.pos, goal, from, to);
                 c.pathIndex = c.path.size() > 1 ? 1 : 0;
             } else {
                 c.path.clear();

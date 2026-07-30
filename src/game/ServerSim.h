@@ -9,6 +9,7 @@
 #include "game/EntityTypes.h"
 #include "game/GameRules.h"
 #include "game/Inventory.h"
+#include "game/NavMesh.h"
 #include "game/WorldGen.h"
 
 #include <nlohmann/json_fwd.hpp>
@@ -129,6 +130,12 @@ private:
     void sendOverlayTo(Transport& transport, PeerId peer) const; // replay world edits
     void giveStartingLoadout(Player& player);
 
+    // Plan a voxel-cell path fromPos→toPos. Tries the optional Detour navmesh
+    // (fromCell/toCell are the standable-snapped endpoints) and falls back to the
+    // voxel A* on any miss, so NPC/companion pathing never regresses.
+    std::vector<glm::ivec3> planPath(glm::vec3 fromPos, glm::vec3 toPos, glm::ivec3 fromCell,
+                                     glm::ivec3 toCell);
+
     void spawnDungeonLoot();
     void spawnDungeonNpcs();
     void updateNpcs(Transport& transport);
@@ -160,6 +167,7 @@ private:
     JobQueue m_jobs;         // server-side meshing feeds colliders only
     PhysicsWorld m_physics;
     VoxelWorld m_voxels;
+    NavMesh m_navmesh;       // optional Detour path provider (A* is the fallback)
 
     void setupScripting();
 

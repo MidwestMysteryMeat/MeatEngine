@@ -77,6 +77,17 @@ FetchContent_Declare(enet
     GIT_REPOSITORY https://github.com/lsalzman/enet
     GIT_TAG v1.3.18 GIT_SHALLOW ON)
 
+# ---- Recast/Detour (navmesh: rasterize collision meshes → Detour) -----------
+# zlib-licensed. We link only Recast (rasterize/build) + Detour (navmesh query);
+# the demo/tests/examples pull SDL/extra deps we don't want, so force them OFF.
+# Static libs follow the parent's default (BUILD_SHARED_LIBS unset = static).
+set(RECASTNAVIGATION_DEMO OFF CACHE BOOL "" FORCE)
+set(RECASTNAVIGATION_TESTS OFF CACHE BOOL "" FORCE)
+set(RECASTNAVIGATION_EXAMPLES OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(recastnavigation
+    GIT_REPOSITORY https://github.com/recastnavigation/recastnavigation
+    GIT_TAG v1.6.0 GIT_SHALLOW ON)
+
 # ---- Header-only: stb, miniaudio, json --------------------------------------
 FetchContent_Declare(stb_src
     GIT_REPOSITORY https://github.com/nothings/stb
@@ -90,7 +101,8 @@ FetchContent_Declare(nlohmann_json
     GIT_TAG v3.11.3 GIT_SHALLOW ON)
 
 FetchContent_MakeAvailable(glfw glad glm assimp joltphysics lua_src sol2
-                           imgui_src imguizmo_src enet stb_src miniaudio_src nlohmann_json)
+                           imgui_src imguizmo_src enet stb_src miniaudio_src nlohmann_json
+                           recastnavigation)
 
 # ENet's CMakeLists predates usage-requirement style; export its include dir.
 target_include_directories(enet PUBLIC ${enet_SOURCE_DIR}/include)

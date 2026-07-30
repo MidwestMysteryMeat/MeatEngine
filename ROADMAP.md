@@ -262,8 +262,17 @@ loopback transport.
 - [x] Companion: mobile ally deployable (companion beacon) — follows its owner, acquires
       the nearest hostile NPC in range + LoS, chases into firing range and shoots it on a
       cadence, reuses the NPC A* pathing; rides the entity snapshot path; green friendly light
+- [x] Recast/Detour navmesh (OPTIONAL, fallback-safe): game/NavMesh builds a Detour navmesh
+      from the world's chunk collision meshes (same triangle soup as the physics colliders,
+      fed off the mesh-ready callback), lazy + throttled rebuild. NPCs/companions try a Detour
+      queryPath first (planPath), snap the string-pulled corners to standable voxel cells, and
+      fall back to the voxel A* on ANY miss — A* stays the guaranteed, edit-aware provider so
+      behaviour never regresses. Host-authoritative (NPC pathing runs server-side only), so
+      Detour adds no cross-peer nondeterminism. Static navmesh this pass: an in-place voxel
+      edit isn't re-pathed around until the next throttled rebuild (A* is instantly edit-aware)
 - [ ] Voxel-sampled cover seek; spawner volumes + waves; NPCs aggro companions (decoy value)
-- [ ] NPC schedules/factions/world clock (living-world layer); Recast/Detour v2 swap
+- [ ] Dynamic navmesh: rebuild-on-voxel-edit (tiled Detour) so Detour tracks destruction too
+- [ ] NPC schedules/factions/world clock (living-world layer)
 - [ ] World clock (day cycle in snapshots) + NPC schedules (timeRange→activity@location,
       interrupt stack, factions/aggro matrix, editor spawn+location markers, far-LOD
       coarse ticking) — the living-world layer for Sandbox/PvE
