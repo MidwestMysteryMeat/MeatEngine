@@ -7,6 +7,7 @@
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <stb_image.h>
+#include <stb_image_write.h>
 
 #include <algorithm>
 #include <cmath>
@@ -59,6 +60,7 @@ bool Renderer::init(Window& window) {
     glBindBufferBase(GL_UNIFORM_BUFFER, kFrameUboBinding, m_frameUbo.id());
 
     if (!m_chunkShader.load(kShaderDir, "chunk") || !m_meshShader.load(kShaderDir, "mesh") ||
+        !m_skinnedShader.load(kShaderDir, "skinned") ||
         !m_spriteShader.load(kShaderDir, "sprite") || !m_resolveShader.load(kShaderDir, "resolve")) {
         return false;
     }
@@ -90,8 +92,26 @@ void Renderer::reloadShaders() {
     // Each Shader keeps its previous program if the recompile fails.
     m_chunkShader.reload();
     m_meshShader.reload();
+    m_skinnedShader.reload();
     m_spriteShader.reload();
     m_resolveShader.reload();
+}
+
+bool Renderer::captureScreenshot(const std::filesystem::path& path) {
+    const glm::ivec2 fb = m_window ? m_window->framebufferSize() : glm::ivec2(0);
+    if (fb.x <= 0 || fb.y <= 0) return false;
+    std::vector<unsigned char> pixels(static_cast<std::size_t>(fb.x) * fb.y * 3);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadBuffer(GL_BACK);
+    glReadPixels(0, 0, fb.x, fb.y, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
+    stbi_flip_vertically_on_write(1); // GL origin is bottom-left; PNG is top-left
+    const bool ok = stbi_write_png(path.string().c_str(), fb.x, fb.y, 3, pixels.data(),
+                                   fb.x * 3) != 0;
+    if (ok)
+        log::info("screenshot → {}", path.string());
+    else
+        log::error("screenshot write failed: {}", path.string());
+    return ok;
 }
 
 void Renderer::ensurePsxTarget(glm::ivec2 framebufferSize) {
@@ -161,6 +181,49 @@ MeshHandle Renderer::uploadChunkMesh(const ChunkMeshData& data) {
 
 void Renderer::destroyMesh(MeshHandle mesh) {
     m_meshes.erase(mesh); // GlObjects RAII releases the GPU side
+}
+
+SkinnedMeshHandle Renderer::uploadSkinnedMesh(const std::vector<SkinnedVertex>& vertices,
+                                              const std::vector<std::uint32_t>& indices) {
+    if (vertices.empty() || indices.empty()) {
+        return 0;
+    }
+    GpuMesh mesh;
+    mesh.vbo.create();
+    glNamedBufferStorage(mesh.vbo.id(),
+                         static_cast<GLsizeiptr>(vertices.size() * sizeof(SkinnedVertex)),
+                         vertices.data(), 0);
+    mesh.ibo.create();
+    glNamedBufferStorage(mesh.ibo.id(),
+                         static_cast<GLsizeiptr>(indices.size() * sizeof(std::uint32_t)),
+                         indices.data(), 0);
+    mesh.vao.create();
+    const GLuint vao = mesh.vao.id();
+    glVertexArrayVertexBuffer(vao, 0, mesh.vbo.id(), 0, sizeof(SkinnedVertex));
+    glVertexArrayElementBuffer(vao, mesh.ibo.id());
+    for (GLuint attrib = 0; attrib < 5; ++attrib) {
+        glEnableVertexArrayAttrib(vao, attrib);
+        glVertexArrayAttribBinding(vao, attrib, 0);
+    }
+    glVertexArrayAttribFormat(vao, 0, 3, GL_FLOAT, GL_FALSE,
+                              static_cast<GLuint>(offsetof(SkinnedVertex, pos)));
+    glVertexArrayAttribFormat(vao, 1, 3, GL_FLOAT, GL_FALSE,
+                              static_cast<GLuint>(offsetof(SkinnedVertex, normal)));
+    glVertexArrayAttribFormat(vao, 2, 2, GL_FLOAT, GL_FALSE,
+                              static_cast<GLuint>(offsetof(SkinnedVertex, uv)));
+    glVertexArrayAttribIFormat(vao, 3, 4, GL_INT, // integer attrib: bone indices stay ints
+                               static_cast<GLuint>(offsetof(SkinnedVertex, bones)));
+    glVertexArrayAttribFormat(vao, 4, 4, GL_FLOAT, GL_FALSE,
+                              static_cast<GLuint>(offsetof(SkinnedVertex, weights)));
+    mesh.indexCount = static_cast<GLsizei>(indices.size());
+
+    const SkinnedMeshHandle handle = m_nextSkinnedMesh++;
+    m_skinnedMeshes.emplace(handle, std::move(mesh));
+    return handle;
+}
+
+void Renderer::destroySkinnedMesh(SkinnedMeshHandle mesh) {
+    m_skinnedMeshes.erase(mesh);
 }
 
 TextureHandle Renderer::loadTexture(const std::filesystem::path& path) {
@@ -243,6 +306,7 @@ void Renderer::beginFrame(const Camera& camera, float alpha) {
 
     m_chunkDraws.clear();
     m_meshDraws.clear();
+    m_skinnedDraws.clear();
     m_spriteDraws.clear();
     m_crosshairRequested = false;
 }
@@ -268,6 +332,28 @@ void Renderer::submitMesh(MeshHandle mesh, const glm::mat4& transform, MaterialH
         return;
     }
     m_meshDraws.push_back({mesh, transform, it->second});
+}
+
+void Renderer::submitSkinned(SkinnedMeshHandle mesh, const glm::mat4& transform, const Pose& pose,
+                             MaterialHandle material) {
+    const auto it = m_materials.find(material);
+    if (mesh == 0 || it == m_materials.end() || pose.skinningMatrices.empty()) {
+        return;
+    }
+    if (pose.skinningMatrices.size() > static_cast<std::size_t>(kMaxBones)) {
+        static bool warned = false;
+        if (!warned) {
+            log::warn("renderer: pose has {} bones, uBones holds {} — truncating",
+                      pose.skinningMatrices.size(), kMaxBones);
+            warned = true;
+        }
+    }
+    const std::size_t count =
+        std::min(pose.skinningMatrices.size(), static_cast<std::size_t>(kMaxBones));
+    SkinnedDraw draw{mesh, transform, it->second,
+                     {pose.skinningMatrices.begin(),
+                      pose.skinningMatrices.begin() + static_cast<std::ptrdiff_t>(count)}};
+    m_skinnedDraws.push_back(std::move(draw));
 }
 
 void Renderer::submitSprite(glm::vec3 center, glm::vec2 size, TextureHandle tex, glm::vec4 uvRect,
@@ -370,6 +456,32 @@ void Renderer::flushScenePasses() {
             meshProg.setUniform("uTint", draw.material.tint);
             meshProg.setUniform("uShininess", draw.material.shininess);
             meshProg.setUniform("uEmissive", draw.material.emissive);
+            glBindTextureUnit(0, texIt->second.id());
+            glBindVertexArray(meshIt->second.vao.id());
+            glDrawElements(GL_TRIANGLES, meshIt->second.indexCount, GL_UNSIGNED_INT, nullptr);
+        }
+    }
+
+    // Skinned pass: opaque like the mesh pass, depth on, inside the PSX target.
+    // Bone palette rides a plain uniform array (uBones[128]) uploaded per draw
+    // via glProgramUniformMatrix4fv — a handful of actors, not worth UBO ranges.
+    if (!m_skinnedDraws.empty()) {
+        glUseProgram(m_skinnedShader.id());
+        const GlShaderProgram& skinnedProg = m_skinnedShader.program();
+        const GLint bonesLoc = glGetUniformLocation(m_skinnedShader.id(), "uBones");
+        for (const SkinnedDraw& draw : m_skinnedDraws) {
+            const auto meshIt = m_skinnedMeshes.find(draw.mesh);
+            const auto texIt = m_textures.find(draw.material.albedo);
+            if (meshIt == m_skinnedMeshes.end() || texIt == m_textures.end()) {
+                continue;
+            }
+            skinnedProg.setUniform("uModel", draw.transform);
+            skinnedProg.setUniform("uTint", draw.material.tint);
+            skinnedProg.setUniform("uShininess", draw.material.shininess);
+            skinnedProg.setUniform("uEmissive", draw.material.emissive);
+            glProgramUniformMatrix4fv(m_skinnedShader.id(), bonesLoc,
+                                      static_cast<GLsizei>(draw.bones.size()), GL_FALSE,
+                                      glm::value_ptr(draw.bones[0]));
             glBindTextureUnit(0, texIt->second.id());
             glBindVertexArray(meshIt->second.vao.id());
             glDrawElements(GL_TRIANGLES, meshIt->second.indexCount, GL_UNSIGNED_INT, nullptr);

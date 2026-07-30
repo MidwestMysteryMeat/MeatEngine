@@ -1,4 +1,5 @@
 #pragma once
+#include "engine/anim/Animator.h" // Pose (+ SkinnedVertex/kMaxBones via SkeletalModel.h)
 #include "engine/render/Camera.h"
 #include "engine/render/GlObjects.h"
 #include "engine/render/Shader.h"
@@ -25,8 +26,9 @@ struct PsxOptions {
     float fogEnd = 120.0f;
 };
 
-using MeshHandle = std::uint32_t;    // 0 = invalid
-using TextureHandle = std::uint32_t; // 0 = invalid
+using MeshHandle = std::uint32_t;        // 0 = invalid
+using TextureHandle = std::uint32_t;     // 0 = invalid
+using SkinnedMeshHandle = std::uint32_t; // 0 = invalid; separate space from MeshHandle
 
 // Distinct type rather than a uint32_t alias: submitMesh overloads on
 // MaterialHandle vs TextureHandle, which requires them to differ. 0 = invalid.
@@ -50,9 +52,13 @@ class Renderer {
 public:
     bool init(Window& window);
     void reloadShaders(); // F6
+    bool captureScreenshot(const std::filesystem::path& path); // F12: backbuffer → PNG
 
     MeshHandle uploadChunkMesh(const ChunkMeshData& data);
     void destroyMesh(MeshHandle mesh);
+    SkinnedMeshHandle uploadSkinnedMesh(const std::vector<SkinnedVertex>& vertices,
+                                        const std::vector<std::uint32_t>& indices);
+    void destroySkinnedMesh(SkinnedMeshHandle mesh);
     TextureHandle loadTexture(const std::filesystem::path& path);
     void setAtlas(TextureHandle atlas); // block atlas sampled by every chunk draw
     MaterialHandle createMaterial(const MaterialDesc& desc);
@@ -61,6 +67,11 @@ public:
     void submitChunk(MeshHandle mesh, glm::vec3 originWorld);
     void submitMesh(MeshHandle mesh, const glm::mat4& transform, TextureHandle albedo);
     void submitMesh(MeshHandle mesh, const glm::mat4& transform, MaterialHandle material);
+    // Draws in the mesh pass (opaque, depth on, inside the PSX target). The
+    // pose's skinning matrices are copied at submit time — callers may reuse
+    // or discard the Pose immediately. Poses beyond kMaxBones are truncated.
+    void submitSkinned(SkinnedMeshHandle mesh, const glm::mat4& transform, const Pose& pose,
+                       MaterialHandle material);
     // Camera-facing billboard, alpha-tested, drawn after opaque geometry inside
     // the PSX target. uvRect = {u, v, width, height} within the texture.
     void submitSprite(glm::vec3 center, glm::vec2 size, TextureHandle tex,
@@ -116,6 +127,12 @@ private:
         glm::mat4 transform;
         MaterialDesc material; // resolved at submit time (copy, handles stay light)
     };
+    struct SkinnedDraw {
+        SkinnedMeshHandle mesh;
+        glm::mat4 transform;
+        MaterialDesc material;
+        std::vector<glm::mat4> bones; // ≤ kMaxBones skinning matrices, copied at submit
+    };
     struct SpriteDraw {
         glm::vec3 center;
         glm::vec2 size;
@@ -134,6 +151,7 @@ private:
 
     Shader m_chunkShader;
     Shader m_meshShader;
+    Shader m_skinnedShader;
     Shader m_spriteShader;
     Shader m_resolveShader;
     GlShaderProgram m_crosshairProgram; // trivial, source embedded in Renderer.cpp
@@ -152,15 +170,18 @@ private:
     GlBuffer m_crosshairVbo;
 
     std::unordered_map<MeshHandle, GpuMesh> m_meshes;
+    std::unordered_map<SkinnedMeshHandle, GpuMesh> m_skinnedMeshes;
     std::unordered_map<TextureHandle, GlTexture> m_textures;
     std::unordered_map<MaterialHandle, MaterialDesc> m_materials;
     MeshHandle m_nextMesh = 1;
+    SkinnedMeshHandle m_nextSkinnedMesh = 1;
     TextureHandle m_nextTexture = 1;
     std::uint32_t m_nextMaterial = 1;
     TextureHandle m_atlas = 0;
 
     std::vector<ChunkDraw> m_chunkDraws;
     std::vector<MeshDraw> m_meshDraws;
+    std::vector<SkinnedDraw> m_skinnedDraws;
     std::vector<SpriteDraw> m_spriteDraws;
     int m_pointCount = 0;
     int m_spotCount = 0;

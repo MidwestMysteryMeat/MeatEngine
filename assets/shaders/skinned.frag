@@ -1,5 +1,8 @@
 #version 450 core
 
+// Identical to mesh.frag by design: skinning happens entirely in the vertex
+// stage, so skinned meshes light/fog exactly like static ones. Keep in sync.
+
 // FrameData mirrors Renderer::FrameUbo (std140, binding 0). Keep in sync.
 struct PointLight { vec4 posRadius; vec4 color; };
 struct SpotLight  { vec4 posRadius; vec4 dirCosAngle; vec4 color; };
@@ -17,19 +20,22 @@ layout(std140, binding = 0) uniform FrameData {
     SpotLight uSpotLights[8];
 };
 
-layout(binding = 0) uniform sampler2D uAtlas;
+layout(binding = 0) uniform sampler2D uAlbedo;
+
+// Per-draw material params (set via glProgramUniform, not the frame UBO).
+uniform vec3 uTint;
+uniform float uShininess;
+uniform vec3 uEmissive;
 
 in VsOut {
     vec3 worldPos;
     vec3 normal;
     vec2 uv;
     float fog;
-    flat uint tex;
 } fs;
 
 out vec4 oColor;
 
-const float kShininess = 32.0;
 const float kSpecStrength = 0.25;
 
 vec3 blinnPhong(vec3 albedo, vec3 n, vec3 v, vec3 l, vec3 lightColor, float atten) {
@@ -37,7 +43,7 @@ vec3 blinnPhong(vec3 albedo, vec3 n, vec3 v, vec3 l, vec3 lightColor, float atte
     float spec = 0.0;
     if (ndl > 0.0) {
         vec3 h = normalize(l + v);
-        spec = pow(max(dot(n, h), 0.0), kShininess) * kSpecStrength;
+        spec = pow(max(dot(n, h), 0.0), uShininess) * kSpecStrength;
     }
     return (albedo * ndl + vec3(spec)) * lightColor * atten;
 }
@@ -60,7 +66,6 @@ vec3 shade(vec3 albedo, vec3 n, vec3 v, vec3 worldPos) {
         vec3 l = toL / max(d, 1e-4);
         float att = clamp(1.0 - d / uSpotLights[i].posRadius.w, 0.0, 1.0);
         att *= att;
-        // dirCosAngle.w = cos(half-angle); soften the rim over the outer 20% of the cone
         float cosCut = uSpotLights[i].dirCosAngle.w;
         att *= smoothstep(cosCut, mix(cosCut, 1.0, 0.2), dot(-l, uSpotLights[i].dirCosAngle.xyz));
         if (att > 0.0) {
@@ -71,16 +76,9 @@ vec3 shade(vec3 albedo, vec3 n, vec3 v, vec3 worldPos) {
 }
 
 void main() {
-    // 16x16 tile atlas: integer tile from the vertex attrib, uv folded into the
-    // tile so greedy quads with uv > 1 repeat correctly. Row counts from the TOP
-    // (15 - row): textures load vertically-flipped for GL, and the atlas is
-    // authored with tile 0 at the top-left (see tools/gen_atlas.py).
-    vec2 tile = vec2(float(fs.tex % 16u), 15.0 - float(fs.tex / 16u));
-    vec2 atlasUV = (tile + fract(fs.uv)) / 16.0;
-    vec4 albedo = texture(uAtlas, atlasUV);
-
+    vec4 albedo = texture(uAlbedo, fs.uv);
     vec3 n = normalize(fs.normal);
     vec3 v = normalize(uCamPos.xyz - fs.worldPos);
-    vec3 lit = shade(albedo.rgb, n, v, fs.worldPos);
+    vec3 lit = shade(albedo.rgb, n, v, fs.worldPos) * uTint + uEmissive;
     oColor = vec4(mix(lit, uFogColor.rgb, fs.fog), albedo.a);
 }

@@ -85,8 +85,16 @@ loopback transport.
 - [x] 7a static: Assimp FBX/OBJ/GLB loader → existing mesh pipeline (node-baked transforms,
       normal gen, scale/skeleton probe w/ cm→m warning, albedo discovery); world props;
       self-authored OBJ smoke prop committed, vault binaries gitignored (license-pending)
-- [ ] 7b skeletal: canonical Mixamo skeleton, bone palette in mesh shader, clip sampling,
-      replace NPC/remote-player boxes with animated meshes; viewmodel idle/fire
+- [x] TEXTURE FIX (found via new VLM screenshot gate): chunk atlas sampled the wrong
+      row (load-flip vs authored top-left) — ALL terrain was debug-magenta since phase 1;
+      now correct grass/dirt/stone
+- [x] Screenshot tooling: Renderer::captureScreenshot (glReadPixels→PNG), F12 key,
+      `--shot <png>` auto-capture-and-exit — enables visual validation of each step
+- [~] 7b skeletal: loader parses Mixamo rigs (65 bones/40k verts), pose sampler,
+      skinned render path + shader, upright auto-fit + root-inverse, screenshot-gated.
+      Static/terrain VLM-verified; skinned bind-pose still distorts on the multi-mesh
+      test asset — WIP, gated behind an optional staged asset so the repo is unaffected
+- [ ] Fix skinned bind-pose distortion; replace NPC/remote boxes with meshes; viewmodel
 
 ## Phase 8 — Scripting
 - [ ] Lua (sol2) server-side gameplay: entity spawn, voxel edit, player/inventory/weapons,

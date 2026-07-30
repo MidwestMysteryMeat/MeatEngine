@@ -22,6 +22,9 @@ meat::EngineConfig parseArgs(int argc, char** argv) {
             if (const char* n = next()) config.serverName = n;
         } else if (arg == "--master") {
             if (const char* m = next()) config.master = m;
+        } else if (arg == "--shot") {
+            config.mode = Mode::Game;
+            if (const char* s = next()) config.autoShot = s;
         } else if (arg == "--join") {
             config.mode = Mode::Join;
             if (const char* addr = next()) {

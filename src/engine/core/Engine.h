@@ -4,6 +4,7 @@
 #include "engine/core/EventBus.h"
 #include "engine/core/JobQueue.h"
 #include "engine/core/TickRate.h"
+#include "engine/asset/SkeletalModel.h"
 #include "engine/net/EnetTransport.h"
 #include "engine/net/LanDiscovery.h"
 #include "engine/net/LoopbackTransport.h"
@@ -34,6 +35,7 @@ struct EngineConfig {
     std::string loadPath;   // --load <file>: start the server from a save
     std::string serverName = "MeatEngine Server";
     std::string master;     // --master host[:port] — announce/browse internet list
+    std::string autoShot;   // --shot <png>: capture after a few seconds, then quit
 };
 
 // Composition root. The simulation authority is always a ServerSim; this class
@@ -86,6 +88,20 @@ private:
     };
     std::vector<PropInstance> m_props; // static models placed in the world
     void loadWorldProps();
+    // Phase 7b proof: one skinned actor near spawn looping clip 0. Staged from
+    // the optional (gitignored) assets/models/anim_test.{fbx,glb}; null otherwise.
+    struct AnimActor {
+        SkinnedMeshHandle mesh = 0;
+        MaterialHandle material{0};
+        SkeletalModel model; // kept for clip sampling every frame
+        glm::mat4 transform{1.0f};
+        float time = 0.0f;
+        bool useBindPose = false; // true when no clip is usable (degenerate/absent)
+    };
+    std::unique_ptr<AnimActor> m_animActor;
+    void loadAnimTestActor();
+    TextureHandle m_atlasTexture = 0; // fallback albedo when a model ships none
+    float m_frameDt = 0.0f;           // last frame's dt; advances the proof actor
     PlayerCommand m_lastCmd{};
     std::uint64_t m_tick = 0;
     glm::vec3 m_prevPlayerPos{0};

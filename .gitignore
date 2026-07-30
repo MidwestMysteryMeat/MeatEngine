@@ -6,6 +6,8 @@ tools/fable_worker.py
 assets/models/*.fbx
 assets/models/*.glb
 assets/models/*.gltf
+assets/models/*.png
+assets/models/*.jpg
 .vs/
 .idea/
 .cache/

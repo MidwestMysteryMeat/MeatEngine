@@ -1,6 +1,7 @@
 #include "engine/core/Engine.h"
 #include "engine/core/Log.h"
 #include "engine/core/ViewMath.h"
+#include "engine/anim/Animator.h"
 #include "engine/asset/ModelLoader.h"
 #include "engine/net/HttpTiny.h"
 
@@ -87,6 +88,7 @@ bool Engine::initClientSystems() {
     const TextureHandle atlas = m_renderer.loadTexture("assets/textures/atlas.png");
     if (atlas == 0) return false;
     m_renderer.setAtlas(atlas);
+    m_atlasTexture = atlas;
     m_renderer.setDirectionalLight(glm::normalize(glm::vec3(-0.4f, -1.0f, -0.3f)),
                                    glm::vec3(1.0f, 0.96f, 0.88f));
     m_remotePlayerMesh = m_renderer.uploadChunkMesh(makeBoxMesh(0.35f, 1.8f, 2));
@@ -144,6 +146,7 @@ void Engine::setupClientWorld() {
     m_prevPlayerPos = m_currPlayerPos = kClientSpawn;
     m_clientWorldReady = true;
     loadWorldProps();
+    loadAnimTestActor();
     log::info("client world ready (seed {})", m_client.worldSeed());
 }
 
@@ -171,6 +174,61 @@ void Engine::loadWorldProps() {
                            glm::translate(glm::mat4(1.0f), c.place)});
     }
     log::info("loaded {} world props", m_props.size());
+}
+
+void Engine::loadAnimTestActor() {
+    // Optional (gitignored) proof asset. Load at native scale (the trivially
+    // correct path — no scale conjugation) and normalize display height via the
+    // actor transform, so ANY model shows upright at ~1.8 m regardless of units.
+    const char* paths[] = {"assets/models/anim_test.fbx", "assets/models/anim_test.glb"};
+    for (const char* path : paths) {
+        if (!std::filesystem::exists(path)) continue;
+        auto model = loadSkeletalModel(path, {.scale = 1.0f});
+        if (!model) continue;
+
+        auto actor = std::make_unique<AnimActor>();
+        actor->mesh = m_renderer.uploadSkinnedMesh(model->vertices, model->indices);
+
+        MaterialDesc mat;
+        mat.tint = glm::vec3(1.0f);
+        if (!model->albedo.empty()) mat.albedo = m_renderer.loadTexture(model->albedo);
+        if (mat.albedo == 0 && std::filesystem::exists("assets/models/anim_test_body.png"))
+            mat.albedo = m_renderer.loadTexture("assets/models/anim_test_body.png");
+        const bool textured = mat.albedo != 0;
+        if (!textured) mat.tint = glm::vec3(0.7f, 0.72f, 0.78f); // flat grey, not atlas magenta
+        actor->material = m_renderer.createMaterial(mat);
+
+        // Robust upright fit: rotate the longest bounds axis (head-to-toe) to +Y —
+        // self-corrects Z-up FBX and Y-up GLB alike — then scale to 1.8 m and drop
+        // the base to the floor. finalPos = place * scale * orient * skin * v.
+        const glm::vec3 ext = model->boundsMax - model->boundsMin;
+        glm::mat4 orient(1.0f);
+        float upExtent = ext.y;
+        if (ext.z >= ext.x && ext.z >= ext.y) { // Z-up: rotate -90° about X
+            orient = glm::rotate(glm::mat4(1.0f), -glm::half_pi<float>(), glm::vec3(1, 0, 0));
+            upExtent = ext.z;
+        } else if (ext.x > ext.y && ext.x > ext.z) { // X-up (on its side): about Z
+            orient = glm::rotate(glm::mat4(1.0f), glm::half_pi<float>(), glm::vec3(0, 0, 1));
+            upExtent = ext.x;
+        }
+        const float norm = 1.8f / std::max(0.01f, upExtent);
+        const glm::vec3 place = kClientSpawn + glm::vec3(0.0f, 0.0f, -3.5f);
+        actor->transform = glm::translate(glm::mat4(1.0f), place) *
+                           glm::scale(glm::mat4(1.0f), glm::vec3(norm)) * orient;
+
+        // A degenerate clip (Fab reference poses are ~1 frame) would throw the mesh
+        // apart — prove the loader with the bind pose until a real clip is staged.
+        actor->useBindPose = model->clips.empty() ||
+                             model->clips[0].duration / model->clips[0].ticksPerSec < 0.15f;
+        actor->model = std::move(*model);
+        m_animActor = std::move(actor);
+        log::info("anim actor '{}' up: {} clips, {}, textured={} (up-extent {:.2f} m → x{:.3f})",
+                  path, m_animActor->model.clips.size(),
+                  m_animActor->useBindPose ? "BIND POSE" : "animating clip 0", textured,
+                  upExtent, norm);
+        return;
+    }
+    log::info("no assets/models/anim_test.{{fbx,glb}} staged — skeletal proof skipped");
 }
 
 void Engine::simulateClientTick(const PlayerCommand& frameCmd) {
@@ -243,6 +301,16 @@ void Engine::render(float alpha) {
 
     for (const PropInstance& prop : m_props)
         m_renderer.submitMesh(prop.mesh, prop.transform, prop.material);
+
+    if (m_animActor && m_animActor->mesh != 0) { // Phase 7b proof: loop clip 0
+        m_animActor->time += m_frameDt;
+        const Pose pose =
+            m_animActor->useBindPose
+                ? bindPose(m_animActor->model)
+                : samplePose(m_animActor->model, m_animActor->model.clips[0], m_animActor->time);
+        m_renderer.submitSkinned(m_animActor->mesh, m_animActor->transform, pose,
+                                 m_animActor->material);
+    }
 
     for (const EditorLight& light : m_editorLights) { // placed lights are world lights
         if (light.type == 0)
@@ -555,6 +623,7 @@ int Engine::run(const EngineConfig& configIn) {
     using Clock = std::chrono::steady_clock;
     auto last = Clock::now();
     double accumulator = 0.0;
+    int frameCount = 0; // for --shot auto-capture
 
     while (!m_window.shouldClose()) {
         m_input.beginFrame(); // before pollEvents so pressed() edges last one frame
@@ -563,6 +632,7 @@ int Engine::run(const EngineConfig& configIn) {
 
         if (m_input.pressed(GLFW_KEY_ESCAPE)) break;
         if (m_input.pressed(GLFW_KEY_F6)) m_renderer.reloadShaders();
+        if (m_input.pressed(GLFW_KEY_F12)) m_renderer.captureScreenshot("build/shot.png");
         if (m_input.pressed(GLFW_KEY_F5) && m_server) {
             m_server->saveTo("saves/quick.json");
             saveEditorExtras();
@@ -615,8 +685,15 @@ int Engine::run(const EngineConfig& configIn) {
         }
 
         if (m_clientWorldReady) m_voxels.update(m_currPlayerPos, m_jobs);
+        m_frameDt = static_cast<float>(frameDt);
         render(static_cast<float>(accumulator / kFixedDt));
         m_window.swap();
+
+        // --shot: let the world stream/settle, capture one frame, then quit.
+        if (!config.autoShot.empty() && m_clientWorldReady && ++frameCount == 240) {
+            m_renderer.captureScreenshot(config.autoShot);
+            break;
+        }
     }
 
     stopHosting();
