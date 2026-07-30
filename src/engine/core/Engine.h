@@ -120,6 +120,11 @@ private:
     // advances globally (each instance samples at a per-id phase so they aren't lock-stepped).
     std::unique_ptr<AnimActor> m_npcActor;
     void loadNpcActor();
+    int m_npcIdleClip = -1; // clip indices in m_npcActor->model for the idle↔walk blend
+    int m_npcWalkClip = -1; // (-1 = not present → fall back to the single-clip path)
+    // Previous entity positions (client-side), to derive each humanoid's speed for the
+    // idle↔walk blend weight without a server-side anim-state byte.
+    std::unordered_map<std::uint32_t, glm::vec3> m_entityPrevPos;
     bool m_animBooth = false; // fixed camera framing the anim actor (VLM capture)
     std::string m_animModel;  // --animmodel override path (else the default proof asset)
     std::string m_animClip;   // --animclip: animation file merged onto the model by bone name

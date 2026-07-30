@@ -22,3 +22,4 @@ CMakeUserPresets.json
 # staged licensed NPC character (Mixamo)
 assets/models/npc_char.fbx
 assets/models/npc_walk.fbx
+assets/models/npc_idle.fbx

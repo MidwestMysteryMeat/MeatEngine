@@ -285,7 +285,6 @@ void Engine::loadNpcActor() {
     // regression). Same load path as the anim actor, but the transform stores only the
     // upright-fit (normalize + orient) — the render adds each entity's world pos + yaw.
     const char* charPath = "assets/models/npc_char.fbx";
-    const char* clipPath = "assets/models/npc_walk.fbx";
     if (!std::filesystem::exists(charPath)) {
         log::info("no assets/models/npc_char.fbx staged — NPCs render as box proxies");
         return;
@@ -322,28 +321,26 @@ void Engine::loadNpcActor() {
     actor->transform = glm::scale(glm::mat4(1.0f), glm::vec3(norm)) * orient; // NO world placement
 
     actor->model = std::move(*model);
-    if (std::filesystem::exists(clipPath)) {
-        // Retarget handles BOTH exact- and variant-bind characters (PSX, etc.) cleanly, so a
-        // staged character animates without the variant-rig shard hand; fall back to a direct
-        // merge only if nothing mapped.
-        if (retargetClipsFromFile(actor->model, clipPath, {.scale = 1.0f}) == 0) {
-            appendClipsFromFile(actor->model, clipPath, {.scale = 1.0f});
-        }
-    }
-    actor->clipIndex = 0;
-    for (int i = 1; i < static_cast<int>(actor->model.clips.size()); ++i) {
-        const AnimClip& c = actor->model.clips[i];
-        const AnimClip& best = actor->model.clips[actor->clipIndex];
-        if (c.duration / c.ticksPerSec > best.duration / best.ticksPerSec) actor->clipIndex = i;
-    }
+    // Load walk + idle clips for the speed-driven idle↔walk blend. Retarget handles BOTH
+    // exact- and variant-bind characters (PSX, etc.); each clip lands at a known index.
+    const auto loadClip = [&](const char* file) -> int {
+        if (!std::filesystem::exists(file)) return -1;
+        const int before = static_cast<int>(actor->model.clips.size());
+        if (retargetClipsFromFile(actor->model, file, {.scale = 1.0f}) == 0)
+            appendClipsFromFile(actor->model, file, {.scale = 1.0f});
+        return static_cast<int>(actor->model.clips.size()) > before ? before : -1;
+    };
+    m_npcWalkClip = loadClip("assets/models/npc_walk.fbx");
+    m_npcIdleClip = loadClip("assets/models/npc_idle.fbx");
+    actor->clipIndex = m_npcWalkClip >= 0 ? m_npcWalkClip : 0; // single-clip path plays walk
     actor->hasRealClip = !actor->model.clips.empty() &&
                          actor->model.clips[actor->clipIndex].duration /
                                  actor->model.clips[actor->clipIndex].ticksPerSec >=
                              0.02f;
     m_npcActor = std::move(actor);
-    log::info("NPC actor up: {} verts, {} clips, {} (norm x{:.3f})", m_npcActor->model.vertices.size(),
-              m_npcActor->model.clips.size(), m_npcActor->hasRealClip ? "animated" : "static bind",
-              norm);
+    log::info("NPC actor up: {} verts, {} clips (walk={}, idle={}) (norm x{:.3f})",
+              m_npcActor->model.vertices.size(), m_npcActor->model.clips.size(), m_npcWalkClip,
+              m_npcIdleClip, norm);
 }
 
 void Engine::simulateClientTick(const PlayerCommand& frameCmd) {
@@ -429,11 +426,25 @@ void Engine::render(float alpha) {
     const auto submitHumanoid = [&](const glm::vec3& pos, float yaw, std::uint32_t id) {
         if (m_npcActor && m_npcActor->mesh != 0) {
             const float t = m_npcActor->time + 0.37f * static_cast<float>(id % 13);
-            const Pose pose =
-                m_npcActor->hasRealClip
-                    ? samplePose(m_npcActor->model,
-                                 m_npcActor->model.clips[m_npcActor->clipIndex], t)
-                    : idlePose(m_npcActor->model, t);
+            Pose pose;
+            if (m_npcIdleClip >= 0 && m_npcWalkClip >= 0) {
+                // Idle↔walk blend by the entity's speed (client-derived from its position
+                // delta): still → idle, moving → walk, cross-fading in between.
+                float speed = 0.0f;
+                if (const auto it = m_entityPrevPos.find(id);
+                    it != m_entityPrevPos.end() && m_frameDt > 0.0f) {
+                    speed = glm::length(pos - it->second) / m_frameDt;
+                }
+                const float w = glm::clamp(speed / 2.5f, 0.0f, 1.0f); // ~walk speed = full walk
+                pose = blendPose(m_npcActor->model, m_npcActor->model.clips[m_npcIdleClip], t,
+                                 m_npcActor->model.clips[m_npcWalkClip], t, w);
+            } else if (m_npcActor->hasRealClip) {
+                pose = samplePose(m_npcActor->model,
+                                  m_npcActor->model.clips[m_npcActor->clipIndex], t);
+            } else {
+                pose = idlePose(m_npcActor->model, t);
+            }
+            m_entityPrevPos[id] = pos; // for next frame's speed
             const glm::mat4 xform = glm::translate(glm::mat4(1.0f), pos) *
                                     glm::rotate(glm::mat4(1.0f), yaw, glm::vec3(0, 1, 0)) *
                                     m_npcActor->transform;
