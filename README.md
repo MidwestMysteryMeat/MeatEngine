@@ -9,8 +9,8 @@ generate as seeded **procedural dungeons**, with a deliberately **PSX-forward** 
 editor, dungeons, scripting and packaging are implemented; see [ROADMAP.md](ROADMAP.md) for
 what's done vs. pending and [ARCHITECTURE.md](ARCHITECTURE.md) for how it fits together.
 Honest caveats: skeletal **bodies** animate on any mixamorig character but **hand fidelity
-on variant rigs** and full locomotion/viewmodels are still landing; Linux build + CI, torch
-light propagation, and human feel-playtests are pending.
+on variant rigs** and full locomotion/viewmodels are still landing; and human feel-playtests
+are pending.
 
 ## Feature set
 
@@ -35,10 +35,16 @@ Implemented:
 - Lua gameplay scripting (sol2), sandboxed with an instruction budget
 - Packaging SDK: `--project`, `new_project.py`, `package.ps1` → shippable zip
 
-Pending: Linux build + CI, torch light propagation, animation blend graph + retargeting for
-variant rigs, delta-compressed snapshots + lag compensation (PvP), human feel-playtests.
+Pending: animation blend graph + retargeting for variant rigs, delta-compressed snapshots +
+lag compensation (PvP), human feel-playtests.
 
-## Building (Windows)
+## Building
+
+Both platforms are built and configured on every push by [CI](.github/workflows/ci.yml)
+(Ubuntu/Clang + Windows/MSVC). First build fetches and compiles all third-party dependencies
+(Assimp and Jolt dominate; expect 10–20 minutes once).
+
+### Windows
 
 Requires Visual Studio 2022 (Desktop C++), CMake 3.28+, Python 3 (for glad generation).
 
@@ -47,8 +53,21 @@ Requires Visual Studio 2022 (Desktop C++), CMake 3.28+, Python 3 (for glad gener
 ./build/MeatEngine.exe         # run
 ```
 
-First build fetches and compiles all third-party dependencies (Assimp and Jolt dominate;
-expect 10–20 minutes once). Linux support is intended; CI pending.
+### Linux
+
+Requires a C++20 compiler (GCC 12+ or Clang 15+), CMake 3.28+, Ninja, Python 3 + jinja2 (glad
+generation), and the GL/X11 (and optionally Wayland) dev headers GLFW builds against:
+
+```bash
+sudo apt-get install -y ninja-build libgl1-mesa-dev \
+    libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+    libwayland-dev libxkbcommon-dev wayland-protocols python3 python3-pip
+python3 -m pip install --user jinja2
+
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+./build/MeatEngine        # run
+```
 
 ## Controls
 

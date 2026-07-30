@@ -302,7 +302,9 @@ Ranked, effort-estimated borrowings (feed the phases above, not net-new work):
 - [ ] Torque3D ghost scope→priority→delta interest management — MIT, reimpl on ENet → Phase 12
 - [ ] O3DE NetworkTime/NetworkInput lag-compensation pattern — Apache/MIT, reimpl → Phase 12
 - [ ] Ogre3D cooked `.mesh`/`.skeleton` serializer for fast loads — MIT → Phase 7
-- [ ] Linux CMake + CI (only 2 files have Win32 sockets, both already #ifdef-branched;
-      GLFW windowing already portable) — informed by GLFW/ezEngine platform layer
+- [x] Linux CMake + CI (only 2 files have Win32 sockets, both already #ifdef-branched;
+      GLFW windowing already portable) — informed by GLFW/ezEngine platform layer.
+      MSVC flags guarded behind if(MSVC); Threads + dl linked on Linux; GitHub Actions
+      builds Ubuntu/Clang + Windows/MSVC. Linux build unverified on real hardware (Windows box).
 - Honorable mentions: Librebox Luau sandbox (security for public scriptable engine),
   Cute Framework connect-token handshake, Nebula BSD frame-graph.

@@ -59,8 +59,14 @@ OSS we lean on (license-verified in docs/ENGINE_REUSE_SURVEY.md) and its verific
 - [ ] **11. Destruction depth** — reinforced blocks, radial voxel damage, structural collapse.
 
 ### Roll 5 — Platform & tooling
-- [ ] **12. Linux build + CI** (only 2 socket files, both #ifdef-branched). OSS: GLFW/ezEngine
-  platform layer. **13. Positional 3D audio.** **14. Cooked mesh serializer** (Ogre, MIT).
+- [x] **12. Linux build + CI**: CMakeLists now guards MSVC-only flags behind `if(MSVC)`,
+  drops NOMINMAX/WIN32_LEAN_AND_MEAN off-Windows, and links `Threads::Threads` + `${CMAKE_DL_LIBS}`
+  on Linux (GL/X11/Wayland/m arrive transitively via the GLFW target). The two socket files
+  (HttpTiny.cpp, LanDiscovery.cpp) were already fully `#ifdef _WIN32`/POSIX-branched — no changes
+  needed; ENet handles its own platform sockets. `.github/workflows/ci.yml` builds Ubuntu/Clang +
+  Windows/MSVC Release. Windows build re-verified clean (exit 0); **Linux path is unverified on
+  real hardware** (authored on a Windows box) — test on a Linux PC. OSS: GLFW/ezEngine platform layer.
+- [ ] **13. Positional 3D audio.** **14. Cooked mesh serializer** (Ogre, MIT).
 
 ### Roll 6 — Authoring (biggest, most speculative; last)
 - [ ] **15. In-editor Design panel** (no-code weapon/ability/item) + **16. visual node graph →

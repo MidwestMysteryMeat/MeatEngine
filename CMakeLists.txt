@@ -14,7 +14,11 @@ file(GLOB_RECURSE MEAT_SOURCES CONFIGURE_DEPENDS src/*.cpp src/*.h)
 add_executable(MeatEngine ${MEAT_SOURCES})
 
 target_include_directories(MeatEngine PRIVATE src)
-target_compile_definitions(MeatEngine PRIVATE GLFW_INCLUDE_NONE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_compile_definitions(MeatEngine PRIVATE GLFW_INCLUDE_NONE)
+if(WIN32)
+    # Win32-only header hygiene; harmless-but-meaningless elsewhere.
+    target_compile_definitions(MeatEngine PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+endif()
 target_link_libraries(MeatEngine PRIVATE
     glfw
     glad_gl_core_45
@@ -36,4 +40,12 @@ if(MSVC)
     target_compile_options(MeatEngine PRIVATE /W4 /permissive- /MP /utf-8)
 else()
     target_compile_options(MeatEngine PRIVATE -Wall -Wextra)
+endif()
+
+# On Linux the app needs pthread (std::thread / GLFW / Jolt) and libdl (glad's
+# runtime GL loader via glfwGetProcAddress). GL, X11/Wayland and libm come in
+# transitively through the GLFW static-lib target's link interface.
+if(UNIX AND NOT APPLE)
+    find_package(Threads REQUIRED)
+    target_link_libraries(MeatEngine PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
 endif()
