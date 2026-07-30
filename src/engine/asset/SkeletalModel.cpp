@@ -64,6 +64,19 @@ std::string normalizeBoneName(const std::string& n) {
     return colon == std::string::npos ? n : n.substr(colon + 1);
 }
 
+// Is this a finger joint? Driving fingers across reduced/variant mixamorig rigs (whose
+// finger bind orientations rarely match a Mixamo clip's) collapses them into a shard, so
+// clip-merge leaves fingers at their relaxed bind. The wrist (LeftHand/RightHand) MUST stay
+// animated — skinning weights straddle wrist+forearm, so freezing the wrist while the
+// forearm swings tears the joint. (Variant rigs whose WRIST bind also mismatches Mixamo —
+// e.g. the 28-bone PSX rig — can't be clip-merged cleanly and need retargetClipsFromFile.)
+bool isFingerBone(const std::string& name) {
+    for (const char* f : {"Thumb", "Index", "Middle", "Ring", "Pinky"}) {
+        if (name.find(f) != std::string::npos) return true;
+    }
+    return false;
+}
+
 // Pure rotation of a transform (strip translation + per-axis scale). Rigs are
 // shear-free, so normalizing the basis columns and quat_cast is exact.
 glm::quat rotationOf(const glm::mat4& m) {
@@ -529,6 +542,9 @@ int appendClipsFromFile(SkeletalModel& model, const std::filesystem::path& animF
             if (boneIdx < 0) {
                 ++droppedThisClip; // channel targets a bone the model doesn't have
                 continue;
+            }
+            if (isFingerBone(model.bones[boneIdx].name)) {
+                continue; // leave fingers at relaxed bind (variant rigs mangle when driven)
             }
             BoneTrack track;
             track.boneIndex = boneIdx;
