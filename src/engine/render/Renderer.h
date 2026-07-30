@@ -60,6 +60,10 @@ public:
                                         const std::vector<std::uint32_t>& indices);
     void destroySkinnedMesh(SkinnedMeshHandle mesh);
     TextureHandle loadTexture(const std::filesystem::path& path);
+    // Decode + upload a compressed image (PNG/JPG/TGA) from memory — e.g. an FBX-embedded
+    // character texture. `label` is for logging only. Returns 0 on decode failure.
+    TextureHandle loadTextureFromMemory(const unsigned char* data, std::size_t size,
+                                        const std::string& label);
     void setAtlas(TextureHandle atlas); // block atlas sampled by every chunk draw
     MaterialHandle createMaterial(const MaterialDesc& desc);
 
@@ -87,6 +91,10 @@ public:
     PsxOptions psx;
 
 private:
+    // Upload already-decoded RGBA8 pixels (takes ownership; frees via stbi). Shared by the
+    // file and in-memory texture decode paths.
+    TextureHandle uploadRgba(unsigned char* pixels, int width, int height,
+                             const std::string& label);
     // std140 mirror of the FrameData block (binding 0). vec4/mat4 members only,
     // so the C++ layout matches std140 exactly; static_asserts in Renderer.cpp.
     struct GpuPointLight {

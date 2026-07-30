@@ -78,7 +78,10 @@ struct SkeletalModel {
     std::vector<Bone> bones; // topological: parents always precede children
     std::unordered_map<std::string, int> boneByName;
     std::vector<AnimClip> clips;
-    std::filesystem::path albedo; // first diffuse texture found, or empty
+    std::filesystem::path albedo;          // first diffuse texture found on disk, or empty
+    std::vector<unsigned char> albedoEmbedded; // FBX-embedded diffuse texture (compressed
+                                           // PNG/JPG bytes) when the texture lives inside the
+                                           // model file; upload via loadTextureFromMemory
     glm::vec3 boundsMin{0}, boundsMax{0}; // bind pose, scaled
     // Inverse of the scene-root node transform (scale-conjugated). Fab/UE FBX
     // exports bake a rotated/scaled root here; left-multiply this into the model

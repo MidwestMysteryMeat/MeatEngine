@@ -203,7 +203,11 @@ void Engine::loadAnimTestActor() {
 
         MaterialDesc mat;
         mat.tint = glm::vec3(1.0f);
-        if (!model->albedo.empty()) mat.albedo = m_renderer.loadTexture(model->albedo);
+        if (!model->albedoEmbedded.empty()) // the model's own texture, embedded in the FBX
+            mat.albedo = m_renderer.loadTextureFromMemory(model->albedoEmbedded.data(),
+                                                          model->albedoEmbedded.size(), path);
+        if (mat.albedo == 0 && !model->albedo.empty())
+            mat.albedo = m_renderer.loadTexture(model->albedo);
         if (mat.albedo == 0 && std::filesystem::exists("assets/models/anim_test_body.png"))
             mat.albedo = m_renderer.loadTexture("assets/models/anim_test_body.png");
         const bool textured = mat.albedo != 0;
@@ -292,7 +296,10 @@ void Engine::loadNpcActor() {
     auto actor = std::make_unique<AnimActor>();
     actor->mesh = m_renderer.uploadSkinnedMesh(model->vertices, model->indices);
     MaterialDesc mat;
-    if (!model->albedo.empty()) mat.albedo = m_renderer.loadTexture(model->albedo);
+    if (!model->albedoEmbedded.empty()) // the character's own texture, embedded in the FBX
+        mat.albedo = m_renderer.loadTextureFromMemory(model->albedoEmbedded.data(),
+                                                      model->albedoEmbedded.size(), charPath);
+    if (mat.albedo == 0 && !model->albedo.empty()) mat.albedo = m_renderer.loadTexture(model->albedo);
     // The skinned draw path REQUIRES a texture (untextured draws are skipped → invisible),
     // so fall back to the neutral body texture, then the atlas, exactly like the anim actor.
     if (mat.albedo == 0 && std::filesystem::exists("assets/models/anim_test_body.png"))

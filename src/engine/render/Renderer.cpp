@@ -226,18 +226,12 @@ void Renderer::destroySkinnedMesh(SkinnedMeshHandle mesh) {
     m_skinnedMeshes.erase(mesh);
 }
 
-TextureHandle Renderer::loadTexture(const std::filesystem::path& path) {
-    const std::string pathUtf8 = path.string();
-    int width = 0;
-    int height = 0;
-    int channels = 0;
-    stbi_set_flip_vertically_on_load(1); // GL's uv origin is bottom-left
-    stbi_uc* pixels = stbi_load(pathUtf8.c_str(), &width, &height, &channels, 4);
-    if (pixels == nullptr) {
-        log::error("loadTexture '{}': {}", pathUtf8, stbi_failure_reason());
-        return 0;
-    }
-
+// Upload already-decoded RGBA8 pixels to a GL texture and register a handle. Frees `pixels`
+// (stbi allocation). Shared by the file and in-memory decode paths so the mip/filter/wrap
+// setup lives in one place. Returns 0 on a null upload.
+TextureHandle Renderer::uploadRgba(unsigned char* pixels, int width, int height,
+                                   const std::string& label) {
+    if (pixels == nullptr) return 0;
     const int levels =
         psx.nearestFiltering
             ? 1
@@ -261,8 +255,36 @@ TextureHandle Renderer::loadTexture(const std::filesystem::path& path) {
 
     const TextureHandle handle = m_nextTexture++;
     m_textures.emplace(handle, std::move(tex));
-    log::info("loadTexture '{}' {}x{} ({} mips)", pathUtf8, width, height, levels);
+    log::info("uploadTexture '{}' {}x{} ({} mips)", label, width, height, levels);
     return handle;
+}
+
+TextureHandle Renderer::loadTexture(const std::filesystem::path& path) {
+    const std::string pathUtf8 = path.string();
+    int width = 0, height = 0, channels = 0;
+    stbi_set_flip_vertically_on_load(1); // GL's uv origin is bottom-left
+    stbi_uc* pixels = stbi_load(pathUtf8.c_str(), &width, &height, &channels, 4);
+    if (pixels == nullptr) {
+        log::error("loadTexture '{}': {}", pathUtf8, stbi_failure_reason());
+        return 0;
+    }
+    return uploadRgba(pixels, width, height, pathUtf8);
+}
+
+// Decode a compressed image (PNG/JPG/TGA bytes, e.g. an FBX-embedded texture) from memory and
+// upload it. Lets skinned characters carry their own texture inside the .fbx with no sidecar.
+TextureHandle Renderer::loadTextureFromMemory(const unsigned char* data, std::size_t size,
+                                              const std::string& label) {
+    if (data == nullptr || size == 0) return 0;
+    int width = 0, height = 0, channels = 0;
+    stbi_set_flip_vertically_on_load(1);
+    stbi_uc* pixels = stbi_load_from_memory(data, static_cast<int>(size), &width, &height,
+                                            &channels, 4);
+    if (pixels == nullptr) {
+        log::error("loadTextureFromMemory '{}': {}", label, stbi_failure_reason());
+        return 0;
+    }
+    return uploadRgba(pixels, width, height, label);
 }
 
 void Renderer::setAtlas(TextureHandle atlas) {

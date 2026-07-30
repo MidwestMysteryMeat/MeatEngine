@@ -320,6 +320,25 @@ std::filesystem::path findAlbedo(const aiScene& scene, const std::filesystem::pa
     return {};
 }
 
+// Compressed bytes of the first diffuse texture EMBEDDED in the model file (FBX often embeds
+// its texture rather than shipping a sidecar). GetEmbeddedTexture resolves both "*N" indices
+// and embedded filenames. Only compressed (PNG/JPG) embeds are returned (mHeight == 0); raw
+// pixel embeds are rare and skipped. Empty when there's no embedded diffuse texture.
+std::vector<unsigned char> findEmbeddedAlbedo(const aiScene& scene) {
+    for (unsigned m = 0; m < scene.mNumMaterials; ++m) {
+        aiString tex;
+        if (scene.mMaterials[m]->GetTexture(aiTextureType_DIFFUSE, 0, &tex) != AI_SUCCESS &&
+            scene.mMaterials[m]->GetTexture(aiTextureType_BASE_COLOR, 0, &tex) != AI_SUCCESS) {
+            continue;
+        }
+        const aiTexture* emb = scene.GetEmbeddedTexture(tex.C_Str());
+        if (emb == nullptr || emb->mHeight != 0) continue; // only compressed (PNG/JPG) embeds
+        const auto* bytes = reinterpret_cast<const unsigned char*>(emb->pcData);
+        return {bytes, bytes + emb->mWidth}; // mWidth = byte count for a compressed embed
+    }
+    return {};
+}
+
 } // namespace
 
 std::optional<SkeletalModel> loadSkeletalModel(const std::filesystem::path& path,
@@ -407,7 +426,8 @@ std::optional<SkeletalModel> loadSkeletalModel(const std::filesystem::path& path
     // Undo the scene-root node transform (scale-conjugated to match the chain).
     model.rootInverse =
         glm::inverse(scaleTranslation(toGlm(scene->mRootNode->mTransformation), opts.scale));
-    model.albedo = findAlbedo(*scene, path);
+    model.albedoEmbedded = findEmbeddedAlbedo(*scene); // texture inside the FBX (PSX chars)
+    if (model.albedoEmbedded.empty()) model.albedo = findAlbedo(*scene, path);
     if (stats.zeroWeightVerts > 0) {
         log::warn("skeletal model '{}': {} vertices had no weights — pinned to bone 0",
                   path.filename().string(), stats.zeroWeightVerts);
