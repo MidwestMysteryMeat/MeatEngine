@@ -336,6 +336,11 @@ void Engine::render(float alpha) {
         case 5:
             m_renderer.submitChunk(m_remotePlayerMesh, e.pos);
             break;
+        case 6: // Turret: small box + a blue status light
+            m_renderer.submitChunk(m_pickupMesh, e.pos);
+            m_renderer.submitPointLight(e.pos + glm::vec3(0, 0.5f, 0),
+                                        glm::vec3(0.2f, 0.5f, 1.0f), 5.0f);
+            break;
         default:
             break;
         }

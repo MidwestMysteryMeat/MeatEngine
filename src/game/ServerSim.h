@@ -83,6 +83,16 @@ private:
         float armTime = 1.0f; // won't trigger on its own owner while arming
         float triggerRange = 2.2f;
     };
+    // A placed auto-turret: targets the nearest hostile NPC in range + line of
+    // sight and fires hitscan on a cadence. Owned by a player, has health.
+    struct Turret {
+        std::uint32_t id = 0;
+        PeerId owner = 0;
+        glm::vec3 pos{0};
+        float yaw = 0.0f;
+        float health = 120.0f;
+        float fireCooldown = 0.0f;
+    };
     struct Npc {
         std::uint32_t id = 0;
         EntityArchetype type = EntityArchetype::NpcChaser;
@@ -107,6 +117,7 @@ private:
     void spawnDungeonLoot();
     void spawnDungeonNpcs();
     void updateNpcs(Transport& transport);
+    void updateTurrets(Transport& transport);
     void damageNpc(Transport& transport, Npc& npc, float damage); // death → loot drop
     void loadSaveBody(const nlohmann::json& j); // may throw; initFromSave bounds it
     bool tryPickup(Transport& transport, PeerId peer, Player& player); // true if grabbed
@@ -138,6 +149,7 @@ private:
     std::vector<Projectile> m_projectiles;
     std::vector<Deployable> m_deployables;
     std::vector<Npc> m_npcs;
+    std::vector<Turret> m_turrets;
     ScriptHost m_scripts;
     Transport* m_activeTransport = nullptr; // set each pump/tick for script callbacks
     std::uint64_t m_scriptRng = 0x2545F4914F6CDD1Dull; // seeded in init()

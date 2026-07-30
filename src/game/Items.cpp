@@ -65,6 +65,12 @@ DefaultItems registerDefaultItems(ItemRegistry& items, BlockId stone) {
                             .blastRadius = 3.0f,
                             .blastDamage = 110.0f});
 
+    d.turret = items.add({.name = "turret",
+                          .type = ItemType::Weapon,
+                          .maxStack = 3,
+                          .fireInterval = 0.8f,
+                          .delivery = DeliveryKind::Deployable,
+                          .deploysTurret = true});
     d.medkit = items.add({.name = "medkit", .type = ItemType::Consumable, .maxStack = 4});
     d.stoneBlock = items.add(
         {.name = "stone", .type = ItemType::Block, .maxStack = 250, .blockId = stone});

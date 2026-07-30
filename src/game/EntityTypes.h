@@ -15,7 +15,8 @@ enum class EntityArchetype : std::uint8_t {
     Deployable = 3,
     NpcChaser = 4,  // melee rusher
     NpcShooter = 5, // ranged, holds distance
-    // Turret, Companion, scheduled NPCs land with their phases.
+    Turret = 6,     // placed auto-defense
+    // Companion, scheduled NPCs land with their phases.
 };
 
 // Server-side world entity. Deliberately a plain struct while the roster is

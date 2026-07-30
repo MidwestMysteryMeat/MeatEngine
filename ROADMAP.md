@@ -209,7 +209,9 @@ loopback transport.
 - [x] Chaser (melee rush) + Shooter (LoS ranged, holds distance) NPCs: aggro w/ wall
       check, 0.6 s repath, kinematic waypoint follow; seeded dungeon-room spawns;
       NPCs take bullet + blast damage, drop ammo on death, ride entity snapshots
-- [ ] Turret + Companion behaviors; voxel-sampled cover seek; spawner volumes + waves
+- [x] Turret: placeable auto-defense (deployable item) — targets nearest hostile NPC in
+      range + LoS, fires hitscan on cadence, faces target, has health, rides entity snapshots
+- [ ] Companion behavior; voxel-sampled cover seek; spawner volumes + waves
 - [ ] NPC schedules/factions/world clock (living-world layer); Recast/Detour v2 swap
 - [ ] World clock (day cycle in snapshots) + NPC schedules (timeRange→activity@location,
       interrupt stack, factions/aggro matrix, editor spawn+location markers, far-LOD

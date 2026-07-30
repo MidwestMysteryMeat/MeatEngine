@@ -257,6 +257,36 @@ void ServerSim::updateNpcs(Transport& transport) {
     (void)transport;
 }
 
+void ServerSim::updateTurrets(Transport& transport) {
+    constexpr float kRange = 22.0f, kDamage = 34.0f, kInterval = 0.7f;
+    for (Turret& t : m_turrets) {
+        if (!m_voxels.isChunkLoaded(voxelToChunk(worldToVoxel(t.pos)))) continue;
+        t.fireCooldown -= kFixedDtServer;
+        const glm::vec3 muzzle = t.pos + glm::vec3(0, 0.6f, 0);
+
+        // Nearest hostile NPC in range with a clear line of sight.
+        Npc* target = nullptr;
+        float best = kRange;
+        for (Npc& npc : m_npcs) {
+            if (npc.health <= 0.0f) continue;
+            const glm::vec3 to = npc.pos + glm::vec3(0, 0.9f, 0) - muzzle;
+            const float d = glm::length(to);
+            if (d >= best) continue;
+            if (m_voxels.raycast(muzzle, to / std::max(d, 1e-4f), d)) continue; // wall
+            best = d;
+            target = &npc;
+        }
+        if (!target) continue;
+
+        const glm::vec3 to = target->pos - t.pos;
+        t.yaw = std::atan2(-to.x, -to.z);
+        if (t.fireCooldown <= 0.0f) {
+            t.fireCooldown = kInterval;
+            damageNpc(transport, *target, kDamage);
+        }
+    }
+}
+
 void ServerSim::spawnDungeonLoot() {
     // Same pure function the terrain generator uses — identical layout for free.
     const DungeonLayout layout = DungeonLayout::generate(m_seed, {});
@@ -698,6 +728,7 @@ void ServerSim::tick(Transport& transport) {
     m_physics.step(kFixedDtServer);
     updateProjectiles(transport);
     updateNpcs(transport);
+    updateTurrets(transport);
     m_voxels.update(streamCenter, m_jobs);
 
     ++m_tick;
@@ -720,6 +751,7 @@ void ServerSim::giveStartingLoadout(Player& player) {
     player.inventory.add(m_defaultItems.rpg, 1, m_items);
     player.inventory.add(m_defaultItems.grenade, 3, m_items);
     player.inventory.add(m_defaultItems.claymore, 2, m_items);
+    player.inventory.add(m_defaultItems.turret, 2, m_items);
     player.inventory.add(m_defaultItems.ammo9mm, 90, m_items);
     player.inventory.add(m_defaultItems.shells, 24, m_items);
     player.inventory.add(m_defaultItems.rifleAmmo, 30, m_items);
@@ -791,13 +823,22 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
                     glm::vec3 at = eye + dir * 2.5f;
                     if (const auto hit = m_voxels.raycast(eye, dir, 3.0f))
                         at = eye + dir * std::max(0.5f, hit->t - 0.2f);
-                    Deployable dep;
-                    dep.id = m_nextEntityId++;
-                    dep.owner = peer;
-                    dep.pos = at;
-                    dep.radius = heldDef.blastRadius;
-                    dep.damage = heldDef.blastDamage;
-                    m_deployables.push_back(dep); // armTime/triggerRange keep their defaults
+                    if (heldDef.deploysTurret) {
+                        Turret t;
+                        t.id = m_nextEntityId++;
+                        t.owner = peer;
+                        t.pos = at;
+                        m_turrets.push_back(t);
+                        log::info("server: player {} placed a turret", peer);
+                    } else {
+                        Deployable dep;
+                        dep.id = m_nextEntityId++;
+                        dep.owner = peer;
+                        dep.pos = at;
+                        dep.radius = heldDef.blastRadius;
+                        dep.damage = heldDef.blastDamage;
+                        m_deployables.push_back(dep); // armTime/triggerRange keep defaults
+                    }
                 }
             }
         } else if (heldDef.type == ItemType::Block) {
@@ -981,6 +1022,11 @@ void ServerSim::broadcastSnapshot(Transport& transport) {
         if (snap.entities.size() >= kMaxSnapshotEntities) break;
         snap.entities.push_back({n.id, static_cast<std::uint8_t>(n.type), n.pos, n.yaw, 0,
                                  n.health, 0});
+    }
+    for (const Turret& t : m_turrets) {
+        if (snap.entities.size() >= kMaxSnapshotEntities) break;
+        snap.entities.push_back({t.id, static_cast<std::uint8_t>(EntityArchetype::Turret),
+                                 t.pos, t.yaw, 0, t.health, 0});
     }
     for (const Projectile& p : m_projectiles) {
         if (snap.entities.size() >= kMaxSnapshotEntities) break;
