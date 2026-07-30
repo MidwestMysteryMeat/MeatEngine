@@ -214,7 +214,11 @@ loopback transport.
       hostile-count rejection); absence = despawn; bobbing box render proxies
 - [x] Item pickups: 16 seeded loot spawns in dungeon rooms (ammo/medkits), E to take
       (pickup beats consume), partial-stack pickup, inventory sync
-- [ ] Drop-on-death; interpolation for moving entities (with projectiles/NPCs)
+- [x] Drop-on-death: a killed player scatters a subset of their bag (up to 6 stacks,
+      deterministic golden-angle ring) as ItemPickups at the death spot, reusing the
+      WorldEntity snapshot path (no new wire type); GameRules.dropOnDeath flag (wire bit
+      16); spawnPickup() helper shared with the NPC/dungeon loot drops
+- [ ] Interpolation for moving entities (with projectiles/NPCs)
 
 ## Phase 6.6 — Ballistics & destruction ("Siege but further", ARCHITECTURE §game/ballistics)
 - [x] Material props on blocks (hp, penCost: stone 100/45, dirt 40/15, grass 30/12)
@@ -236,7 +240,11 @@ loopback transport.
 - [x] Deployables: claymore (proximity trap, arm time, owner-safe while arming)
 - [x] Reference arsenal all spawned at loadout: pistol/SMG/shotgun/sniper/RPG/
       grenade/claymore + 4 ammo types + medkit + blocks
-- [ ] Ammo types modifying ballistics (AP/HP); recoil/bloom feel pass (playtest)
+- [x] Ammo types modifying ballistics (AP/HP): ItemDef damageMult/penetrationMult applied
+      in the hitscan march (budget *= penetrationMult, damage *= damageMult); AP pistol
+      (0.85x dmg / 1.6x pen — drills more, softer) + HP pistol (1.4x dmg / 0x pen — hard,
+      stops in the first material) in the reference loadout. Damage tuning needs a playtest.
+- [ ] Recoil/bloom feel pass (playtest)
 
 ## Phase 6.8 — AI & navigation (ARCHITECTURE §game/ai)
 - [x] v1 voxel-native pathing: 3D A* over live voxels (step-up 1 / drop 4, node budget,

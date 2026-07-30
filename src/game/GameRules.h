@@ -16,6 +16,7 @@ struct GameRules {
     bool minedBlockDrops = true; // broken blocks enter the breaker's inventory
     bool penetration = true;     // bullets spend budget passing through materials
     bool blockDamage = true;     // blocks chip (hp) instead of breaking on first hit
+    bool dropOnDeath = true;     // a killed player scatters part of their bag as world pickups
     // Metres per voxel — world-defining, applied to meat::kVoxelSize at startup. Devs pick
     // anything from fine (< 0.5) to chunkier-than-Minecraft (> 1). Must match across a
     // session (server + all clients see the same world), so it is set before world gen.
@@ -23,13 +24,15 @@ struct GameRules {
 
     std::uint8_t flagsByte() const {
         return static_cast<std::uint8_t>((finiteAmmo ? 1 : 0) | (minedBlockDrops ? 2 : 0) |
-                                         (penetration ? 4 : 0) | (blockDamage ? 8 : 0));
+                                         (penetration ? 4 : 0) | (blockDamage ? 8 : 0) |
+                                         (dropOnDeath ? 16 : 0));
     }
     void setFlagsByte(std::uint8_t f) {
         finiteAmmo = (f & 1) != 0;
         minedBlockDrops = (f & 2) != 0;
         penetration = (f & 4) != 0;
         blockDamage = (f & 8) != 0;
+        dropOnDeath = (f & 16) != 0;
     }
 };
 

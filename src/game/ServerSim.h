@@ -131,6 +131,8 @@ private:
     void updateTurrets(Transport& transport);
     void updateCompanions(Transport& transport);
     void damageNpc(Transport& transport, Npc& npc, float damage); // death → loot drop
+    void spawnPickup(ItemId item, std::uint16_t count, glm::vec3 pos); // ItemPickup world entity
+    void dropPlayerLoot(Player& player, glm::vec3 pos); // drop-on-death scatter (GameRules-gated)
     void loadSaveBody(const nlohmann::json& j); // may throw; initFromSave bounds it
     bool tryPickup(Transport& transport, PeerId peer, Player& player); // true if grabbed
     void fireHitscan(Transport& transport, PeerId peer, Player& player,

@@ -141,19 +141,51 @@ void ServerSim::spawnDungeonNpcs() {
     log::info("server: spawned {} dungeon NPCs", m_npcs.size());
 }
 
+// Spawn one ItemPickup world entity (shared by dungeon/NPC/death loot). Rides the
+// existing WorldEntity snapshot path — no new wire type. Same 4096 entity cap the
+// script spawnPickup uses so a runaway drop can never OOM the server.
+void ServerSim::spawnPickup(ItemId item, std::uint16_t count, glm::vec3 pos) {
+    if (item == 0 || count == 0) return;
+    if (m_entities.size() >= 4096) return;
+    WorldEntity e;
+    e.id = m_nextEntityId++;
+    e.type = EntityArchetype::ItemPickup;
+    e.pos = pos;
+    e.item = item;
+    e.count = count;
+    m_entities.push_back(e);
+}
+
 void ServerSim::damageNpc(Transport& transport, Npc& npc, float damage) {
     if (npc.health <= 0.0f) return; // already dead: no double loot from multi-pellet kills
     npc.health -= damage;
     if (npc.health > 0.0f) return;
     // Death: drop a small ammo cache where it fell (survivors loot the room).
-    WorldEntity drop;
-    drop.id = m_nextEntityId++;
-    drop.type = EntityArchetype::ItemPickup;
-    drop.pos = npc.pos + glm::vec3(0, 0.3f, 0);
-    drop.item = m_defaultItems.ammo9mm;
-    drop.count = 12;
-    m_entities.push_back(drop);
+    spawnPickup(m_defaultItems.ammo9mm, 12, npc.pos + glm::vec3(0, 0.3f, 0));
     (void)transport; // death effects (sound/particles) ride future events
+}
+
+// Drop-on-death: scatter part of the victim's bag as world pickups at the spot
+// they fell, so a killer (or the room) can loot the kill. Deterministic — the
+// same bag + position produce the same scatter on every peer/replay, keeping the
+// server-authoritative snapshots in sync. GameRules-gated (no-op when disabled).
+void ServerSim::dropPlayerLoot(Player& player, glm::vec3 pos) {
+    if (!m_rules.dropOnDeath) return;
+    constexpr int kMaxDeathDrops = 6;            // a subset — a corpse to loot, not a landfill
+    constexpr float kGoldenAngle = 2.39996323f;  // rad: fans the stacks into an even ring
+    constexpr float kScatterRadius = 0.6f;       // metres from the death spot
+    int dropped = 0;
+    for (int i = 0; i < Inventory::kSlots && dropped < kMaxDeathDrops; ++i) {
+        ItemStack& s = player.inventory.slot(i);
+        if (s.id == 0 || s.count == 0) continue;
+        const float a = static_cast<float>(dropped) * kGoldenAngle;
+        spawnPickup(s.id, s.count,
+                    pos + glm::vec3(std::cos(a) * kScatterRadius, 0.3f,
+                                    std::sin(a) * kScatterRadius));
+        s = {}; // the stack left the bag for the ground
+        ++dropped;
+    }
+    if (dropped > 0) player.inventoryDirty = true; // flushed on the victim's next combat tick
 }
 
 void ServerSim::updateNpcs(Transport& transport) {
@@ -199,6 +231,7 @@ void ServerSim::updateNpcs(Transport& transport) {
                 bestPlayer->health -= 12.0f;
                 if (bestPlayer->health <= 0.0f) {
                     log::info("server: player {} was mauled", bestPeer);
+                    dropPlayerLoot(*bestPlayer, bestPlayer->controller.position());
                     bestPlayer->controller.setState(kSpawnPos, glm::vec3(0));
                     bestPlayer->health = 100.0f;
                 }
@@ -211,6 +244,7 @@ void ServerSim::updateNpcs(Transport& transport) {
                 bestPlayer->health -= 8.0f; // LoS already verified above
                 if (bestPlayer->health <= 0.0f) {
                     log::info("server: player {} was shot down", bestPeer);
+                    dropPlayerLoot(*bestPlayer, bestPlayer->controller.position());
                     bestPlayer->controller.setState(kSpawnPos, glm::vec3(0));
                     bestPlayer->health = 100.0f;
                 }
@@ -487,6 +521,7 @@ void ServerSim::marchBullet(Transport& transport, PeerId peer, Player& player,
             victim->health -= shotDamage * damageScale;
             if (victim->health <= 0.0f) {
                 log::info("server: player {} fragged player {}", peer, victimPeer);
+                dropPlayerLoot(*victim, victim->controller.position()); // scatter before respawn
                 victim->controller.setState(kSpawnPos, glm::vec3(0));
                 victim->health = 100.0f;
             }
@@ -553,6 +588,7 @@ void ServerSim::applyBlast(Transport& transport, PeerId source, glm::vec3 center
         player->health -= dealt;
         if (player->health <= 0.0f) {
             log::info("server: player {} blew up player {}", source, peer);
+            dropPlayerLoot(*player, player->controller.position()); // scatter before respawn
             player->controller.setState(kSpawnPos, glm::vec3(0));
             player->health = 100.0f;
         }
