@@ -43,6 +43,10 @@ public:
     // between the bracketing snapshot states — smooth despite 20 Hz updates.
     std::vector<PlayerState> remoteViewStates() const;
 
+    // World entities, newest snapshot state (pickups are static; movers get
+    // interpolation when projectiles/NPCs land).
+    const std::vector<EntityState>& entities() const { return m_entities; }
+
 private:
     void applySnapshot(const SnapshotMsg& snap, PhysicsWorld& physics,
                        CharacterController& player);
@@ -62,6 +66,7 @@ private:
     std::uint64_t m_latestSnapshotTick = 0;
     std::deque<PlayerCommand> m_unacked; // commands newer than the server's ack
     std::unordered_map<PeerId, RemoteHistory> m_remotes;
+    std::vector<EntityState> m_entities;
 };
 
 } // namespace meat

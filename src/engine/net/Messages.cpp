@@ -98,6 +98,21 @@ bool decode(PlayerState& state, ByteReader& r) {
            r.read(state.crouched) && r.read(state.health);
 }
 
+void encode(const EntityState& e, ByteWriter& w) {
+    w.write(e.id);
+    w.write(e.archetype);
+    w.write(e.pos);
+    w.write(e.yaw);
+    w.write(e.anim);
+    w.write(e.health);
+    w.write(e.data);
+}
+
+bool decode(EntityState& e, ByteReader& r) {
+    return r.read(e.id) && r.read(e.archetype) && r.read(e.pos) && r.read(e.yaw) &&
+           r.read(e.anim) && r.read(e.health) && r.read(e.data);
+}
+
 void encode(const SnapshotMsg& msg, ByteWriter& w) {
     w.write(msg.tick);
     w.write(msg.lastCmdTick);
@@ -105,6 +120,11 @@ void encode(const SnapshotMsg& msg, ByteWriter& w) {
     w.write(static_cast<std::uint16_t>(count));
     for (std::size_t i = 0; i < count; ++i) {
         encode(msg.players[i], w);
+    }
+    const std::size_t entityCount = std::min(msg.entities.size(), kMaxSnapshotEntities);
+    w.write(static_cast<std::uint16_t>(entityCount));
+    for (std::size_t i = 0; i < entityCount; ++i) {
+        encode(msg.entities[i], w);
     }
 }
 
@@ -124,6 +144,19 @@ bool decode(SnapshotMsg& msg, ByteReader& r) {
             return false;
         }
         msg.players.push_back(state);
+    }
+    std::uint16_t entityCount = 0;
+    if (!r.read(entityCount) || entityCount > kMaxSnapshotEntities) {
+        return false;
+    }
+    msg.entities.clear();
+    msg.entities.reserve(entityCount);
+    for (std::uint16_t i = 0; i < entityCount; ++i) {
+        EntityState e;
+        if (!decode(e, r)) {
+            return false;
+        }
+        msg.entities.push_back(e);
     }
     return true;
 }

@@ -92,9 +92,11 @@ loopback transport.
 - [ ] Asset staging from verified CC-BY sources + ATTRIBUTION.md automation
 
 ## Phase 6.5 — Entities on the wire (foundation for everything below)
-- [ ] EntityState in snapshots (id/archetype/pos/yaw/anim/health), reliable spawn/despawn,
-      client interpolation generalized from remote players; box/sprite render proxies
-- [ ] Ground item pickups (drop on death, E to take) — closes the Phase 4 leftover
+- [x] EntityState in snapshots (id/archetype/pos/yaw/anim/health/data, cap 256,
+      hostile-count rejection); absence = despawn; bobbing box render proxies
+- [x] Item pickups: 16 seeded loot spawns in dungeon rooms (ammo/medkits), E to take
+      (pickup beats consume), partial-stack pickup, inventory sync
+- [ ] Drop-on-death; interpolation for moving entities (with projectiles/NPCs)
 
 ## Phase 6.6 — Ballistics & destruction ("Siege but further", ARCHITECTURE §game/ballistics)
 - [ ] Material props on blocks (hp, penCost, reinforced variants)
@@ -115,6 +117,9 @@ loopback transport.
 - [ ] v1 voxel-native pathing (3D A*, jump/drop links, destruction-aware by construction)
 - [ ] Behaviors: Chaser, Shooter (voxel-sampled cover seek), Turret, Companion
 - [ ] Spawner volumes (editor tool) + wave logic; v2 = Recast/Detour tiled navmesh swap
+- [ ] World clock (day cycle in snapshots) + NPC schedules (timeRange→activity@location,
+      interrupt stack, factions/aggro matrix, editor spawn+location markers, far-LOD
+      coarse ticking) — the living-world layer for Sandbox/PvE
 
 ## Phase 6.9 — Game modes (ARCHITECTURE §game/modes)
 - [ ] GameMode framework: teams, friendly fire, respawn policy, win-condition hooks

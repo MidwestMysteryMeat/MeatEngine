@@ -5,6 +5,7 @@
 #include "engine/physics/CharacterController.h"
 #include "engine/physics/PhysicsWorld.h"
 #include "engine/voxel/VoxelWorld.h"
+#include "game/EntityTypes.h"
 #include "game/GameRules.h"
 #include "game/Inventory.h"
 #include "game/WorldGen.h"
@@ -61,9 +62,14 @@ private:
     void sendInventory(Transport& transport, PeerId peer, const Player& player) const;
     void giveStartingLoadout(Player& player);
 
+    void spawnDungeonLoot();
+    bool tryPickup(Transport& transport, PeerId peer, Player& player); // true if grabbed
+
     JobQueue m_jobs;         // server-side meshing feeds colliders only
     PhysicsWorld m_physics;
     VoxelWorld m_voxels;
+    std::vector<WorldEntity> m_entities;
+    std::uint32_t m_nextEntityId = 1;
     std::unordered_map<PeerId, std::unique_ptr<Player>> m_players;
     BlockPalette m_palette;
     GameRules m_rules;

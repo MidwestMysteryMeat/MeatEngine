@@ -50,10 +50,23 @@ struct PlayerState {
     float health = 100.0f;
 };
 
+// Non-player world entities (pickups, projectiles, NPCs, turrets). archetype and
+// data are opaque to the net layer — the game layer owns their meaning.
+struct EntityState {
+    std::uint32_t id = 0;
+    std::uint8_t archetype = 0;
+    glm::vec3 pos{0};
+    float yaw = 0;
+    std::uint8_t anim = 0;
+    float health = 0;
+    std::uint16_t data = 0;
+};
+
 struct SnapshotMsg {
     std::uint64_t tick = 0;
     std::uint64_t lastCmdTick = 0;
     std::vector<PlayerState> players;
+    std::vector<EntityState> entities;
 };
 
 struct VoxelOpMsg {
@@ -64,6 +77,7 @@ struct VoxelOpMsg {
 // Snapshots larger than this are rejected on decode (and clamped on encode) so
 // a hostile packet can never make us allocate an absurd player list.
 inline constexpr std::size_t kMaxSnapshotPlayers = 64;
+inline constexpr std::size_t kMaxSnapshotEntities = 256;
 
 // PlayerCommand travels inside CommandMsg but is exposed for tests/tools.
 // Wire layout: tick u64, move vec2, yaw f32, pitch f32, 6 buttons in one u8.
@@ -78,6 +92,8 @@ void encode(const CommandMsg& msg, ByteWriter& w);
 bool decode(CommandMsg& msg, ByteReader& r);
 void encode(const PlayerState& state, ByteWriter& w);
 bool decode(PlayerState& state, ByteReader& r);
+void encode(const EntityState& e, ByteWriter& w);
+bool decode(EntityState& e, ByteReader& r);
 void encode(const SnapshotMsg& msg, ByteWriter& w);
 bool decode(SnapshotMsg& msg, ByteReader& r);
 void encode(const VoxelOpMsg& msg, ByteWriter& w);

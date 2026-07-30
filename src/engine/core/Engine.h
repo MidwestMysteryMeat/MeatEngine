@@ -70,6 +70,7 @@ private:
 
     std::unordered_map<ChunkPos, MeshHandle> m_chunkMeshes;
     MeshHandle m_remotePlayerMesh = 0; // box proxy until character meshes land
+    MeshHandle m_pickupMesh = 0;       // small bobbing cube for item pickups
     PlayerCommand m_lastCmd{};
     std::uint64_t m_tick = 0;
     glm::vec3 m_prevPlayerPos{0};

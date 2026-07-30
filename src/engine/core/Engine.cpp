@@ -13,8 +13,11 @@
 
 #include <fstream>
 
+#include <glm/gtc/constants.hpp>
+
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <format>
 #include <thread>
 
@@ -24,11 +27,10 @@ constexpr float kFallResetY = -30.0f; // below any terrain: teleport back to spa
 constexpr glm::vec3 kClientSpawn{8.0f, 8.0f, 8.0f};
 constexpr float kFireInterval = 0.15f; // cosmetic mirror; the server enforces its own
 
-// Box proxy for remote players (feet at local origin) rendered through the
-// chunk pipeline: atlas tile per face, so no separate shader needed.
-ChunkMeshData makePlayerBoxMesh() {
+// Box proxy meshes (feet/base at local origin) rendered through the chunk
+// pipeline: atlas tile per face, so no separate shader needed.
+ChunkMeshData makeBoxMesh(float hw, float h, std::uint16_t tile) {
     ChunkMeshData data;
-    const float hw = 0.35f, h = 1.8f;
     const glm::vec3 lo{-hw, 0.0f, -hw}, hi{hw, h, hw};
     const struct {
         glm::i8vec3 n;
@@ -44,7 +46,7 @@ ChunkMeshData makePlayerBoxMesh() {
     const glm::vec2 uv[4] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
     for (const auto& f : faces) {
         const auto base = static_cast<std::uint32_t>(data.vertices.size());
-        for (int i = 0; i < 4; ++i) data.vertices.push_back({f.corners[i], f.n, uv[i], 2});
+        for (int i = 0; i < 4; ++i) data.vertices.push_back({f.corners[i], f.n, uv[i], tile});
         for (std::uint32_t idx : {0u, 1u, 2u, 0u, 2u, 3u}) data.indices.push_back(base + idx);
     }
     return data;
@@ -84,7 +86,8 @@ bool Engine::initClientSystems() {
     m_renderer.setAtlas(atlas);
     m_renderer.setDirectionalLight(glm::normalize(glm::vec3(-0.4f, -1.0f, -0.3f)),
                                    glm::vec3(1.0f, 0.96f, 0.88f));
-    m_remotePlayerMesh = m_renderer.uploadChunkMesh(makePlayerBoxMesh());
+    m_remotePlayerMesh = m_renderer.uploadChunkMesh(makeBoxMesh(0.35f, 1.8f, 2));
+    m_pickupMesh = m_renderer.uploadChunkMesh(makeBoxMesh(0.15f, 0.3f, 3));
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -183,6 +186,13 @@ void Engine::render(float alpha) {
     const std::vector<PlayerState> remotes = m_client.remoteViewStates();
     for (const PlayerState& remote : remotes)
         m_renderer.submitChunk(m_remotePlayerMesh, remote.pos);
+
+    const float bobPhase = static_cast<float>(m_tick % 120) / 120.0f * glm::two_pi<float>();
+    for (const EntityState& e : m_client.entities()) {
+        if (e.archetype == 1) // ItemPickup: gentle bob so loot reads as loot
+            m_renderer.submitChunk(m_pickupMesh,
+                                   e.pos + glm::vec3(0, 0.08f * std::sin(bobPhase), 0));
+    }
 
     for (const EditorLight& light : m_editorLights) { // placed lights are world lights
         if (light.type == 0)

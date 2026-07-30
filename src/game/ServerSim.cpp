@@ -1,6 +1,7 @@
 #include "game/ServerSim.h"
 #include "engine/core/Log.h"
 #include "engine/core/ViewMath.h"
+#include "game/DungeonGen.h"
 
 #include <nlohmann/json.hpp>
 
@@ -55,7 +56,53 @@ bool ServerSim::init(std::uint32_t worldSeed) {
     });
     m_voxels.setChunkUnloadedCallback(
         [this](ChunkPos pos) { m_physics.removeChunkCollider(pos); });
+    spawnDungeonLoot();
     return true;
+}
+
+void ServerSim::spawnDungeonLoot() {
+    // Same pure function the terrain generator uses — identical layout for free.
+    const DungeonLayout layout = DungeonLayout::generate(m_seed, {});
+    std::size_t roomIndex = 0;
+    for (const auto& room : layout.rooms()) {
+        if (roomIndex >= 16) break;
+        const glm::ivec3 c{(room.min.x + room.max.x) / 2, room.min.y,
+                           (room.min.z + room.max.z) / 2};
+        WorldEntity e;
+        e.id = m_nextEntityId++;
+        e.type = EntityArchetype::ItemPickup;
+        e.pos = (glm::vec3(c) + glm::vec3(0.5f, 0.2f, 0.5f)) * kVoxelSize;
+        e.pos.y = static_cast<float>(c.y) * kVoxelSize + 0.3f; // resting on the floor
+        if (roomIndex % 3 == 2) {
+            e.item = m_defaultItems.medkit;
+            e.count = 1;
+        } else {
+            e.item = m_defaultItems.ammo9mm;
+            e.count = 24;
+        }
+        m_entities.push_back(e);
+        ++roomIndex;
+    }
+    log::info("server: spawned {} loot pickups in dungeon rooms", m_entities.size());
+}
+
+bool ServerSim::tryPickup(Transport& transport, PeerId peer, Player& player) {
+    const glm::vec3 feet = player.controller.position();
+    for (auto it = m_entities.begin(); it != m_entities.end(); ++it) {
+        if (it->type != EntityArchetype::ItemPickup) continue;
+        const glm::vec3 d = it->pos - (feet + glm::vec3(0, 0.9f, 0));
+        if (glm::dot(d, d) > 1.5f * 1.5f) continue;
+        const std::uint16_t leftover = player.inventory.add(it->item, it->count, m_items);
+        if (leftover == it->count) return false; // bag full for this item
+        if (leftover == 0) {
+            m_entities.erase(it); // absent from the next snapshot = despawned
+        } else {
+            it->count = leftover;
+        }
+        sendInventory(transport, peer, player);
+        return true; // one pickup per press
+    }
+    return false;
 }
 
 void ServerSim::pump(Transport& transport) {
@@ -278,12 +325,14 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
         }
     }
 
-    if (player.lastCmd.use && player.useCooldown <= 0.0f &&
-        heldDef.type == ItemType::Consumable && player.health < 100.0f) {
+    if (player.lastCmd.use && player.useCooldown <= 0.0f) {
         player.useCooldown = 0.5f;
-        player.inventory.remove(held.id, 1);
-        player.health = glm::min(100.0f, player.health + 50.0f);
-        player.inventoryDirty = true;
+        const bool grabbed = tryPickup(transport, peer, player); // loot wins over consuming
+        if (!grabbed && heldDef.type == ItemType::Consumable && player.health < 100.0f) {
+            player.inventory.remove(held.id, 1);
+            player.health = glm::min(100.0f, player.health + 50.0f);
+            player.inventoryDirty = true;
+        }
     }
 
     if (player.inventoryDirty) {
@@ -389,6 +438,11 @@ void ServerSim::broadcastSnapshot(Transport& transport) {
                                 player->controller.velocity(), player->lastCmd.yaw,
                                 player->lastCmd.pitch, player->controller.onGround(),
                                 player->controller.crouched(), player->health});
+    }
+    for (const WorldEntity& e : m_entities) {
+        if (snap.entities.size() >= kMaxSnapshotEntities) break;
+        snap.entities.push_back({e.id, static_cast<std::uint8_t>(e.type), e.pos, e.yaw, 0,
+                                 0.0f, e.item});
     }
     for (auto& [peer, player] : m_players) {
         snap.lastCmdTick = player->lastCmdTick; // per-recipient ack of their own input

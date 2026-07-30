@@ -413,6 +413,26 @@ player) when counts grow.
   is queryable because the world is voxels), `Turret` (static, LoS target-nearest),
   `Companion` (follow owner / attack owner's target). PvE waves/spawner volumes are an
   editor tool + Lua hook.
+- **NPCs & schedules (the living-world layer, Stalker/Morrowind-style):**
+  - **World clock**: server tick → time-of-day (dev-set day length), replicated in
+    snapshots; drives ambient light scripting and schedules.
+  - **NpcDef** (data/Lua): visuals archetype, faction, dialogue hook (later), and a
+    **Schedule** — an ordered list of `{ timeRange, activity, location }` entries,
+    e.g. 06-08 wander(home), 08-18 work(station), 18-22 patrol(route), 22-06
+    sleep(bed). Activities are the same behavior primitives (idle/wander/moveTo/
+    patrol/interact) the combat AI uses — one behavior VM, two drivers.
+  - **Interrupt stack**: combat/flee/investigate push onto the schedule; when the
+    threat clears, the NPC pops back to whatever the clock says it should be doing.
+    Utility scoring picks among candidate activities when several apply.
+  - **Factions**: an aggro matrix (ally/neutral/hostile per faction pair, GameRules-
+    editable) decides who Shooters target and who NPCs flee from; player reputation
+    slots in later.
+  - **Editor support**: NPC spawn markers + named locations (home/work/waypoints) are
+    placed in the Room Designer like lights and seed volumes; schedules reference
+    locations by name so templates stay relocatable.
+  - **LOD**: NPCs far from any player tick coarsely (teleport-along-schedule, no
+    pathing) — open-world Sandbox needs hundreds of NPCs to be cheap; only
+    near-player NPCs run full pathing and animation.
 
 ### game/building placement — planned (runtime construction beyond single blocks)
 - **Prefab placement:** rooms/pieces authored in the Room Designer save as voxel

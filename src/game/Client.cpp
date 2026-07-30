@@ -104,6 +104,7 @@ void Client::applySnapshot(const SnapshotMsg& snap, PhysicsWorld& physics,
         return std::none_of(snap.players.begin(), snap.players.end(),
                             [&](const PlayerState& s) { return s.playerId == entry.first; });
     });
+    m_entities = snap.entities;
     if (!own) return;
     m_ownHealth = own->health;
 
