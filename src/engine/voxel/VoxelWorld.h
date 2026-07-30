@@ -47,9 +47,11 @@ public:
     BlockRegistry& blockRegistry() { return m_blocks; }
     const BlockRegistry& blockRegistry() const { return m_blocks; }
 
-    // Edit log for the save system: append-only until it consumes and clears it.
-    const std::vector<VoxelEdit>& edits() const { return m_edits; }
-    void clearEdits() { m_edits.clear(); }
+    // Persistent edit overlay: every setBlock is recorded per chunk (last write
+    // per voxel wins) and re-applied when a streamed-out chunk regenerates —
+    // without this, edits silently revert on reload. Also the save payload.
+    using ChunkEdits = std::unordered_map<std::uint16_t, BlockId>; // key: local index
+    const std::unordered_map<ChunkPos, ChunkEdits>& editOverlay() const { return m_overlay; }
 
 private:
     Chunk& ensureChunk(ChunkPos pos);
@@ -59,7 +61,7 @@ private:
 
     std::unordered_map<ChunkPos, std::unique_ptr<Chunk>> m_chunks;
     std::unordered_set<ChunkPos> m_inFlight;
-    std::vector<VoxelEdit> m_edits;
+    std::unordered_map<ChunkPos, ChunkEdits> m_overlay;
     std::function<void(Chunk&, ChunkPos)> m_generator;
     std::function<void(ChunkPos, ChunkMeshData)> m_meshReady;
     std::function<void(ChunkPos)> m_chunkUnloaded;

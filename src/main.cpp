@@ -30,6 +30,8 @@ meat::EngineConfig parseArgs(int argc, char** argv) {
             config.mode = Mode::Dedicated;
         } else if (arg == "--port") {
             if (const char* p = next()) config.port = static_cast<std::uint16_t>(std::atoi(p));
+        } else if (arg == "--load") {
+            if (const char* p = next()) config.loadPath = p;
         } else if (arg == "--seed") {
             if (const char* s = next())
                 config.seed = static_cast<std::uint32_t>(std::strtoul(s, nullptr, 10));

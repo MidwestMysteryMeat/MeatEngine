@@ -15,7 +15,8 @@ struct PlayerCommand {
     glm::vec2 move{0};         // x strafe, y forward, unit-clamped
     float yaw = 0, pitch = 0;  // absolute radians, pitch clamped ±89°
     bool jump = false, crouch = false, sprint = false, fire = false, use = false, reload = false;
-    bool place = false; // RMB: place block at the aimed face
+    bool place = false;             // RMB: place block at the aimed face
+    std::uint8_t selectedSlot = 0;  // hotbar index; the Engine fills this in
 };
 
 // Keyboard/mouse state via GLFW callbacks. The ONE place raw input becomes a
@@ -28,6 +29,7 @@ public:
     bool down(int glfwKey) const;
     bool pressed(int glfwKey) const;      // edge-triggered this frame
     glm::vec2 mouseDelta() const;         // raw counts, unscaled
+    int consumeScrollSteps();             // whole wheel notches since last call
     float sensitivity = 0.0022f;          // radians per count
     PlayerCommand sampleCommand(std::uint64_t tick);
 
@@ -35,6 +37,7 @@ private:
     static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
     static void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
     static void cursorPosCallback(GLFWwindow* window, double x, double y);
+    static void scrollCallback(GLFWwindow* window, double x, double y);
 
     void onButton(int code, int action);
     void onCursorPos(double x, double y);
@@ -49,6 +52,7 @@ private:
     bool m_hasLastCursor = false;         // suppresses the spike on the first motion event
     glm::vec2 m_frameDelta{0};            // cleared by beginFrame — what mouseDelta() reports
     glm::vec2 m_pendingLook{0};           // cleared by sampleCommand — never loses motion
+    float m_scrollAccum = 0.0f;           // wheel notches, drained by consumeScrollSteps
     float m_yaw = 0.0f;
     float m_pitch = 0.0f;
 };

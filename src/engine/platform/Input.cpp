@@ -26,6 +26,17 @@ void Input::attach(Window& window) {
     glfwSetKeyCallback(handle, &Input::keyCallback);
     glfwSetMouseButtonCallback(handle, &Input::mouseButtonCallback);
     glfwSetCursorPosCallback(handle, &Input::cursorPosCallback);
+    glfwSetScrollCallback(handle, &Input::scrollCallback);
+}
+
+int Input::consumeScrollSteps() {
+    const int steps = static_cast<int>(m_scrollAccum);
+    m_scrollAccum -= static_cast<float>(steps);
+    return steps;
+}
+
+void Input::scrollCallback(GLFWwindow* window, [[maybe_unused]] double x, double y) {
+    if (Input* input = self(window)) input->m_scrollAccum += static_cast<float>(y);
 }
 
 void Input::beginFrame() {

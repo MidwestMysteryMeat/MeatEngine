@@ -205,6 +205,9 @@ public:
     void setUniform(const char* name, const glm::vec3& v) const {
         glProgramUniform3fv(m_id, loc(name), 1, glm::value_ptr(v));
     }
+    void setUniform(const char* name, const glm::vec4& v) const {
+        glProgramUniform4fv(m_id, loc(name), 1, glm::value_ptr(v));
+    }
     void setUniform(const char* name, const glm::mat4& v) const {
         glProgramUniformMatrix4fv(m_id, loc(name), 1, GL_FALSE, glm::value_ptr(v));
     }

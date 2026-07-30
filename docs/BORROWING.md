@@ -38,4 +38,24 @@ with notices kept; GPL/LGPL = ideas only, never code.
 - **Godot** `modules/multiplayer` (MIT): property-replication/spawn-authority design
   reference.
 
+## OpenMW study (GPL-3 — ideas only; evaluated 2026-07-30)
+
+TheLostPantheon/openmw = OpenMW Vita (PS Vita port); no procgen anywhere in the
+ecosystem — our dungeon path is already ahead. Takeaways adopted as design guidance:
+
+- **Effect schema three-tier split** (EffectDef → parameterized use → runtime instance
+  with remaining duration) + explicit stacking flags (`stackable`, `affectsBase`,
+  `temporary`) → adopted into the GAS-lite plan (ARCHITECTURE §game/abilities).
+- **Items grant abilities via a trigger enum** (onUse/onStrike/constant) + charge pool —
+  one mechanism for consumables, enchanted weapons, and passives.
+- **Lua API model**: global scripts (world-mutating = server) vs local scripts
+  (own-object-only = client/entity), one-frame-delayed events, capability-scoped
+  packages, and a strict onSave value contract (nil/number/string/table, no functions) —
+  the blueprint for our sol2 surface.
+- **Recast/Detour is zlib** and OpenMW's runtime navmesh-from-physics-per-cell pattern
+  maps directly onto navmesh-from-voxel-colliders-per-chunk for future NPC/turret AI —
+  directly adoptable code.
+- **Dynamic budget scaling** (Vita fork): auto-tune fog/draw distance to hold framerate —
+  cheap and on-brand for the PSX renderer.
+
 Every ported file or transcribed routine gets its upstream notice in THIRD_PARTY.md.

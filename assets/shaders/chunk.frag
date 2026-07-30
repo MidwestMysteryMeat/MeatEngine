@@ -11,6 +11,7 @@ layout(std140, binding = 0) uniform FrameData {
     vec4 uFogColor;
     vec4 uDirLightDir;
     vec4 uDirLightColor;
+    vec4 uAmbientColor;
     ivec4 uLightCounts;
     PointLight uPointLights[32];
     SpotLight uSpotLights[8];
@@ -28,7 +29,6 @@ in VsOut {
 
 out vec4 oColor;
 
-const float kAmbient = 0.18;
 const float kShininess = 32.0;
 const float kSpecStrength = 0.25;
 
@@ -43,7 +43,7 @@ vec3 blinnPhong(vec3 albedo, vec3 n, vec3 v, vec3 l, vec3 lightColor, float atte
 }
 
 vec3 shade(vec3 albedo, vec3 n, vec3 v, vec3 worldPos) {
-    vec3 c = albedo * kAmbient;
+    vec3 c = albedo * uAmbientColor.rgb;
     c += blinnPhong(albedo, n, v, normalize(-uDirLightDir.xyz), uDirLightColor.rgb, 1.0);
     for (int i = 0; i < uLightCounts.x; ++i) {
         vec3 toL = uPointLights[i].posRadius.xyz - worldPos;

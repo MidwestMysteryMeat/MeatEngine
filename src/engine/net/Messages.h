@@ -19,7 +19,7 @@
 // partially written and must be discarded.
 namespace meat {
 
-enum class MsgType : std::uint8_t { Hello = 1, Welcome, Command, Snapshot, VoxelOp };
+enum class MsgType : std::uint8_t { Hello = 1, Welcome, Command, Snapshot, VoxelOp, Inventory };
 
 struct HelloMsg {
     std::string name;
@@ -29,6 +29,10 @@ struct WelcomeMsg {
     PeerId playerId = 0;
     std::uint32_t worldSeed = 0;
     std::uint64_t serverTick = 0;
+    // Game rules as opaque bytes — engine/net stays game-agnostic; the game
+    // layer (GameRules) owns the meaning.
+    std::uint8_t rulesModel = 0;
+    std::uint8_t rulesFlags = 0;
 };
 
 struct CommandMsg {

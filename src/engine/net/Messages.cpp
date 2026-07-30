@@ -33,12 +33,13 @@ void encode(const PlayerCommand& cmd, ByteWriter& w) {
     if (cmd.reload) buttons |= kBtnReload;
     if (cmd.place) buttons |= kBtnPlace;
     w.write(buttons);
+    w.write(cmd.selectedSlot);
 }
 
 bool decode(PlayerCommand& cmd, ByteReader& r) {
     std::uint8_t buttons = 0;
     if (!r.read(cmd.tick) || !r.read(cmd.move) || !r.read(cmd.yaw) || !r.read(cmd.pitch) ||
-        !r.read(buttons)) {
+        !r.read(buttons) || !r.read(cmd.selectedSlot)) {
         return false;
     }
     cmd.jump = (buttons & kBtnJump) != 0;
@@ -63,10 +64,13 @@ void encode(const WelcomeMsg& msg, ByteWriter& w) {
     w.write(msg.playerId);
     w.write(msg.worldSeed);
     w.write(msg.serverTick);
+    w.write(msg.rulesModel);
+    w.write(msg.rulesFlags);
 }
 
 bool decode(WelcomeMsg& msg, ByteReader& r) {
-    return r.read(msg.playerId) && r.read(msg.worldSeed) && r.read(msg.serverTick);
+    return r.read(msg.playerId) && r.read(msg.worldSeed) && r.read(msg.serverTick) &&
+           r.read(msg.rulesModel) && r.read(msg.rulesFlags);
 }
 
 void encode(const CommandMsg& msg, ByteWriter& w) {

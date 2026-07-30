@@ -35,7 +35,9 @@ void main() { oColor = vec4(1.0); }
 } // namespace
 
 bool Renderer::init(Window& window) {
-    static_assert(sizeof(FrameUbo) == 1632, "FrameUbo must match the std140 FrameData block");
+    // 1648 = previous 1632 + one vec4 (ambientColor) inserted before lightCounts;
+    // every GLSL FrameData copy gained the same member in the same slot.
+    static_assert(sizeof(FrameUbo) == 1648, "FrameUbo must match the std140 FrameData block");
     static_assert(sizeof(GpuPointLight) == 32 && sizeof(GpuSpotLight) == 48);
 
     m_window = &window;
@@ -57,7 +59,7 @@ bool Renderer::init(Window& window) {
     glBindBufferBase(GL_UNIFORM_BUFFER, kFrameUboBinding, m_frameUbo.id());
 
     if (!m_chunkShader.load(kShaderDir, "chunk") || !m_meshShader.load(kShaderDir, "mesh") ||
-        !m_resolveShader.load(kShaderDir, "resolve")) {
+        !m_spriteShader.load(kShaderDir, "sprite") || !m_resolveShader.load(kShaderDir, "resolve")) {
         return false;
     }
     if (!m_crosshairProgram.compile(kCrosshairVert, kCrosshairFrag, "crosshair")) {
@@ -65,6 +67,7 @@ bool Renderer::init(Window& window) {
     }
 
     m_fullscreenVao.create(); // attribute-less; resolve.vert synthesizes the triangle
+    m_spriteVao.create();     // attribute-less; sprite.vert synthesizes the quad
 
     // Crosshair: two lines crossing at screen center, offsets in target pixels.
     const glm::vec2 crosshair[4] = {{-6.0f, 0.0f}, {6.0f, 0.0f}, {0.0f, -6.0f}, {0.0f, 6.0f}};
@@ -79,6 +82,7 @@ bool Renderer::init(Window& window) {
     // Sane default light so a scene renders before gameplay sets one.
     m_frame.dirLightDir = glm::vec4(glm::normalize(glm::vec3(-0.35f, -0.85f, -0.40f)), 0.0f);
     m_frame.dirLightColor = glm::vec4(1.0f, 0.97f, 0.92f, 0.0f);
+    setAmbientLight(glm::vec3(0.25f, 0.27f, 0.32f));
     return true;
 }
 
@@ -86,6 +90,7 @@ void Renderer::reloadShaders() {
     // Each Shader keeps its previous program if the recompile fails.
     m_chunkShader.reload();
     m_meshShader.reload();
+    m_spriteShader.reload();
     m_resolveShader.reload();
 }
 
@@ -201,6 +206,12 @@ void Renderer::setAtlas(TextureHandle atlas) {
     m_atlas = atlas;
 }
 
+MaterialHandle Renderer::createMaterial(const MaterialDesc& desc) {
+    const MaterialHandle handle{m_nextMaterial++};
+    m_materials.emplace(handle, desc);
+    return handle;
+}
+
 void Renderer::beginFrame(const Camera& camera, float alpha) {
     (void)alpha; // callers pass interpolated transforms; kept for contract parity
 
@@ -232,6 +243,7 @@ void Renderer::beginFrame(const Camera& camera, float alpha) {
 
     m_chunkDraws.clear();
     m_meshDraws.clear();
+    m_spriteDraws.clear();
     m_crosshairRequested = false;
 }
 
@@ -242,9 +254,32 @@ void Renderer::submitChunk(MeshHandle mesh, glm::vec3 originWorld) {
 }
 
 void Renderer::submitMesh(MeshHandle mesh, const glm::mat4& transform, TextureHandle albedo) {
+    // Bare-texture path: implicit default material (tint 1, shininess 32, no emissive).
+    MaterialDesc desc;
+    desc.albedo = albedo;
     if (mesh != 0) {
-        m_meshDraws.push_back({mesh, transform, albedo});
+        m_meshDraws.push_back({mesh, transform, desc});
     }
+}
+
+void Renderer::submitMesh(MeshHandle mesh, const glm::mat4& transform, MaterialHandle material) {
+    const auto it = m_materials.find(material);
+    if (mesh == 0 || it == m_materials.end()) {
+        return;
+    }
+    m_meshDraws.push_back({mesh, transform, it->second});
+}
+
+void Renderer::submitSprite(glm::vec3 center, glm::vec2 size, TextureHandle tex, glm::vec4 uvRect,
+                            glm::vec3 tint, bool fullbright) {
+    if (tex != 0) {
+        m_spriteDraws.push_back({center, size, tex, uvRect, tint, fullbright});
+    }
+}
+
+void Renderer::setAmbientLight(glm::vec3 color) {
+    // Premultiplied encoding: rgb already carries intensity; w unused.
+    m_frame.ambientColor = glm::vec4(color, 0.0f);
 }
 
 void Renderer::setDirectionalLight(glm::vec3 dir, glm::vec3 color) {
@@ -321,19 +356,51 @@ void Renderer::flushScenePasses() {
         }
     }
 
-    // Mesh pass: per-draw transform + albedo.
+    // Mesh pass: per-draw transform + material params as plain uniforms.
     if (!m_meshDraws.empty()) {
         glUseProgram(m_meshShader.id());
+        const GlShaderProgram& meshProg = m_meshShader.program();
         for (const MeshDraw& draw : m_meshDraws) {
             const auto meshIt = m_meshes.find(draw.mesh);
-            const auto texIt = m_textures.find(draw.albedo);
+            const auto texIt = m_textures.find(draw.material.albedo);
             if (meshIt == m_meshes.end() || texIt == m_textures.end()) {
                 continue;
             }
-            m_meshShader.program().setUniform("uModel", draw.transform);
+            meshProg.setUniform("uModel", draw.transform);
+            meshProg.setUniform("uTint", draw.material.tint);
+            meshProg.setUniform("uShininess", draw.material.shininess);
+            meshProg.setUniform("uEmissive", draw.material.emissive);
             glBindTextureUnit(0, texIt->second.id());
             glBindVertexArray(meshIt->second.vao.id());
             glDrawElements(GL_TRIANGLES, meshIt->second.indexCount, GL_UNSIGNED_INT, nullptr);
+        }
+    }
+
+    // Sprite pass: after opaque geometry, still inside the PSX target so sprites
+    // dither and fog like everything else. Alpha-test (discard < 0.5) with depth
+    // writes ON instead of blend+sort — hard PSX cutouts make order irrelevant.
+    if (!m_spriteDraws.empty()) {
+        std::sort(m_spriteDraws.begin(), m_spriteDraws.end(),
+                  [](const SpriteDraw& a, const SpriteDraw& b) { return a.tex < b.tex; });
+        glUseProgram(m_spriteShader.id());
+        const GlShaderProgram& spriteProg = m_spriteShader.program();
+        glBindVertexArray(m_spriteVao.id());
+        TextureHandle bound = 0;
+        for (const SpriteDraw& draw : m_spriteDraws) {
+            const auto texIt = m_textures.find(draw.tex);
+            if (texIt == m_textures.end()) {
+                continue;
+            }
+            if (draw.tex != bound) {
+                glBindTextureUnit(0, texIt->second.id());
+                bound = draw.tex;
+            }
+            spriteProg.setUniform("uCenter", draw.center);
+            spriteProg.setUniform("uSize", draw.size);
+            spriteProg.setUniform("uUvRect", draw.uvRect);
+            spriteProg.setUniform("uTint", draw.tint);
+            spriteProg.setUniform("uFullbright", draw.fullbright ? 1 : 0);
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         }
     }
     glBindVertexArray(0);

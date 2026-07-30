@@ -49,6 +49,8 @@ void Client::pump(VoxelWorld& voxels, PhysicsWorld& physics, CharacterController
             if (!decode(msg, reader)) break;
             m_playerId = msg.playerId;
             m_seed = msg.worldSeed;
+            m_rules.inventoryModel = static_cast<GameRules::InventoryModel>(msg.rulesModel);
+            m_rules.setFlagsByte(msg.rulesFlags);
             m_welcomed = true;
             log::info("client: welcomed as player {} (seed {})", msg.playerId, msg.worldSeed);
             break;
@@ -62,6 +64,11 @@ void Client::pump(VoxelWorld& voxels, PhysicsWorld& physics, CharacterController
             while (!m_unacked.empty() && m_unacked.front().tick <= snap.lastCmdTick)
                 m_unacked.pop_front();
             applySnapshot(snap, physics, player);
+            break;
+        }
+        case MsgType::Inventory: {
+            Inventory incoming;
+            if (incoming.decode(reader)) m_inventory = incoming;
             break;
         }
         case MsgType::VoxelOp: {

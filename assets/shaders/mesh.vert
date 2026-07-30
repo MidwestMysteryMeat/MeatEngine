@@ -15,6 +15,7 @@ layout(std140, binding = 0) uniform FrameData {
     vec4 uFogColor;
     vec4 uDirLightDir;
     vec4 uDirLightColor;
+    vec4 uAmbientColor;
     ivec4 uLightCounts;
     PointLight uPointLights[32];
     SpotLight uSpotLights[8];

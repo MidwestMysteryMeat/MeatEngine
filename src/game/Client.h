@@ -1,6 +1,8 @@
 #pragma once
 #include "engine/net/Messages.h"
 #include "engine/net/Transport.h"
+#include "game/GameRules.h"
+#include "game/Inventory.h"
 
 #include <deque>
 #include <string>
@@ -30,6 +32,8 @@ public:
     void pump(VoxelWorld& voxels, PhysicsWorld& physics, CharacterController& player);
 
     float health() const { return m_ownHealth; }
+    const GameRules& rules() const { return m_rules; }
+    const Inventory& inventory() const { return m_inventory; } // UI mirror; server owns truth
 
     // Remote players sampled 100 ms behind the newest snapshot, interpolated
     // between the bracketing snapshot states — smooth despite 20 Hz updates.
@@ -49,6 +53,8 @@ private:
     std::uint32_t m_seed = 0;
     bool m_welcomed = false;
     float m_ownHealth = 100.0f;
+    GameRules m_rules;
+    Inventory m_inventory;
     std::uint64_t m_latestSnapshotTick = 0;
     std::deque<PlayerCommand> m_unacked; // commands newer than the server's ack
     std::unordered_map<PeerId, RemoteHistory> m_remotes;

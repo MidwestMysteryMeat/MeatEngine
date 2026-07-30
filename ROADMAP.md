@@ -68,6 +68,13 @@ loopback transport.
 - [ ] tools/audit_assets.py: skeleton/scale/texture/attribution gate; --capture + VLM QA
 - [ ] Asset staging from verified CC-BY sources + ATTRIBUTION.md automation
 
+## Phase 11.5 — Abilities & spawned actors (GAS-lite, see ARCHITECTURE §game/abilities)
+- [ ] Effect executors: Damage, AreaDamage (explosives + batch voxel ops), Heal, ApplyModifier
+- [ ] Projectiles (server-simulated, explode-on-impact into effects)
+- [ ] SpawnEntity behaviors: placeable Turret (target-nearest + LoS), Companion (follow/attack)
+- [ ] Lua-defined abilities bound to items (grenade, medkit-as-ability) and to classes
+- [ ] Entity states join snapshots (shared path with player states)
+
 ## Phase 12 — PvP hardening
 - [ ] Lag-compensated hitscan (server rewind), delta-compressed snapshots, interest management
 - [ ] 4–8 player arena on editor-built maps

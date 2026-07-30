@@ -224,9 +224,39 @@ class Renderer {
   PsxOptions psx;                          // toggleable at runtime
 };
 ```
+```cpp
+// Materials: albedo + Blinn-Phong params + emissive. Meshes may still be drawn
+// with a bare TextureHandle (implicit default material).
+struct MaterialDesc { TextureHandle albedo = 0; glm::vec3 tint{1}; float shininess = 32.0f;
+                      glm::vec3 emissive{0}; };
+enum class MaterialHandle : std::uint32_t { Invalid = 0 }; // distinct type: TextureHandle
+// is already uint32_t and the two submitMesh overloads must not collide
+MaterialHandle createMaterial(const MaterialDesc&);
+void submitMesh(MeshHandle, const glm::mat4&, MaterialHandle);   // overload
+
+// Sprites: camera-facing billboards (pickups, particles, PSX standees).
+// Alpha-tested, drawn after opaque geometry inside the PSX target. uvRect
+// enables sprite-sheet frames; fullbright skips lighting (UI-ish world markers).
+void submitSprite(glm::vec3 center, glm::vec2 size, TextureHandle tex,
+                  glm::vec4 uvRect = {0, 0, 1, 1}, glm::vec3 tint = {1, 1, 1},
+                  bool fullbright = false);
+```
+
 Forward Blinn-Phong, one directional + point/spot array in a UBO. PSX look = render to a
 half-res target, nearest upscale, ordered dither in the resolve shader, vertex fog.
 Shaders live in `assets/shaders/*.{vert,frag}`, hot-reloadable (F6).
+
+**Lighting types** (documented plan; ✓ = implemented):
+1. ✓ Directional sun + ambient term (UBO scalar+color).
+2. ✓ Point lights (≤32) and spot lights (≤8), per-frame submits — animation
+   (flicker/pulse) is gameplay-side by re-submitting with varying color each frame.
+3. ✓ Emissive materials (glow that ignores incoming light; feeds PSX bloom-less look).
+4. Voxel light levels — torch-style flood-fill light baked into `VoxelVertex` at mesh
+   time (Minecraft model). The mesher gains a light nibble; planned with the editor's
+   placeable lights so hand-built rooms light correctly. NOT yet implemented.
+5. Single directional shadow map — post-slice polish, off by default (PSX-era games
+   didn't have it; blob shadows under characters are more period-correct).
+6. Editor preview lights = the same point/spot submits, live-edited.
 
 ### physics/
 ```cpp
@@ -277,6 +307,22 @@ Messages (net/Messages.h): packet = `[u8 MsgType][payload]`.
 `VoxelOp{ivec3 voxel, BlockId block}` (reliable, both directions — client sends intent,
 server validates, applies, broadcasts).
 
+### game/GameRules — engine users pick, nothing is hardcoded
+```cpp
+struct GameRules {
+    enum class InventoryModel : std::uint8_t {
+        HotbarBackpack,  // 1-9 hotbar + Tab grid (default)
+        GridOnly,        // Tab grid, click to equip
+        WeaponSlots,     // guns on 1-4, blocks/consumables as counters
+    };
+    InventoryModel inventoryModel = InventoryModel::HotbarBackpack;
+    bool finiteAmmo = true;       // guns consume ammo items
+    bool minedBlockDrops = true;  // broken blocks enter the breaker's inventory
+};
+```
+Rules live on the server, travel in `Welcome`, and are dev-set (config/CLI now, Lua
+later). Client UI adapts to the model; server logic branches on the flags.
+
 ### game/ServerSim + game/Client
 `ServerSim` owns the authoritative sim (VoxelWorld, PhysicsWorld, per-player
 CharacterController) and a `Transport&`. `Client` owns connection state plus its own
@@ -286,6 +332,24 @@ Reconciliation: on snapshot, rewind own character to server state, replay comman
 than `lastCmdTick`; corrections under 1 mm are ignored. Engine composes them by mode:
 Game = ServerSim + Client over LoopbackPair; Host = same + ENet listen;
 Join = Client + EnetClientTransport; Dedicated = ServerSim + ENet, no window/renderer.
+
+### game/abilities — planned (GAS-inspired, kept small)
+A data-driven ability layer in the spirit of UE's GameplayAbilitySystem, without the
+framework weight. Design commitments (implementation is a roadmap phase):
+- **Ability** = data (Lua-defined): activation (press/hold/toggle), cooldown, cost
+  (ammo/energy), and a list of **Effects**.
+- **Effects** are the only things that touch the world, all server-side: `Damage`,
+  `AreaDamage` (radius falloff + batch voxel destruction ops — explosives are just this),
+  `SpawnProjectile` (simulated point projectile, gravity optional, explodes into effects
+  on impact), `SpawnEntity` (turrets, minions), `ApplyModifier` (speed/jump/armor with
+  duration — the attribute-modifier half of GAS), `Heal`.
+- **Spawned entities** run server-side behaviors: `Turret` (static, target-nearest,
+  line-of-sight hitscan), `Companion` (follow owner, attack owner's last target). These
+  are ordinary entities in snapshots; clients render them like remote players.
+- Items can grant abilities (grenade = consumable + AreaDamage projectile ability);
+  abilities exist without items too (class kits). Cooldowns replicate in PlayerState.
+- Nothing here invents new net machinery: effects emit existing ops/events, spawns ride
+  the entity snapshot path. That is the reason this stays small.
 
 ### Save format (save/)
 `saves/<slot>/meta.json`: player transform, health, inventory, equipped, dungeon seed,

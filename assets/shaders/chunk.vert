@@ -16,6 +16,7 @@ layout(std140, binding = 0) uniform FrameData {
     vec4 uFogColor;
     vec4 uDirLightDir; // direction the light travels, normalized
     vec4 uDirLightColor;
+    vec4 uAmbientColor; // rgb premultiplied by intensity; w unused
     ivec4 uLightCounts; // x point, y spot
     PointLight uPointLights[32];
     SpotLight uSpotLights[8];

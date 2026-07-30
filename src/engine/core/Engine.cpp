@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <format>
 #include <thread>
 
 namespace meat {
@@ -93,10 +94,14 @@ bool Engine::initClientSystems() {
 
 bool Engine::initNetwork(const EngineConfig& config) {
     using Mode = EngineConfig::Mode;
+    const auto bootServer = [&](std::unique_ptr<ServerSim>& server) {
+        server = std::make_unique<ServerSim>();
+        return config.loadPath.empty() ? server->init(config.seed)
+                                       : server->initFromSave(config.loadPath);
+    };
     if (config.mode == Mode::Game) {
         m_loopback = std::make_unique<LoopbackPair>();
-        m_server = std::make_unique<ServerSim>();
-        if (!m_server->init(config.seed)) return false;
+        if (!bootServer(m_server)) return false;
         m_serverTransport = &m_loopback->serverEnd();
         m_clientTransport = &m_loopback->clientEnd();
     } else if (config.mode == Mode::Host) {
@@ -104,8 +109,7 @@ bool Engine::initNetwork(const EngineConfig& config) {
         // path for every player, and the net layer gets exercised constantly.
         m_enetHost = std::make_unique<EnetServerTransport>();
         if (!m_enetHost->listen(config.port)) return false;
-        m_server = std::make_unique<ServerSim>();
-        if (!m_server->init(config.seed)) return false;
+        if (!bootServer(m_server)) return false;
         m_serverTransport = m_enetHost.get();
         m_enetJoin = std::make_unique<EnetClientTransport>();
         if (!m_enetJoin->connect("127.0.0.1", config.port)) return false;
@@ -121,6 +125,7 @@ bool Engine::initNetwork(const EngineConfig& config) {
 
 void Engine::setupClientWorld() {
     const BlockPalette palette = registerDefaultBlocks(m_voxels.blockRegistry());
+    registerDefaultItems(m_items, palette.stone); // ids mirror the server's registry
     m_voxels.setGenerator(makeTerrainGenerator(m_client.worldSeed(), palette));
     if (!m_player.init(m_physics, kClientSpawn)) {
         log::error("client character init failed");
@@ -134,6 +139,7 @@ void Engine::setupClientWorld() {
 void Engine::simulateClientTick(const PlayerCommand& frameCmd) {
     PlayerCommand cmd = frameCmd;
     cmd.tick = m_tick; // unique per tick even when one frame spans several ticks
+    cmd.selectedSlot = m_selectedSlot;
     m_client.sendCommand(cmd);
 
     m_localFireCooldown -= kFixedDt;
@@ -188,8 +194,59 @@ void Engine::render(float alpha) {
                     m_currPlayerPos.z);
         ImGui::Text("%.0f fps", ImGui::GetIO().Framerate);
         ImGui::End();
+        drawInventoryUi();
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    }
+}
+
+void Engine::drawInventoryUi() {
+    if (!m_clientWorldReady) return;
+    const Inventory& inv = m_client.inventory();
+    const GameRules& rules = m_client.rules();
+    const ImGuiViewport* view = ImGui::GetMainViewport();
+    const auto slotLabel = [&](int i) {
+        const ItemStack& s = inv.slot(i);
+        return s.id == 0 ? std::string("-")
+                         : std::format("{} x{}", m_items.get(s.id).name, s.count);
+    };
+
+    using Model = GameRules::InventoryModel;
+    const int hotbarSlots = rules.inventoryModel == Model::WeaponSlots ? 4
+                            : rules.inventoryModel == Model::GridOnly  ? 0
+                                                                      : Inventory::kHotbar;
+    if (hotbarSlots > 0) {
+        ImGui::SetNextWindowPos({view->Size.x * 0.5f, view->Size.y - 16.0f}, ImGuiCond_Always,
+                                {0.5f, 1.0f});
+        ImGui::Begin("hotbar", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+                         ImGuiWindowFlags_NoInputs);
+        for (int i = 0; i < hotbarSlots; ++i) {
+            if (i > 0) ImGui::SameLine();
+            const bool selected = m_selectedSlot == i;
+            ImGui::TextColored(selected ? ImVec4(1.0f, 0.85f, 0.3f, 1.0f)
+                                        : ImVec4(0.8f, 0.8f, 0.8f, 1.0f),
+                               "[%d %s]", i + 1, slotLabel(i).c_str());
+        }
+        if (rules.inventoryModel == Model::WeaponSlots) {
+            // Materials/consumables read as counters, not managed slots.
+            ImGui::SameLine();
+            ImGui::TextColored({0.6f, 0.8f, 1.0f, 1.0f}, "  blocks:%d  medkits:%d",
+                               inv.countOf(4), inv.countOf(3));
+        }
+        ImGui::End();
+    }
+
+    if (m_showBackpack && rules.inventoryModel != Model::WeaponSlots) {
+        ImGui::SetNextWindowPos({view->Size.x * 0.5f, view->Size.y * 0.5f}, ImGuiCond_Always,
+                                {0.5f, 0.5f});
+        ImGui::Begin("backpack", nullptr,
+                     ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize);
+        for (int i = 0; i < Inventory::kSlots; ++i) {
+            ImGui::Text("%2d %s", i + 1, slotLabel(i).c_str());
+            if ((i + 1) % 6 != 0) ImGui::SameLine(static_cast<float>((i % 6 + 1) * 140));
+        }
+        ImGui::End();
     }
 }
 
@@ -214,6 +271,14 @@ int Engine::run(const EngineConfig& config) {
 
         if (m_input.pressed(GLFW_KEY_ESCAPE)) break;
         if (m_input.pressed(GLFW_KEY_F6)) m_renderer.reloadShaders();
+        if (m_input.pressed(GLFW_KEY_F5) && m_server) m_server->saveTo("saves/quick.json");
+        if (m_input.pressed(GLFW_KEY_TAB)) m_showBackpack = !m_showBackpack;
+        for (int i = 0; i < Inventory::kHotbar; ++i)
+            if (m_input.pressed(GLFW_KEY_1 + i)) m_selectedSlot = static_cast<std::uint8_t>(i);
+        if (const int scroll = m_input.consumeScrollSteps(); scroll != 0)
+            m_selectedSlot = static_cast<std::uint8_t>(
+                (m_selectedSlot + Inventory::kHotbar - (scroll % Inventory::kHotbar)) %
+                Inventory::kHotbar);
 
         if (m_server) m_server->pump(*m_serverTransport);
         m_client.pump(m_voxels, m_physics, m_player);
@@ -237,6 +302,8 @@ int Engine::run(const EngineConfig& config) {
         render(static_cast<float>(accumulator / kFixedDt));
         m_window.swap();
     }
+
+    if (m_server) m_server->saveTo("saves/autosave.json"); // graceful exit = autosave
 
     if (m_imguiReady) {
         ImGui_ImplOpenGL3_Shutdown();

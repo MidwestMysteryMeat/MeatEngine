@@ -27,6 +27,7 @@ struct EngineConfig {
     std::string address = "127.0.0.1"; // Join target
     std::uint16_t port = 26000;
     std::uint32_t seed = 1337;
+    std::string loadPath; // --load <file>: start the server from a save
 };
 
 // Composition root. The simulation authority is always a ServerSim; this class
@@ -43,6 +44,7 @@ private:
     int runDedicated(const EngineConfig& config);
     void simulateClientTick(const PlayerCommand& frameCmd);
     void render(float alpha);
+    void drawInventoryUi();
 
     Window m_window;
     Input m_input;
@@ -61,6 +63,7 @@ private:
     Transport* m_serverTransport = nullptr;
     Transport* m_clientTransport = nullptr;
     Client m_client;
+    ItemRegistry m_items; // client-side names/types; ids match the server's
     bool m_clientWorldReady = false;
 
     std::unordered_map<ChunkPos, MeshHandle> m_chunkMeshes;
@@ -71,6 +74,8 @@ private:
     glm::vec3 m_currPlayerPos{0};
     float m_localFireCooldown = 0.0f; // cosmetic mirror of the server's cooldown
     float m_muzzleFlash = 0.0f;
+    std::uint8_t m_selectedSlot = 0; // hotbar index, sent in every command
+    bool m_showBackpack = false;     // Tab
     bool m_imguiReady = false;
 };
 

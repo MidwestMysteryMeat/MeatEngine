@@ -69,6 +69,13 @@ Chunk& VoxelWorld::ensureChunk(ChunkPos pos) {
     if (const auto it = m_chunks.find(pos); it != m_chunks.end()) return *it->second;
     auto chunk = std::make_unique<Chunk>();
     m_generator(*chunk, pos);
+    if (const auto ov = m_overlay.find(pos); ov != m_overlay.end()) {
+        for (const auto& [index, block] : ov->second) {
+            const int x = index % kChunkSize, z = (index / kChunkSize) % kChunkSize,
+                      y = index / (kChunkSize * kChunkSize);
+            chunk->set(x, y, z, block);
+        }
+    }
     chunk->markDirty();
     Chunk& ref = *chunk;
     m_chunks.emplace(pos, std::move(chunk));
@@ -86,7 +93,8 @@ void VoxelWorld::setBlock(glm::ivec3 voxel, BlockId block) {
     Chunk& chunk = ensureChunk(cp);
     const glm::ivec3 l = localInChunk(voxel, cp);
     chunk.set(l.x, l.y, l.z, block);
-    m_edits.push_back({voxel, block});
+    m_overlay[cp][static_cast<std::uint16_t>(l.x + l.z * kChunkSize +
+                                             l.y * kChunkSize * kChunkSize)] = block;
 
     // A border edit changes which faces the adjacent chunk culls.
     const auto touch = [this](ChunkPos p) {
