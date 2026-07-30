@@ -42,6 +42,7 @@ struct EngineConfig {
     std::string projectDir; // --project <dir>: load a game (game.json + scripts/)
     bool startEditor = false; // --editor: enter the Room Designer on spawn
     bool animBooth = false;   // --animshot: lock a fixed close camera on the anim actor
+    std::string animModel;    // --animmodel <path>: booth-load ANY skeletal file (FBX/glTF)
 };
 
 // Composition root. The simulation authority is always a ServerSim; this class
@@ -108,6 +109,7 @@ private:
     std::unique_ptr<AnimActor> m_animActor;
     void loadAnimTestActor();
     bool m_animBooth = false; // fixed camera framing the anim actor (VLM capture)
+    std::string m_animModel;  // --animmodel override path (else the default proof asset)
     TextureHandle m_atlasTexture = 0; // fallback albedo when a model ships none
     float m_frameDt = 0.0f;           // last frame's dt; advances the proof actor
     PlayerCommand m_lastCmd{};

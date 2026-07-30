@@ -136,7 +136,7 @@ Pose samplePose(const SkeletalModel& model, const AnimClip& clip, float timeSeco
         // frame. This reconciles the two spaces the previous loader left mismatched (the
         // 179-unit node-vs-offset bind-global gap that flung the extremities into spikes).
         const Bone& bone = model.bones[b];
-        locals[b] = bone.localBind * glm::inverse(bone.nodeBindLocal) * compose(trs);
+        locals[b] = bone.localBind * bone.nodeBindLocalInv * compose(trs);
     }
     return resolve(model, locals);
 }

@@ -86,6 +86,8 @@ meat::EngineConfig parseArgs(int argc, char** argv) {
             config.mode = Mode::Game;
             config.animBooth = true;
             if (const char* s = next()) config.autoShot = s;
+        } else if (arg == "--animmodel") {
+            if (const char* m = next()) config.animModel = m;
         } else {
             meat::log::warn("unknown argument '{}'", arg);
         }

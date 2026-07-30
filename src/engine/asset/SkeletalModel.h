@@ -44,7 +44,9 @@ struct Bone {
                                // (what an animation channel's keys replace). localBind
                                // lives in the offset-authoritative space, so a clip key
                                // (node space) is applied as a delta from this:
-                               // local = localBind * inverse(nodeBindLocal) * animatedLocal
+                               // local = localBind * nodeBindLocalInv * animatedLocal
+    glm::mat4 nodeBindLocalInv{1.0f}; // inverse(nodeBindLocal), precomputed (it is
+                               // constant); used per-frame in samplePose's delta
 };
 
 struct VecKey {

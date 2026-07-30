@@ -187,8 +187,12 @@ void Engine::loadAnimTestActor() {
     // Optional (gitignored) proof asset. Load at native scale (the trivially
     // correct path — no scale conjugation) and normalize display height via the
     // actor transform, so ANY model shows upright at ~1.8 m regardless of units.
-    const char* paths[] = {"assets/models/anim_test.fbx", "assets/models/anim_test.glb"};
-    for (const char* path : paths) {
+    // --animmodel wins if given (booth-check any file); else the default proof asset.
+    std::vector<std::string> paths;
+    if (!m_animModel.empty()) paths.push_back(m_animModel);
+    paths.push_back("assets/models/anim_test.fbx");
+    paths.push_back("assets/models/anim_test.glb");
+    for (const std::string& path : paths) {
         if (!std::filesystem::exists(path)) continue;
         auto model = loadSkeletalModel(path, {.scale = 1.0f});
         if (!model) continue;
@@ -745,6 +749,7 @@ int Engine::run(const EngineConfig& configIn) {
         return 1;
     }
     m_animBooth = config.animBooth;
+    m_animModel = config.animModel;
     if (config.mode == EngineConfig::Mode::Browse && !runMenu(config)) return 0;
     if (!initNetwork(config)) {
         log::error("network init failed");
