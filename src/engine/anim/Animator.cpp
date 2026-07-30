@@ -8,6 +8,26 @@
 #include <cmath>
 
 namespace meat {
+
+// TRS <-> mat4 (external linkage; declared in Animator.h so the blend layer reaches them).
+// Assumes no shear — true of rig exports (matches the sampler's gap-fill assumption).
+Trs decompose(const glm::mat4& m) {
+    Trs out;
+    out.pos = glm::vec3(m[3]);
+    out.scl = {glm::length(glm::vec3(m[0])), glm::length(glm::vec3(m[1])),
+               glm::length(glm::vec3(m[2]))};
+    glm::mat3 rot(m);
+    if (out.scl.x > 0.0f) rot[0] /= out.scl.x;
+    if (out.scl.y > 0.0f) rot[1] /= out.scl.y;
+    if (out.scl.z > 0.0f) rot[2] /= out.scl.z;
+    out.rot = glm::normalize(glm::quat_cast(rot));
+    return out;
+}
+glm::mat4 compose(const Trs& t) {
+    return glm::translate(glm::mat4(1.0f), t.pos) * glm::mat4_cast(t.rot) *
+           glm::scale(glm::mat4(1.0f), t.scl);
+}
+
 namespace {
 
 // Keys are sorted by time (Assimp guarantees it); clamp outside the range,
@@ -43,30 +63,36 @@ glm::quat sampleQuat(const std::vector<QuatKey>& keys, float t) {
     return glm::normalize(glm::slerp(k0.value, k1.value, span > 0.0f ? (t - k0.time) / span : 0.0f));
 }
 
-struct Trs {
-    glm::vec3 pos{0.0f};
-    glm::quat rot{1.0f, 0.0f, 0.0f, 0.0f};
-    glm::vec3 scl{1.0f};
-};
-
-// Bind-local decompose for tracks missing a sub-channel (rare, but Assimp does
-// not guarantee ≥1 key per channel). Assumes no shear — true of rig exports.
-Trs decompose(const glm::mat4& m) {
-    Trs out;
-    out.pos = glm::vec3(m[3]);
-    out.scl = {glm::length(glm::vec3(m[0])), glm::length(glm::vec3(m[1])),
-               glm::length(glm::vec3(m[2]))};
-    glm::mat3 rot(m);
-    if (out.scl.x > 0.0f) rot[0] /= out.scl.x;
-    if (out.scl.y > 0.0f) rot[1] /= out.scl.y;
-    if (out.scl.z > 0.0f) rot[2] /= out.scl.z;
-    out.rot = glm::normalize(glm::quat_cast(rot));
-    return out;
-}
-
-glm::mat4 compose(const Trs& t) {
-    return glm::translate(glm::mat4(1.0f), t.pos) * glm::mat4_cast(t.rot) *
-           glm::scale(glm::mat4(1.0f), t.scl);
+// The per-bone LOCAL matrices for a clip at time t — samplePose's body minus the final
+// resolve. Untracked bones hold their bind local. Reused by samplePose and the blend layer.
+std::vector<glm::mat4> sampleLocalMatrices(const SkeletalModel& model, const AnimClip& clip,
+                                           float timeSeconds) {
+    const std::size_t count = model.bones.size();
+    assert(count <= static_cast<std::size_t>(kMaxBones));
+    float ticks = timeSeconds * (clip.ticksPerSec > 0.0f ? clip.ticksPerSec : 25.0f);
+    if (clip.duration > 0.0f) {
+        ticks = std::fmod(ticks, clip.duration);
+        if (ticks < 0.0f) ticks += clip.duration;
+    }
+    std::vector<glm::mat4> locals(count);
+    for (std::size_t b = 0; b < count; ++b) locals[b] = model.bones[b].localBind;
+    for (const BoneTrack& track : clip.tracks) {
+        if (track.boneIndex < 0 || static_cast<std::size_t>(track.boneIndex) >= count) continue;
+        const std::size_t b = static_cast<std::size_t>(track.boneIndex);
+        Trs trs;
+        // Gap-fill from nodeBindLocal (the clip-key space) so a missing sub-channel is a zero
+        // delta, not a jump into offset space.
+        if (track.positions.empty() || track.rotations.empty() || track.scales.empty())
+            trs = decompose(model.bones[b].nodeBindLocal);
+        if (!track.positions.empty()) trs.pos = sampleVec(track.positions, ticks);
+        if (!track.rotations.empty()) trs.rot = sampleQuat(track.rotations, ticks);
+        if (!track.scales.empty()) trs.scl = sampleVec(track.scales, ticks);
+        // Clip keys live in raw NODE space; localBind lives in the offset-authoritative space.
+        // Apply the clip as a DELTA from the node bind onto the clean bind (identity at bind).
+        const Bone& bone = model.bones[b];
+        locals[b] = bone.localBind * bone.nodeBindLocalInv * compose(trs);
+    }
+    return locals;
 }
 
 // Forward pass over the topologically ordered bones: parents are always
@@ -92,53 +118,43 @@ Pose resolve(const SkeletalModel& model, const std::vector<glm::mat4>& locals) {
 } // namespace
 
 Pose samplePose(const SkeletalModel& model, const AnimClip& clip, float timeSeconds) {
-    const std::size_t count = model.bones.size();
-    assert(count <= static_cast<std::size_t>(kMaxBones)); // loader enforces; belt+braces
+    // Identical result to the old inline body; the per-bone local math now lives in
+    // sampleLocalMatrices so the blend layer can reuse it.
+    return resolve(model, sampleLocalMatrices(model, clip, timeSeconds));
+}
 
-    float ticks = timeSeconds * (clip.ticksPerSec > 0.0f ? clip.ticksPerSec : 25.0f);
-    if (clip.duration > 0.0f) {
-        ticks = std::fmod(ticks, clip.duration);
-        if (ticks < 0.0f) {
-            ticks += clip.duration; // negative time still lands inside the loop
-        }
-    }
+std::vector<Trs> sampleLocalTrs(const SkeletalModel& model, const AnimClip& clip, float t) {
+    const std::vector<glm::mat4> locals = sampleLocalMatrices(model, clip, t);
+    std::vector<Trs> out(locals.size());
+    for (std::size_t b = 0; b < locals.size(); ++b) out[b] = decompose(locals[b]);
+    return out;
+}
 
-    std::vector<glm::mat4> locals(count);
-    for (std::size_t b = 0; b < count; ++b) {
-        locals[b] = model.bones[b].localBind; // untracked bones hold their bind
-    }
-    for (const BoneTrack& track : clip.tracks) {
-        if (track.boneIndex < 0 || static_cast<std::size_t>(track.boneIndex) >= count) {
-            continue;
-        }
-        const std::size_t b = static_cast<std::size_t>(track.boneIndex);
-        Trs trs;
-        // Gap-fill from nodeBindLocal (the space the clip keys live in) so a missing
-        // sub-channel yields a zero delta below, not a jump into offset space.
-        if (track.positions.empty() || track.rotations.empty() || track.scales.empty()) {
-            trs = decompose(model.bones[b].nodeBindLocal);
-        }
-        if (!track.positions.empty()) {
-            trs.pos = sampleVec(track.positions, ticks);
-        }
-        if (!track.rotations.empty()) {
-            trs.rot = sampleQuat(track.rotations, ticks);
-        }
-        if (!track.scales.empty()) {
-            trs.scl = sampleVec(track.scales, ticks);
-        }
-        // Clip keys are authored in the raw NODE space (nodeBindLocal), but localBind
-        // lives in the offset-authoritative space (inverse(offset) chain) that renders
-        // the bind pose cleanly. Apply the clip as a DELTA from the node bind, composed
-        // onto the clean bind: local = localBind * inverse(nodeBindLocal) * animatedLocal.
-        // At bind, animatedLocal == nodeBindLocal, so the delta is identity and the clean
-        // bind is preserved exactly; a moving key rotates the bone about its node-bind
-        // frame. This reconciles the two spaces the previous loader left mismatched (the
-        // 179-unit node-vs-offset bind-global gap that flung the extremities into spikes).
-        const Bone& bone = model.bones[b];
-        locals[b] = bone.localBind * bone.nodeBindLocalInv * compose(trs);
-    }
-    return resolve(model, locals);
+Pose resolveLocalTrs(const SkeletalModel& model, const std::vector<Trs>& locals) {
+    std::vector<glm::mat4> mats(locals.size());
+    for (std::size_t b = 0; b < locals.size(); ++b) mats[b] = compose(locals[b]);
+    return resolve(model, mats);
+}
+
+// Per-bone local blend: slerp the rotation (shortest arc, normalized), lerp pos/scale.
+Trs blendTrs(const Trs& a, const Trs& b, float w) {
+    Trs r;
+    r.pos = glm::mix(a.pos, b.pos, w);
+    r.scl = glm::mix(a.scl, b.scl, w);
+    r.rot = glm::normalize(glm::slerp(a.rot, b.rot, w));
+    return r;
+}
+
+// Sample BOTH clips to local TRS, blend per bone, resolve ONCE (never lerp final skinning
+// matrices — that shears). w clamps 0→A, 1→B; a 1D blend space passes the same phase to both.
+Pose blendPose(const SkeletalModel& model, const AnimClip& clipA, float tA,
+               const AnimClip& clipB, float tB, float w) {
+    w = glm::clamp(w, 0.0f, 1.0f);
+    const std::vector<Trs> a = sampleLocalTrs(model, clipA, tA);
+    const std::vector<Trs> b = sampleLocalTrs(model, clipB, tB);
+    std::vector<Trs> out(a.size());
+    for (std::size_t i = 0; i < a.size() && i < b.size(); ++i) out[i] = blendTrs(a[i], b[i], w);
+    return resolveLocalTrs(model, out);
 }
 
 Pose bindPose(const SkeletalModel& model) {

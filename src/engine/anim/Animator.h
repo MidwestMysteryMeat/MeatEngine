@@ -16,6 +16,28 @@ struct Pose {
     std::vector<glm::mat4> skinningMatrices;
 };
 
+// Local bone transform as translation / rotation / scale. The blend layer works in this
+// space because slerp+lerp of TRS is rotation-correct, whereas lerping the composed mat4
+// shears. No shear is assumed (true of rig exports; matches the sampler's gap-fill path).
+struct Trs {
+    glm::vec3 pos{0.0f};
+    glm::quat rot{1.0f, 0.0f, 0.0f, 0.0f};
+    glm::vec3 scl{1.0f};
+};
+glm::mat4 compose(const Trs& t);
+Trs decompose(const glm::mat4& m);
+
+// Per-bone LOCAL transforms for a clip at a time (samplePose's body minus the final
+// resolve): sample two clips with this, blend the arrays, resolve once.
+std::vector<Trs> sampleLocalTrs(const SkeletalModel& model, const AnimClip& clip, float t);
+Pose resolveLocalTrs(const SkeletalModel& model, const std::vector<Trs>& locals);
+
+// Per-bone local blend (slerp rot, lerp pos/scale) and a two-clip blend at weight w (0→A,
+// 1→B) in local TRS space, resolved once — never lerps final skinning matrices (that shears).
+Trs blendTrs(const Trs& a, const Trs& b, float w);
+Pose blendPose(const SkeletalModel& model, const AnimClip& clipA, float tA,
+               const AnimClip& clipB, float tB, float w);
+
 // Sample a clip at an absolute time (seconds since the clip started; wraps by
 // duration, so a monotonically growing accumulator loops for free). Bones the
 // clip has no track for hold their bind-pose local transform. PURE function:
