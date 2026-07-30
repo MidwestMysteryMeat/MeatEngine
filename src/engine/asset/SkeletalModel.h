@@ -92,4 +92,24 @@ struct SkeletalModel {
 std::optional<SkeletalModel> loadSkeletalModel(const std::filesystem::path& path,
                                                const ModelImportOptions& opts = {});
 
+// Load every animation clip from an animation-only file (Mixamo export, MoCap Online
+// pack, etc.) and attach it to an existing model by matching bone names. Matching is
+// exact first, then namespace-normalized ("mixamorig:Hips" <-> "Hips"), so any file
+// whose skeleton shares the model's bone HIERARCHY works with no retargeting. Tracks
+// whose bone is not in the model are dropped (counted in a warning). Returns the number
+// of clips appended (0 on load failure or no match). opts.scale must match the scale the
+// model itself was loaded with.
+int appendClipsFromFile(SkeletalModel& model, const std::filesystem::path& animFile,
+                        const ModelImportOptions& opts = {});
+
+// Bake every animation from a FOREIGN-skeleton file (UE5 mannequin, MoCap Online, any
+// rig with a different REST pose) onto the model's skeleton and append as native clips.
+// Unlike appendClipsFromFile (which needs an identical bind pose), this compensates for
+// the rest-pose / bone-axis difference by transferring each joint's world-orientation
+// motion measured against its OWN rest global (the standard ozz/Assimp global-delta
+// retarget), matched by bone name (exact then namespace-normalized). Rotation-only, baked
+// at 30fps. Returns the number of clips appended (0 on failure or no mapped bones).
+int retargetClipsFromFile(SkeletalModel& model, const std::filesystem::path& animFile,
+                          const ModelImportOptions& opts = {});
+
 } // namespace meat

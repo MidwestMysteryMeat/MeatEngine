@@ -88,6 +88,10 @@ meat::EngineConfig parseArgs(int argc, char** argv) {
             if (const char* s = next()) config.autoShot = s;
         } else if (arg == "--animmodel") {
             if (const char* m = next()) config.animModel = m;
+        } else if (arg == "--animclip") {
+            if (const char* m = next()) config.animClip = m;
+        } else if (arg == "--animretarget") {
+            if (const char* m = next()) config.animRetarget = m;
         } else {
             meat::log::warn("unknown argument '{}'", arg);
         }

@@ -112,9 +112,17 @@ loopback transport.
 - [x] Real multi-second clip playback PROVEN: booth-loaded an external 12s raptoid glTF (112
       bones, 4 clips) via --animmodel; R720 graded 3/3 frames clean with visible motion (head
       elevated→mid-height across frames). --animmodel <path> booth-checks any FBX/glTF.
-- [ ] Author a mixamorig locomotion clip for the SWAT (its shipped clip is a 1-tick static
-      reference pose); procedural sway idle (localBind * deltaQuat — now shear-free); replace
-      NPC/remote boxes with animated meshes; first-person viewmodel
+- [x] Clip-merge: appendClipsFromFile() attaches an external animation file's clips to a
+      loaded model by bone name (exact then namespace-normalized mixamorig:Hips↔Hips),
+      rotation-only so proportion differences don't fling the mesh. Works for identical-bind
+      clips (a true Mixamo export). --animclip flag; booth plays the longest clip.
+- [~] Retarget (WIP, --animretarget): retargetClipsFromFile() bakes a foreign-skeleton clip
+      (UE5 mannequin, MoCap Online) via the rest-relative global-delta method. Bone mapping +
+      delta math done; cross-skeleton WORLD-FRAME alignment still distorts the SWAT — needs
+      the source/target axis-baseline fix before it renders clean (booth-VLM-gated).
+- [ ] Author/obtain a mixamorig locomotion clip for the SWAT (a true Mixamo export plays via
+      --animclip today); procedural sway idle (localBind * deltaQuat — now shear-free);
+      replace NPC/remote boxes with animated meshes; first-person viewmodel
 
 ## Phase 8 — Scripting
 - [x] Lua (sol2) server-side host: sandboxed stdlib (base/math/table/string only — no

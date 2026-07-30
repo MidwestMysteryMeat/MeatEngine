@@ -405,3 +405,335 @@ low-risk and unblocks the Linux testing hardware already on hand.
 
 Rule reaffirmed: source-available ≠ open-source-permissive. Only MIT/BSD/zlib/Apache/PD code is
 copyable; everything else is a technique reference at most.
+
+---
+
+# Extended survey (beyond the first 20)
+
+**Date:** 2026-07-30. Second pass covering engines/libraries **not** in the 20 above, focused on
+MeatEngine's actual gaps (netcode delta/interest/lag-comp, animation blend/state graph, voxel/
+destruction, cross-platform build/CI, PSX-forward rendering, dev-UX/editor). Same rules apply:
+every license below was **read from the actual LICENSE file at the source**, not trusted from
+GitHub metadata. Already-assigned borrowings are **out of scope** here: **Cafu delta-compression**
+and the **ozz / Esoterica blend-graph** are being extracted by other agents — this pass deliberately
+grabs elsewhere (a netcode reliability primitive).
+
+## Verified license + relevance table (22 additional projects)
+
+| Project | Repo | License (read from source) | Copy? | The ONE thing for MeatEngine | Rough effort |
+|---|---|---|---|---|---|
+| **reliable.io** | mas-bandwidth/reliable | **BSD-3-Clause** (LICENCE, © 2017-2026 Mas Bandwidth LLC) | **Yes** | **Sequence buffer + rolling ack-bitfield** — per-peer snapshot ack tracking ENet's unreliable channel can't give you. **← GRABBED below** | 6–10 h |
+| **netcode.io** | mas-bandwidth/netcode | **BSD-3-Clause** (© Mas Bandwidth LLC) | **Yes** | Signed **connect-token** handshake (matchmaker issues tokens; dedicated server validates) — authenticated UDP connects for a PUBLIC server | 20–30 h |
+| **yojimbo** | mas-bandwidth/yojimbo | **BSD-3-Clause** (© 2016-2026 Mas Bandwidth LLC) | **Yes** | Client/server **reliable message channels + block transfer** built on reliable+netcode; the "large reliable payload over unreliable" layer | 25–40 h |
+| **GameNetworkingSockets** | ValveSoftware/GameNetworkingSockets | **BSD-3-Clause** (© Valve) | **Yes**\* | Encrypted reliable-UDP (SNP) + P2P/relay; whole-transport swap for ENet if you want encryption. Heavy deps (protobuf/openssl) | 40–70 h |
+| **recastnavigation** | recastnavigation/recastnavigation | **zlib** (© Mikko Mononen) | **Yes** | **Recast navmesh bake + Detour runtime pathfind/crowd** — the standout for FPS **bot AI**; feed voxel surface tris in | 30–50 h |
+| **EnTT** | skypjack/entt | **MIT** (© Michele Caini) | **Yes** | Header-only, dependency-light **sparse-set ECS** (registry/views/groups + signals) — the de-facto C++ ECS; back or replace the hand-rolled one | 15–25 h (or study) |
+| **JoltPhysics** | jrouwe/JoltPhysics | **MIT** (© Jorrit Rouwe) | **Yes** | **Already a MeatEngine dep** → its `Ragdoll` + `SkeletonPose` + `SkeletonMapper`/IK are near-free physics-driven animation & hit reaction | 10–20 h |
+| **ozz-animation** | guillaumeblanc/ozz-animation | **MIT** (© Guillaume Blanc) | **Yes** | Standalone SoA runtime **sampling + partial blend + two-bone IK** (no engine deps). *License/scope confirmed MIT — but blend-graph route is assigned to another agent; do not double-extract* | (assigned) |
+| **Overload** | adriengivry/Overload | **MIT** (© Overload Tech.) | **Yes** | Small, readable **ImGui editor**: dockable panels + transform **gizmo** + inspector — reference for MeatEngine's in-engine `editor/RoomEditor` dev-UX | 15–25 h |
+| **Piccolo** | BoomingTech/Piccolo | **MIT** (Piccolo contributors) | **Yes** | Clean **reflection/serialization (meta) system** + readable anim blend; GAMES104 teaching engine — strong study reference | study / 10–20 h |
+| **Urho3D** | urho3d/urho3d (`licenses/urho3d/LICENSE`) | **MIT** (© 2008-2023 Urho3D project) | **Yes**\* | Mature scene **replication** + input mapping; framework-coupled — architecture reference | ideas / 20–40 h |
+| **rbfx** (Urho fork) | rbfx/rbfx | **MIT** (Urho 2008-22 + rbfx 2017-20) | **Yes**\* | Modernized **ReplicationManager**: clock sync + per-object delta over a bandwidth budget — a live MIT reference for interest-managed replication | ideas / 20–40 h |
+| **raylib** | raysan5/raylib | **zlib** (© Ramon Santamaria) | **Yes** | `rmodels` **IQM/glTF/M3D skinned-mesh loader** (readable, Assimp-free lightweight path) + `raymath` reference. Windowing overlaps GLFW → skip that | 8–16 h (loader) |
+| **Panda3D** | panda3d/panda3d | **Modified BSD-3** (© Carnegie Mellon Univ.) | **Yes** | Mature **animation blend/interval** system; C++ core is Python-oriented and large — study, not lift | ideas |
+| **bgfx** | bkaradzic/bgfx | **BSD-2-Clause** | **Yes**\* | Cross-platform **render-backend abstraction** (GL/VK/D3D/Metal) + offline shaderc; the clean multi-backend RHI option if MeatEngine outgrows raw GL4.5. Big dep | ideas / 40+ h |
+| **Diligent Engine** | DiligentGraphics/DiligentEngine | **Apache-2.0** | **Yes**\* | Modern RHI with the best cross-API **render-graph**; heavier than bgfx. Future-backend reference | ideas / 40+ h |
+| **The Forge** | ConfettiFX/The-Forge | **Apache-2.0** | **Yes**\* | Console-grade **Forward+ / GPU-driven** reference; overkill for PSX-forward — technique reference | ideas |
+| **Filament** | google/filament | **Apache-2.0** | **Yes** | Gold-standard **PBR/IBL** — but PBR is the wrong aesthetic for a PSX look. Skip for MeatEngine | skip (aesthetic) |
+| **Wicked Engine** | turanszkij/WickedEngine | **MIT** (© Turánszki János) | **Yes**\* | All-in-one modern renderer; monolithic — technique reference for GPU-driven/particles only | ideas |
+| **Hazel** | TheCherno/Hazel | **Apache-2.0** | **Yes** | Readable **event system + layer stack**; 2D-leaning teaching engine, low overlap with a voxel FPS | skip |
+| **ENet** | lsalzman/enet | **MIT** (© Lee Salzman) | **Yes** | **Already a MeatEngine dep.** Provides packet-level reliability but **not** snapshot-level acks — the exact gap the reliable.io grab fills | n/a |
+| **Flax Engine** | FlaxEngine/FlaxEngine | **Flax Engine EULA** (custom, non-OSI) | **No** | ⚠️ Source-available, **not permissive** — commercial/field-of-use restricted. **Ideas only:** editor UX & C#/C++ hot-reload loop | ideas only |
+
+\* Permissively licensed but **framework-coupled or heavy-dependency** — realistic path is reimplement
+the pattern (or vendor the whole lib as a dep), not a file-level copy into MeatEngine's dependency-light core.
+
+## Ranked NEW borrowings (excludes the already-assigned Cafu delta & ozz/Esoterica graph)
+
+| # | Borrowing | Source · License | Gap filled | Effort | Obligation |
+|---|-----------|------------------|------------|--------|-----------|
+| 1 | **Snapshot ack / sequence buffer** — per-peer rolling ack-bitfield so the server knows the newest snapshot each client received (the baseline to delta against). **← extracted below** | **reliable.io** · BSD-3 | Netcode (enables delta; ack of unreliable snapshots) | **6–10 h** | Retain BSD-3 notice; add to THIRD_PARTY.md |
+| 2 | **Bot navigation** — Recast navmesh bake + Detour runtime pathfinding/crowd, fed from voxel surface triangles | **recastnavigation** · zlib | AI (bots — a stated FPS feature) | 30–50 h | zlib notice on ported files |
+| 3 | **Secure connect-token handshake** — authenticated UDP connects a PUBLIC server needs (ENet has none) | **netcode.io** (+**yojimbo** for reliable msg channels) · BSD-3 | Netcode (auth/anti-spoof) | 20–30 h | BSD-3 notice |
+| 4 | **ECS backbone** — adopt EnTT's sparse-set registry/views, or study it to harden the hand-rolled ECS | **EnTT** · MIT (header-only) | Architecture / perf | 15–25 h | MIT notice if vendored |
+| 5 | **Editor dev-UX** — dockable ImGui panels + transform gizmo + inspector for `editor/RoomEditor` | **Overload** · MIT | Dev-UX / editor | 15–25 h | MIT notice |
+| 6 | **Physics-driven anim extras** — Jolt `Ragdoll` + `SkeletonPose` + two-bone IK (Jolt is already linked, so near-free) | **JoltPhysics** · MIT | Animation (ragdoll/hit-react/IK) | 10–20 h | MIT notice (already vendored) |
+
+**Sequencing:** #1 is the keystone of the netcode workstream — it is what makes the *other* agent's
+Cafu delta compression usable (you cannot delta against a baseline the client hasn't confirmed). Build
+#1 first, hand the acked-baseline sequence to the delta encoder. #3 (auth) is independent and pairs
+naturally with #1 since netcode.io/yojimbo already sit on top of reliable.io upstream. #2 (nav) and #5
+(editor) are independent tracks. #6 is cheap because Jolt is already in the tree.
+
+**Ideas-only (studied, not copied):** rbfx `ReplicationManager` (interest-managed delta over a bandwidth
+budget — the cleanest *live* MIT reference for the same problem Torque3D solves); bgfx/Diligent/The Forge
+render-backend abstractions (only if MeatEngine ever needs a non-GL backend); Piccolo's reflection/meta
+system (serialization reference); Panda3D animation intervals; Flax editor UX (EULA — ideas only).
+
+## Extracted borrowing #1 — snapshot ack / sequence buffer (`meat::net::AckSystem`)
+
+**Provenance & license.** Clean-room reimplementation of the sequence-buffer + rolling ack-bitfield from
+Glenn Fiedler's **reliable** library (`mas-bandwidth/reliable`, **BSD-3-Clause**, © 2017-2026 Mas
+Bandwidth LLC). No source was copied; the data structure and the 16-bit-wraparound ack encoding are
+reproduced from the algorithm in `reliable.c` (`reliable_sequence_buffer_*`,
+`reliable_sequence_buffer_generate_ack_bits`, `reliable_sequence_greater_than`). BSD-3 permits copy or
+reimplementation provided the copyright notice + disclaimer are retained — the header below carries the
+attribution, and it must be recorded in `THIRD_PARTY.md` on adoption.
+
+**Why this and not "more ENet".** MeatEngine already links ENet, which reliably delivers *reliable*
+packets — but snapshots are sent on the **unreliable** channel (you never resend a stale world state),
+so ENet never reports *which snapshot a client actually received*. Without that, `SnapshotMsg` must send
+the full player+entity list every tick (its current behavior). `AckSystem` gives the server, per peer, the
+most-recent acknowledged snapshot sequence at ~6 bytes/packet (one `u16` + one `u32`) piggybacked on the
+client's next command — the missing baseline that lets the delta-compression work (other agent) actually
+run. It is transport-agnostic, header-only, and dependency-light (only `<vector>`/`<cstdint>`; no glm, no
+ENet include), matching MeatEngine's `engine/net` conventions.
+
+**Status:** compiled clean with `g++ -std=c++20 -Wall -Wextra` and validated by a standalone test
+(sequence wraparound; buffer insert/find/evict; ack-bit generation; a 2000-frame **30%-loss + reordering**
+link where every confirmed ack corresponded to a genuinely received packet and **zero** false acks were
+produced; and a duplicate-ack idempotency check). Code + test live in the working scratchpad, **not** in
+the repo — no MeatEngine source file was modified. Proposed home when adopted: `src/engine/net/AckReliability.h`.
+
+```cpp
+#pragma once
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <vector>
+
+// ---------------------------------------------------------------------------
+// Snapshot ack / sequence tracking.
+//
+// Clean-room reimplementation (idiomatic C++20, meat style) of the sequence
+// buffer + rolling ack-bitfield from Glenn Fiedler's "reliable" library:
+//   https://github.com/mas-bandwidth/reliable   (reliable.c / reliable.h)
+//   Copyright (c) 2017-2026 Mas Bandwidth LLC.  Licensed BSD-3-Clause.
+// No source was copied; the data structure and the 16-bit-wraparound ack
+// encoding are reproduced from the algorithm described in reliable.c
+// (reliable_sequence_buffer_* and reliable_sequence_buffer_generate_ack_bits).
+// Retain this attribution and record it in THIRD_PARTY.md when adopting.
+//
+// WHY MeatEngine needs this (not covered by ENet): snapshots go out on the
+// UNRELIABLE channel, so ENet never tells the server which snapshot a client
+// actually received. This gives the server, per peer, the set of recently
+// acknowledged snapshot sequences at ~zero bandwidth (one u16 + one u32 that
+// piggyback on the client's next command packet). The game layer maps an
+// acked sequence -> the snapshot it can safely delta the next one against,
+// turning full-list-every-tick SnapshotMsg into baseline+changes.
+// ---------------------------------------------------------------------------
+namespace meat::net {
+
+// 16-bit sequence comparison with wraparound. a is "more recent" than b when it
+// is ahead by less than half the sequence space. (reliable.c:125)
+inline bool seqGreaterThan(std::uint16_t a, std::uint16_t b) {
+    return ((a > b) && (a - b <= 0x8000)) || ((a < b) && (b - a > 0x8000));
+}
+inline bool seqLessThan(std::uint16_t a, std::uint16_t b) { return seqGreaterThan(b, a); }
+
+// A fixed-capacity ring of entries keyed by a rolling 16-bit sequence number.
+// Slot = sequence % capacity; a parallel sentinel array records which sequence
+// (if any) currently occupies each slot, so lookups are O(1) and stale entries
+// are cheap to evict. T carries whatever per-packet bookkeeping the caller wants
+// (may be an empty struct when only presence matters).
+template <typename T>
+class SequenceBuffer {
+public:
+    static constexpr std::uint32_t kEmpty = 0xFFFFFFFFu;
+
+    explicit SequenceBuffer(int capacity = 256)
+        : m_entrySequence(static_cast<std::size_t>(capacity), kEmpty),
+          m_entries(static_cast<std::size_t>(capacity)),
+          m_capacity(capacity) {}
+
+    void reset() {
+        m_sequence = 0;
+        std::fill(m_entrySequence.begin(), m_entrySequence.end(), kEmpty);
+    }
+
+    // True if `seq` is recent enough to be inserted (not older than the window).
+    bool testInsert(std::uint16_t seq) const {
+        return !seqLessThan(seq, static_cast<std::uint16_t>(m_sequence -
+                                                            static_cast<std::uint16_t>(m_capacity)));
+    }
+
+    // Insert `seq`, advancing the window (clearing any slots skipped over) if it
+    // is newer than anything seen. Returns the entry to fill, or nullptr if the
+    // sequence is too old to store.
+    T* insert(std::uint16_t seq) {
+        if (seqLessThan(seq, static_cast<std::uint16_t>(m_sequence -
+                                                        static_cast<std::uint16_t>(m_capacity)))) {
+            return nullptr;
+        }
+        if (seqGreaterThan(static_cast<std::uint16_t>(seq + 1), m_sequence)) {
+            removeRange(m_sequence, seq);
+            m_sequence = static_cast<std::uint16_t>(seq + 1);
+        }
+        const int index = slot(seq);
+        m_entrySequence[index] = seq;
+        m_entries[index] = T{};
+        return &m_entries[index];
+    }
+
+    bool exists(std::uint16_t seq) const {
+        return m_entrySequence[slot(seq)] == static_cast<std::uint32_t>(seq);
+    }
+
+    T* find(std::uint16_t seq) {
+        const int index = slot(seq);
+        return m_entrySequence[index] == static_cast<std::uint32_t>(seq) ? &m_entries[index]
+                                                                         : nullptr;
+    }
+
+    // Fill (ack, ackBits): ack = most recent stored sequence; bit i of ackBits is
+    // set when (ack - i) is present. (reliable.c:361)
+    void generateAckBits(std::uint16_t& ack, std::uint32_t& ackBits) const {
+        ack = static_cast<std::uint16_t>(m_sequence - 1);
+        ackBits = 0;
+        for (int i = 0; i < 32; ++i) {
+            if (exists(static_cast<std::uint16_t>(ack - static_cast<std::uint16_t>(i)))) {
+                ackBits |= (1u << i);
+            }
+        }
+    }
+
+    std::uint16_t mostRecent() const { return static_cast<std::uint16_t>(m_sequence - 1); }
+
+private:
+    int slot(std::uint16_t seq) const { return static_cast<int>(seq % m_capacity); }
+
+    // Clear the sentinel for every slot in (start, finish]; caps at capacity so a
+    // big forward jump just wipes the whole ring once. (reliable.c:205)
+    void removeRange(std::uint16_t start, std::uint16_t finish) {
+        int span = static_cast<int>(finish) - static_cast<int>(start);
+        if (span < 0) span += 0x10000;
+        if (span >= m_capacity) {
+            std::fill(m_entrySequence.begin(), m_entrySequence.end(), kEmpty);
+            return;
+        }
+        for (int s = start; s <= start + span; ++s) {
+            m_entrySequence[s % m_capacity] = kEmpty;
+        }
+    }
+
+    std::vector<std::uint32_t> m_entrySequence;
+    std::vector<T> m_entries;
+    int m_capacity;
+    std::uint16_t m_sequence = 0; // one past the most recent stored sequence
+};
+
+// Per-peer ack endpoint. Stamp every outgoing packet with packHeader(); feed
+// every incoming packet's header to unpackHeader(), which reports which of THIS
+// side's earlier packets the remote has now confirmed (each reported once).
+class AckSystem {
+public:
+    struct Header {
+        std::uint16_t sequence = 0; // this packet's sequence
+        std::uint16_t ack = 0;      // most recent sequence received FROM the peer
+        std::uint32_t ackBits = 0;  // the 32 before `ack`
+    };
+
+    explicit AckSystem(int capacity = 256) : m_sent(capacity), m_recv(capacity) {}
+
+    // Build the header for a new outgoing packet (allocates its sequence and
+    // records it as in-flight, plus the current inbound-ack state to piggyback).
+    Header packHeader() {
+        Header h;
+        h.sequence = m_localSequence++;
+        if (SentPacket* s = m_sent.insert(h.sequence)) {
+            s->acked = false;
+        }
+        m_recv.generateAckBits(h.ack, h.ackBits);
+        return h;
+    }
+
+    // Process an incoming packet's header. Appends to `newlyAcked` (does not
+    // clear it) every locally-sent sequence the remote just confirmed.
+    void unpackHeader(const Header& h, std::vector<std::uint16_t>& newlyAcked) {
+        m_recv.insert(h.sequence); // presence -> future generateAckBits (dup-safe)
+        for (int i = 0; i < 32; ++i) {
+            if ((h.ackBits & (1u << i)) == 0) continue;
+            const auto seq = static_cast<std::uint16_t>(h.ack - static_cast<std::uint16_t>(i));
+            SentPacket* s = m_sent.find(seq);
+            if (s && !s->acked) {
+                s->acked = true;
+                if (seqGreaterThan(seq, m_latestAcked) || !m_haveAck) {
+                    m_latestAcked = seq;
+                    m_haveAck = true;
+                }
+                newlyAcked.push_back(seq);
+            }
+        }
+    }
+
+    // Most recent locally-sent sequence the remote has acknowledged, or nullopt
+    // if none yet. This is the baseline the next snapshot should delta against.
+    bool haveAck() const { return m_haveAck; }
+    std::uint16_t latestAckedSequence() const { return m_latestAcked; }
+
+    void reset() {
+        m_localSequence = 0;
+        m_latestAcked = 0;
+        m_haveAck = false;
+        m_sent.reset();
+        m_recv.reset();
+    }
+
+private:
+    struct SentPacket {
+        bool acked = false;
+    };
+    struct RecvPacket {}; // presence only
+
+    SequenceBuffer<SentPacket> m_sent;
+    SequenceBuffer<RecvPacket> m_recv;
+    std::uint16_t m_localSequence = 0;
+    std::uint16_t m_latestAcked = 0;
+    bool m_haveAck = false;
+};
+
+} // namespace meat::net
+```
+
+**Wiring sketch (not yet applied to source).** The 6-byte header serializes with the existing
+`ByteWriter`/`ByteReader` (`w.write(h.sequence); w.write(h.ack); w.write(h.ackBits);` and the mirror
+reads). Server keeps one `AckSystem` per `PeerId`; each tick it calls `packHeader()`, writes the header
+ahead of the `SnapshotMsg` payload, and stamps the entry's `sequence` onto the snapshot it stored for
+that peer. When a client command arrives, `unpackHeader()` yields the sequences the client has confirmed;
+`latestAckedSequence()` is then the baseline handed to the delta encoder (the other agent's Cafu port) —
+or, until that lands, simply drives "only full-resync when the client has fallen outside the 32-ack
+window." Client side runs the mirror so the server's inbound acks also flow, feeding RTT/loss stats later.
+
+## For the reviewer (Codex) — extended pass
+
+- **All 22 licenses were read from the actual LICENSE file at the source**, not from GitHub metadata.
+  Notable: **Urho3D's** license is not at repo root — it lives at `licenses/urho3d/LICENSE` (MIT,
+  © 2008-2023); a root-level `LICENSE`/`License.txt` fetch 404s and a metadata-only pass would misreport
+  it. The four **Mas Bandwidth** netcode libs (reliable/netcode/yojimbo) are all **BSD-3-Clause** (the
+  LICENCE files are British-spelled and © "Mas Bandwidth LLC", the successor to Glenn Fiedler's
+  `networkprotocol/*` repos). **recastnavigation** is **zlib** (not MIT). **JoltPhysics** and **EnTT**
+  are confirmed **MIT**.
+- **One license trap flagged:** **Flax Engine** is source-available under its own **Flax Engine EULA**
+  (field-of-use/commercial restrictions, non-OSI) — **not** copy-eligible despite being on GitHub. Ideas
+  only, same class as Defold/NeoAxis from the first pass.
+- **ozz-animation license/scope confirmed as requested:** genuinely **MIT** (© Guillaume Blanc),
+  standalone SoA runtime doing sampling + partial blending + two-bone IK with no engine dependency —
+  a clean lift *in principle*, but the blend-graph route is already assigned to another agent, so this
+  pass did **not** extract it (noted to avoid a collision).
+- **The grab is deliberately orthogonal to the two in-flight extractions.** Cafu delta-compression
+  (agent A) needs a *confirmed baseline*; ozz/Esoterica (agent B) is animation. `AckSystem` supplies the
+  baseline-tracking primitive neither provides and that ENet does not expose for unreliable snapshots —
+  it *unblocks* agent A's work rather than overlapping it.
+- **The extracted code is a clean-room reimplementation, not a copy** (reliable.io is C with allocator
+  callbacks and coupled fragmentation/RTT machinery; this is ~180 lines of header-only C++20 in
+  `namespace meat::net`, no allocator plumbing, no glm, no transport include). BSD-3 attribution is
+  carried in the file header per the license. It compiles clean under `-Wall -Wextra -std=c++20` and
+  passes a loss/reorder/duplicate test harness. **No MeatEngine source file was edited**; the code and
+  test are in the scratchpad, and the doc gives the wiring sketch for whoever integrates it.
+- **Grounding caveat for the integrator:** reliable.io's own design contract (per its maintainer) is
+  "assert-in-debug, trust-the-caller-in-release, and assume an authenticated transport beneath." This
+  reimplementation reads only wire-typed fixed-width fields (u16/u16/u32) through the bounds-checked
+  `ByteReader`, so a malformed header cannot overrun — but it inherits the assumption that a hostile
+  peer could still *warp the ack window* with a forged far-future sequence. That is why borrowing #3
+  (netcode.io connect-tokens / authenticated transport) is the right companion before exposing this on
+  the public server.

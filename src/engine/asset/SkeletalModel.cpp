@@ -6,13 +6,16 @@
 #include <assimp/scene.h>
 
 #include <glm/common.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <format>
 #include <limits>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -51,6 +54,51 @@ bool subtreeHasWeightedBone(const aiNode& node, const SkeletonInputs& in) {
         }
     }
     return false;
+}
+
+// Reduce a bone/channel name to a match key: drop everything up to and including the
+// last ':' (FBX namespace like "mixamorig:" or "Armature:"), so the same joint matches
+// whether or not the exporter namespaced it. Bone names are otherwise case-sensitive.
+std::string normalizeBoneName(const std::string& n) {
+    const auto colon = n.rfind(':');
+    return colon == std::string::npos ? n : n.substr(colon + 1);
+}
+
+// Pure rotation of a transform (strip translation + per-axis scale). Rigs are
+// shear-free, so normalizing the basis columns and quat_cast is exact.
+glm::quat rotationOf(const glm::mat4& m) {
+    glm::mat3 r(m);
+    const float sx = glm::length(r[0]), sy = glm::length(r[1]), sz = glm::length(r[2]);
+    if (sx > 0.0f) r[0] /= sx;
+    if (sy > 0.0f) r[1] /= sy;
+    if (sz > 0.0f) r[2] /= sz;
+    return glm::normalize(glm::quat_cast(r));
+}
+
+glm::quat aiToQuat(const aiQuaternion& q) {
+    return glm::normalize(glm::quat(q.w, q.x, q.y, q.z));
+}
+
+// Interpolate an Assimp rotation channel at time t (ticks). Clamps at the ends.
+glm::quat sampleChannelRot(const aiNodeAnim& ch, float t) {
+    const unsigned n = ch.mNumRotationKeys;
+    if (n == 0) return glm::quat(1, 0, 0, 0);
+    if (n == 1 || t <= static_cast<float>(ch.mRotationKeys[0].mTime)) {
+        return aiToQuat(ch.mRotationKeys[0].mValue);
+    }
+    if (t >= static_cast<float>(ch.mRotationKeys[n - 1].mTime)) {
+        return aiToQuat(ch.mRotationKeys[n - 1].mValue);
+    }
+    for (unsigned k = 0; k + 1 < n; ++k) {
+        const auto& a = ch.mRotationKeys[k];
+        const auto& b = ch.mRotationKeys[k + 1];
+        if (t < static_cast<float>(b.mTime)) {
+            const float span = static_cast<float>(b.mTime - a.mTime);
+            const float f = span > 1e-6f ? (t - static_cast<float>(a.mTime)) / span : 0.0f;
+            return glm::normalize(glm::slerp(aiToQuat(a.mValue), aiToQuat(b.mValue), f));
+        }
+    }
+    return aiToQuat(ch.mRotationKeys[n - 1].mValue);
 }
 
 // Pre-order walk ⇒ parents always precede children in the flat array. A node is
@@ -419,6 +467,268 @@ std::optional<SkeletalModel> loadSkeletalModel(const std::filesystem::path& path
                   clip.duration / clip.ticksPerSec, clip.tracks.size());
     }
     return model;
+}
+
+int appendClipsFromFile(SkeletalModel& model, const std::filesystem::path& animFile,
+                        const ModelImportOptions& opts) {
+    (void)opts; // rotation-only merge takes no scale; kept for API symmetry
+    if (model.bones.empty()) {
+        log::error("appendClipsFromFile: target model has no skeleton");
+        return 0;
+    }
+
+    Assimp::Importer importer;
+    // Same pivot collapse as loadSkeletalModel: with pivots preserved, FBX animation
+    // channels target $AssimpFbx$ pseudo-nodes and never match the bone names.
+    importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
+    // Animation-only import: we need the node graph + animations, not geometry.
+    const aiScene* scene = importer.ReadFile(animFile.string(), 0);
+    if (!scene || !scene->mRootNode) {
+        log::error("appendClipsFromFile '{}' failed: {}", animFile.string(),
+                   importer.GetErrorString());
+        return 0;
+    }
+    if (scene->mNumAnimations == 0) {
+        log::warn("appendClipsFromFile '{}': file has no animations", animFile.string());
+        return 0;
+    }
+
+    // Normalized-name → bone index, built once from the target. Exact names are already
+    // in model.boneByName; this table catches the namespace-mismatch case.
+    std::unordered_map<std::string, int> normToBone;
+    normToBone.reserve(model.bones.size());
+    for (int b = 0; b < static_cast<int>(model.bones.size()); ++b) {
+        normToBone.emplace(normalizeBoneName(model.bones[b].name), b); // first wins
+    }
+    const auto resolveBone = [&](const std::string& channelName) -> int {
+        if (const auto it = model.boneByName.find(channelName); it != model.boneByName.end()) {
+            return it->second; // exact (mixamorig:Hips → mixamorig:Hips)
+        }
+        if (const auto it = normToBone.find(normalizeBoneName(channelName));
+            it != normToBone.end()) {
+            return it->second; // namespace-normalized (Hips → mixamorig:Hips)
+        }
+        return -1;
+    };
+
+    int appended = 0;
+    int totalDropped = 0;
+    for (unsigned a = 0; a < scene->mNumAnimations; ++a) {
+        const aiAnimation& anim = *scene->mAnimations[a];
+        AnimClip clip;
+        clip.name = anim.mName.length > 0 ? anim.mName.C_Str()
+                                          : std::format("{}#{}", animFile.stem().string(), a);
+        clip.duration = static_cast<float>(anim.mDuration);
+        clip.ticksPerSec =
+            anim.mTicksPerSecond > 0.0 ? static_cast<float>(anim.mTicksPerSecond) : 25.0f;
+
+        int droppedThisClip = 0;
+        for (unsigned c = 0; c < anim.mNumChannels; ++c) {
+            const aiNodeAnim& ch = *anim.mChannels[c];
+            const int boneIdx = resolveBone(ch.mNodeName.C_Str());
+            if (boneIdx < 0) {
+                ++droppedThisClip; // channel targets a bone the model doesn't have
+                continue;
+            }
+            BoneTrack track;
+            track.boneIndex = boneIdx;
+            // ROTATION-ONLY merge. Bone names can match while the source skeleton's bind
+            // scale/proportions differ (MoCap Online's hips sit at a different height/unit
+            // than this rig), so copying absolute POSITION keys flings the mesh off-screen
+            // and copying SCALE keys distorts it. We keep only rotations and leave position
+            // + scale empty; samplePose then gap-fills those from THIS model's nodeBindLocal
+            // (identity delta), so every bone keeps its own bind translation/bone-length and
+            // only the animated rotation is applied — the standard cross-skeleton rotation
+            // retarget, robust to proportion differences. (Root locomotion / hip bob are lost;
+            // full-fidelity same-skeleton position transfer is the retargeter's job.)
+            track.rotations.reserve(ch.mNumRotationKeys);
+            for (unsigned k = 0; k < ch.mNumRotationKeys; ++k) {
+                const aiQuatKey& key = ch.mRotationKeys[k];
+                track.rotations.push_back(
+                    {static_cast<float>(key.mTime),
+                     glm::normalize(glm::quat(key.mValue.w, key.mValue.x, key.mValue.y,
+                                              key.mValue.z))});
+            }
+            if (track.rotations.empty()) {
+                ++droppedThisClip; // a position/scale-only channel drives nothing here
+                continue;
+            }
+            clip.tracks.push_back(std::move(track));
+        }
+
+        if (clip.tracks.empty()) {
+            log::warn("appendClipsFromFile '{}': clip '{}' matched 0 of {} channels — "
+                      "skeleton mismatch? (needs a cross-skeleton retarget)",
+                      animFile.filename().string(), clip.name, anim.mNumChannels);
+            totalDropped += droppedThisClip;
+            continue;
+        }
+        totalDropped += droppedThisClip;
+        model.clips.push_back(std::move(clip));
+        ++appended;
+    }
+
+    if (totalDropped > 0) {
+        log::warn("appendClipsFromFile '{}': dropped {} channels with no matching bone",
+                  animFile.filename().string(), totalDropped);
+    }
+    log::info("appendClipsFromFile '{}': +{} clips (model now {} clips)",
+              animFile.filename().string(), appended, model.clips.size());
+    return appended;
+}
+
+// WIP (opt-in via --animretarget): the rest-relative global-delta retarget below is the
+// standard technique, but cross-skeleton WORLD-FRAME ALIGNMENT is not yet solved — a
+// MoCap Online walk still distorts the mixamorig SWAT (the source node space and the
+// mesh/offset space differ by an axis baseline the per-joint own-rest measurement doesn't
+// fully cancel). appendClipsFromFile (identical-bind, e.g. a true Mixamo clip) is the
+// working path; this needs the alignment fix before it renders clean.
+int retargetClipsFromFile(SkeletalModel& model, const std::filesystem::path& animFile,
+                          const ModelImportOptions& opts) {
+    (void)opts;
+    if (model.bones.empty()) {
+        log::error("retargetClipsFromFile: target model has no skeleton");
+        return 0;
+    }
+    Assimp::Importer importer;
+    importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
+    const aiScene* scene = importer.ReadFile(animFile.string(), 0);
+    if (!scene || !scene->mRootNode) {
+        log::error("retargetClipsFromFile '{}' failed: {}", animFile.string(),
+                   importer.GetErrorString());
+        return 0;
+    }
+    if (scene->mNumAnimations == 0) {
+        log::warn("retargetClipsFromFile '{}': file has no animations", animFile.string());
+        return 0;
+    }
+
+    // --- Source skeleton rest data (iterative pre-order: parents before children) ---
+    struct SrcNode {
+        std::string name;
+        int parent = -1;
+        glm::quat localRestRot{1, 0, 0, 0};
+        glm::quat restGlobalRot{1, 0, 0, 0};
+    };
+    std::vector<SrcNode> src;
+    std::unordered_map<std::string, int> srcExact, srcNorm;
+    std::vector<std::pair<const aiNode*, int>> stack{{scene->mRootNode, -1}};
+    while (!stack.empty()) {
+        const auto [node, parent] = stack.back();
+        stack.pop_back();
+        const int idx = static_cast<int>(src.size());
+        SrcNode sn;
+        sn.name = node->mName.C_Str();
+        sn.parent = parent;
+        sn.localRestRot = rotationOf(toGlm(node->mTransformation));
+        sn.restGlobalRot = parent >= 0 ? src[parent].restGlobalRot * sn.localRestRot
+                                       : sn.localRestRot;
+        src.push_back(sn);
+        srcExact.emplace(sn.name, idx);
+        srcNorm.emplace(normalizeBoneName(sn.name), idx); // first wins
+        for (unsigned c = 0; c < node->mNumChildren; ++c) {
+            stack.emplace_back(node->mChildren[c], idx);
+        }
+    }
+    const auto resolveSrc = [&](const std::string& tgt) -> int {
+        if (const auto it = srcExact.find(tgt); it != srcExact.end()) return it->second;
+        if (const auto it = srcNorm.find(normalizeBoneName(tgt)); it != srcNorm.end()) {
+            return it->second;
+        }
+        return -1;
+    };
+
+    // --- Target rest data (model.bones is already topological) ---
+    const std::size_t nb = model.bones.size();
+    std::vector<glm::quat> tgtLocalRest(nb), tgtGlobalRest(nb), tgtNodeBind(nb), tgtPreRot(nb);
+    for (std::size_t b = 0; b < nb; ++b) {
+        const Bone& bone = model.bones[b];
+        tgtLocalRest[b] = rotationOf(bone.localBind);
+        tgtNodeBind[b] = rotationOf(bone.nodeBindLocal);
+        tgtPreRot[b] = rotationOf(bone.pre);
+        tgtGlobalRest[b] = bone.parent >= 0
+                               ? tgtGlobalRest[bone.parent] * tgtPreRot[b] * tgtLocalRest[b]
+                               : tgtPreRot[b] * tgtLocalRest[b];
+    }
+
+    int appended = 0;
+    for (unsigned a = 0; a < scene->mNumAnimations; ++a) {
+        const aiAnimation& anim = *scene->mAnimations[a];
+        std::vector<const aiNodeAnim*> srcChan(src.size(), nullptr);
+        for (unsigned c = 0; c < anim.mNumChannels; ++c) {
+            const aiNodeAnim* ch = anim.mChannels[c];
+            if (const auto it = srcExact.find(ch->mNodeName.C_Str()); it != srcExact.end()) {
+                srcChan[it->second] = ch;
+            }
+        }
+        const float srcTps =
+            anim.mTicksPerSecond > 0.0 ? static_cast<float>(anim.mTicksPerSecond) : 25.0f;
+        const float durSec = static_cast<float>(anim.mDuration) / srcTps;
+        constexpr int kFps = 30;
+        const int frames = std::max(2, static_cast<int>(std::ceil(durSec * kFps)));
+
+        AnimClip clip;
+        clip.name = anim.mName.length > 0 ? anim.mName.C_Str()
+                                          : std::format("{}#{}", animFile.stem().string(), a);
+        clip.ticksPerSec = static_cast<float>(kFps);
+        clip.duration = static_cast<float>(frames - 1);
+
+        std::vector<BoneTrack> tracks(nb);
+        std::vector<bool> mapped(nb, false);
+        for (std::size_t b = 0; b < nb; ++b) tracks[b].boneIndex = static_cast<int>(b);
+
+        std::vector<glm::quat> srcGlobal(src.size()), rtWorld(nb);
+        for (int f = 0; f < frames; ++f) {
+            const float tTicks = static_cast<float>(f) / kFps * srcTps;
+            for (std::size_t i = 0; i < src.size(); ++i) {
+                glm::quat local = src[i].localRestRot;
+                if (const aiNodeAnim* ch = srcChan[i]; ch && ch->mNumRotationKeys > 0) {
+                    local = sampleChannelRot(*ch, tTicks);
+                }
+                srcGlobal[i] =
+                    src[i].parent >= 0 ? srcGlobal[src[i].parent] * local : local;
+            }
+            for (std::size_t b = 0; b < nb; ++b) {
+                const int p = model.bones[b].parent;
+                const glm::quat parentW = p >= 0 ? rtWorld[p] : glm::quat(1, 0, 0, 0);
+                const int si = resolveSrc(model.bones[b].name);
+                glm::quat rtw;
+                if (si >= 0 && srcChan[si]) {
+                    // World motion the source joint underwent since its own rest, applied
+                    // to the target's own rest global — the fixed rest/axis offset cancels.
+                    const glm::quat dR = srcGlobal[si] * glm::inverse(src[si].restGlobalRot);
+                    rtw = glm::normalize(dR * tgtGlobalRest[b]);
+                    mapped[b] = true;
+                } else {
+                    rtw = parentW * tgtPreRot[b] * tgtLocalRest[b]; // unmapped: hold rest
+                }
+                rtWorld[b] = rtw;
+                const glm::quat rtLocal = glm::inverse(parentW * tgtPreRot[b]) * rtw;
+                const glm::quat deltaLocal = glm::inverse(tgtLocalRest[b]) * rtLocal;
+                // samplePose does local = localBind * nodeBindLocalInv * compose(key); with
+                // key rotation = nodeBind*deltaLocal and pos/scale gap-filled from nodeBind,
+                // that reduces to localBind * deltaLocal — bind at rest, retargeted in motion.
+                tracks[b].rotations.push_back(
+                    {static_cast<float>(f), glm::normalize(tgtNodeBind[b] * deltaLocal)});
+            }
+        }
+        for (std::size_t b = 0; b < nb; ++b) {
+            if (mapped[b] && !tracks[b].rotations.empty()) {
+                clip.tracks.push_back(std::move(tracks[b]));
+            }
+        }
+        if (clip.tracks.empty()) {
+            log::warn("retargetClipsFromFile '{}': clip '{}' mapped 0 bones",
+                      animFile.filename().string(), clip.name);
+            continue;
+        }
+        model.clips.push_back(std::move(clip));
+        ++appended;
+    }
+
+    log::info("retargetClipsFromFile '{}': +{} clips baked at 30fps (model now {} clips)",
+              animFile.filename().string(), appended, model.clips.size());
+    return appended;
 }
 
 } // namespace meat

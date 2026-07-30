@@ -236,17 +236,39 @@ void Engine::loadAnimTestActor() {
         // by EXACT bind-local matrix multiply (Animator::idlePose — no decompose,
         // so deep chains like arms/fingers don't warp).
         actor->model = std::move(*model);
-        // Play any clip with real keyframes; a multi-second locomotion clip drives
-        // full motion, a short reference pose renders as a clean static pose. Below
-        // this a 0-track file has nothing to sample, so fall back to the bind idle.
+        // Merge external animation clips (Mixamo/MoCap) onto this skeleton by bone name —
+        // a same-hierarchy clip (mixamorig, or MoCap Online minus the prefix) needs no
+        // retarget and plays through samplePose's delta path unchanged.
+        if (!m_animClip.empty()) {
+            appendClipsFromFile(actor->model, m_animClip, {.scale = 1.0f});
+        }
+        // --animretarget: foreign-skeleton clip (UE5 mannequin, MoCap Online) — rest-pose
+        // compensated so a different bind pose doesn't distort the mesh.
+        if (!m_animRetarget.empty()) {
+            retargetClipsFromFile(actor->model, m_animRetarget, {.scale = 1.0f});
+        }
+        // Play the LONGEST clip: a merged multi-second locomotion clip beats a bundled
+        // 1-frame reference pose. Below 0.02s there's nothing to sample → bind idle.
+        actor->clipIndex = 0;
+        for (int i = 1; i < static_cast<int>(actor->model.clips.size()); ++i) {
+            const AnimClip& c = actor->model.clips[i];
+            const AnimClip& best = actor->model.clips[actor->clipIndex];
+            if (c.duration / c.ticksPerSec > best.duration / best.ticksPerSec) {
+                actor->clipIndex = i;
+            }
+        }
         actor->hasRealClip =
             !actor->model.clips.empty() &&
-            actor->model.clips[0].duration / actor->model.clips[0].ticksPerSec >= 0.02f;
+            actor->model.clips[actor->clipIndex].duration /
+                    actor->model.clips[actor->clipIndex].ticksPerSec >=
+                0.02f;
         m_animActor = std::move(actor);
         log::info("anim actor '{}' up: {} clips, {}, textured={} (up-extent {:.2f} m -> x{:.3f})",
                   path, m_animActor->model.clips.size(),
-                  m_animActor->hasRealClip ? "clip 0" : "procedural idle", textured, upExtent,
-                  norm);
+                  m_animActor->hasRealClip
+                      ? std::format("clip {}", m_animActor->clipIndex).c_str()
+                      : "procedural idle",
+                  textured, upExtent, norm);
         return;
     }
     log::info("no assets/models/anim_test.{{fbx,glb}} staged — skeletal proof skipped");
@@ -365,11 +387,12 @@ void Engine::render(float alpha) {
         const glm::vec3 base(m_animActor->transform[3]);
         m_renderer.submitPointLight(base + glm::vec3(0.0f, 1.2f, 2.0f), glm::vec3(2.4f), 8.0f);
     }
-    if (m_animActor && m_animActor->mesh != 0) { // Phase 7b proof: loop clip 0
+    if (m_animActor && m_animActor->mesh != 0) { // Phase 7b proof: loop the chosen clip
         m_animActor->time += m_frameDt;
         const Pose pose =
             m_animActor->hasRealClip
-                ? samplePose(m_animActor->model, m_animActor->model.clips[0], m_animActor->time)
+                ? samplePose(m_animActor->model,
+                             m_animActor->model.clips[m_animActor->clipIndex], m_animActor->time)
                 : idlePose(m_animActor->model, m_animActor->time);
         m_renderer.submitSkinned(m_animActor->mesh, m_animActor->transform, pose,
                                  m_animActor->material);
@@ -755,6 +778,8 @@ int Engine::run(const EngineConfig& configIn) {
     }
     m_animBooth = config.animBooth;
     m_animModel = config.animModel;
+    m_animClip = config.animClip;
+    m_animRetarget = config.animRetarget;
     if (config.mode == EngineConfig::Mode::Browse && !runMenu(config)) return 0;
     if (!initNetwork(config)) {
         log::error("network init failed");

@@ -43,6 +43,10 @@ struct EngineConfig {
     bool startEditor = false; // --editor: enter the Room Designer on spawn
     bool animBooth = false;   // --animshot: lock a fixed close camera on the anim actor
     std::string animModel;    // --animmodel <path>: booth-load ANY skeletal file (FBX/glTF)
+    std::string animClip;     // --animclip <path>: merge an animation-only file's clips
+                              // onto the loaded model by bone name (identical-bind Mixamo)
+    std::string animRetarget; // --animretarget <path>: bake a foreign-skeleton clip onto
+                              // the model (rest-pose-compensated; UE5/MoCap different bind)
 };
 
 // Composition root. The simulation authority is always a ServerSim; this class
@@ -105,11 +109,15 @@ private:
         glm::mat4 transform{1.0f};
         float time = 0.0f;
         bool hasRealClip = false; // false → drive the procedural idle (exact-matrix)
+        int clipIndex = 0;        // which clip to play (the longest — a merged locomotion
+                                  // clip beats a bundled 1-frame reference pose)
     };
     std::unique_ptr<AnimActor> m_animActor;
     void loadAnimTestActor();
     bool m_animBooth = false; // fixed camera framing the anim actor (VLM capture)
     std::string m_animModel;  // --animmodel override path (else the default proof asset)
+    std::string m_animClip;   // --animclip: animation file merged onto the model by bone name
+    std::string m_animRetarget; // --animretarget: foreign-skeleton clip baked onto the model
     TextureHandle m_atlasTexture = 0; // fallback albedo when a model ships none
     float m_frameDt = 0.0f;           // last frame's dt; advances the proof actor
     PlayerCommand m_lastCmd{};
