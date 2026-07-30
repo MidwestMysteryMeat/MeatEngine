@@ -35,6 +35,7 @@ public:
 
     void bind(ScriptApi api);          // install the capability table; call before load
     bool loadDir(const std::string& dir); // runs every *.lua; false if none loaded
+    bool reload();                     // re-run the last loaded dir (live editing)
     bool loaded() const;
 
     // Dispatch to Lua globals if the script defined them (all optional):

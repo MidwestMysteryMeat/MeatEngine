@@ -9,9 +9,12 @@
 #include <ImGuizmo.h> // must follow imgui.h — its header uses ImGui types
 
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <iterator>
+#include <utility>
 
 namespace meat {
 
@@ -56,6 +59,7 @@ void RoomEditor::update(EditorContext& ctx, float dt) {
     m_previewLights = 0;
     ctx.buildBlock = m_buildBlock; // ctx is rebuilt per frame; the editor owns persistence
     if (m_statusTtl > 0.0f && (m_statusTtl -= dt) <= 0.0f) m_status.clear();
+    if (m_codeStatusTtl > 0.0f && (m_codeStatusTtl -= dt) <= 0.0f) m_codeStatus.clear();
 
     updateFlyCamera(ctx, dt);
 
@@ -67,6 +71,8 @@ void RoomEditor::update(EditorContext& ctx, float dt) {
     drawTopBar(ctx);
     drawToolbar();
     drawOutliner(ctx);
+    drawAssetBrowser(ctx);
+    drawCodeEditor(ctx);
     if (!m_flying) drawGizmo(ctx, view, proj);
 
     // Picking ray: camera center while flying, otherwise unproject the cursor.
@@ -424,6 +430,168 @@ void RoomEditor::previewBox(EditorContext& ctx, glm::ivec3 lo, glm::ivec3 hi, gl
 void RoomEditor::setStatus(std::string text) {
     m_status = std::move(text);
     m_statusTtl = 4.0f;
+}
+
+// ===== IDE panels ==========================================================
+
+// Cached listing: fetch from ctx.listFiles once per dir, then serve from the
+// cache until Refresh clears it — so an open tree doesn't re-list every frame.
+const std::vector<std::string>& RoomEditor::listDir(EditorContext& ctx,
+                                                    const std::string& dir) {
+    auto it = m_dirCache.find(dir);
+    if (it == m_dirCache.end()) {
+        std::vector<std::string> entries;
+        if (ctx.listFiles) entries = ctx.listFiles(dir);
+        it = m_dirCache.emplace(dir, std::move(entries)).first;
+    }
+    return it->second;
+}
+
+void RoomEditor::drawDirTree(EditorContext& ctx, const std::string& dir) {
+    // listDir is cached, so recursing here only calls ctx.listFiles the first
+    // time a node is expanded (or after Refresh) — not every frame.
+    for (const std::string& name : listDir(ctx, dir)) {
+        if (name.empty()) continue;
+        const bool isDir = name.back() == '/';
+        if (isDir) {
+            const std::string leaf = name.substr(0, name.size() - 1);
+            const std::string child = dir + "/" + leaf;
+            // str_id = full path (unique), label = leaf name.
+            if (ImGui::TreeNode(child.c_str(), "%s", leaf.c_str())) {
+                drawDirTree(ctx, child);
+                ImGui::TreePop();
+            }
+            continue;
+        }
+
+        // File leaf. Show its extension as the type tag. TODO: preview textures/
+        // models/shaders in-panel (thumbnail via TextureHandle / SceneCapture);
+        // for the MVP we only list non-script files by extension.
+        const std::string path = dir + "/" + name;
+        const char* dot = std::strrchr(name.c_str(), '.');
+        const char* ext = dot ? dot + 1 : "?";
+        const bool isLua = dot && std::strcmp(dot, ".lua") == 0;
+
+        ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Leaf |
+                                   ImGuiTreeNodeFlags_NoTreePushOnOpen |
+                                   ImGuiTreeNodeFlags_SpanAvailWidth;
+        if (m_selectedAsset == path) flags |= ImGuiTreeNodeFlags_Selected;
+        ImGui::TreeNodeEx(path.c_str(), flags, "%s  [%s]", name.c_str(), ext);
+        if (ImGui::IsItemClicked()) m_selectedAsset = path;
+        // Double-click a .lua to open it; a selected .lua also gets an "open"
+        // button so the action is discoverable without a double-click.
+        if (isLua && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
+            openLuaFile(ctx, path);
+        if (isLua && m_selectedAsset == path) {
+            ImGui::SameLine();
+            ImGui::PushID(path.c_str());
+            if (ImGui::SmallButton("open")) openLuaFile(ctx, path);
+            ImGui::PopID();
+        }
+    }
+}
+
+void RoomEditor::drawAssetBrowser(EditorContext& ctx) {
+    ImGui::Begin("Assets", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+    if (ImGui::Button("Refresh")) m_dirCache.clear(); // drop cache → re-list on expand
+    ImGui::SameLine();
+    if (m_selectedAsset.empty())
+        ImGui::TextDisabled("(no selection)");
+    else
+        ImGui::Text("sel: %s", m_selectedAsset.c_str());
+    ImGui::TextDisabled("double-click a .lua to edit it below");
+    ImGui::Separator();
+
+    if (!ctx.listFiles) {
+        ImGui::TextDisabled("(file listing unavailable)");
+        ImGui::End();
+        return;
+    }
+    // Rooted at "assets"; listFiles surfaces scripts/models/textures/shaders as
+    // subdirs (trailing "/"), which expand on demand via drawDirTree.
+    drawDirTree(ctx, "assets");
+    ImGui::End();
+}
+
+void RoomEditor::openLuaFile(EditorContext& ctx, const std::string& path) {
+    if (!ctx.readFile) {
+        setCodeStatus("readFile unavailable");
+        return;
+    }
+    m_codeText = ctx.readFile(path);
+    m_codePath = path;
+    m_codeDirty = false;
+    setCodeStatus("opened " + path);
+}
+
+// Grows m_codeText as the user types past its current capacity. UserData is the
+// std::string itself; keep data->Buf pointed at its storage after the resize.
+int RoomEditor::codeResizeCb(ImGuiInputTextCallbackData* data) {
+    if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
+        auto* str = static_cast<std::string*>(data->UserData);
+        str->resize(static_cast<std::size_t>(data->BufTextLen));
+        data->Buf = str->data();
+    }
+    return 0;
+}
+
+void RoomEditor::drawCodeEditor(EditorContext& ctx) {
+    ImGui::Begin("Code");
+    if (m_codePath.empty()) {
+        ImGui::TextDisabled("Open a .lua file from the Assets panel.");
+        ImGui::End();
+        return;
+    }
+
+    // Header shows the open file; '*' marks unsaved edits.
+    ImGui::Text("%s%s", m_codePath.c_str(), m_codeDirty ? " *" : "");
+
+    // Saving a script under scripts/ hot-reloads it into the running server so
+    // gameplay changes apply live: writeFile → (if under scripts/) reloadScripts.
+    const bool underScripts = m_codePath.find("scripts/") != std::string::npos;
+    if (ImGui::Button("Save")) {
+        if (ctx.writeFile && ctx.writeFile(m_codePath, m_codeText)) {
+            m_codeDirty = false;
+            if (underScripts && ctx.reloadScripts) {
+                const bool ok = ctx.reloadScripts();
+                setCodeStatus(ok ? "saved + reloaded" : "saved (reload FAILED)");
+            } else {
+                setCodeStatus("saved");
+            }
+        } else {
+            setCodeStatus("save FAILED");
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Reload from disk")) { // re-read, discarding local edits
+        if (ctx.readFile) {
+            m_codeText = ctx.readFile(m_codePath);
+            m_codeDirty = false;
+            setCodeStatus("reloaded from disk");
+        } else {
+            setCodeStatus("readFile unavailable");
+        }
+    }
+    if (!m_codeStatus.empty()) {
+        ImGui::SameLine();
+        ImGui::TextColored({0.4f, 0.9f, 0.4f, 1.0f}, "%s", m_codeStatus.c_str());
+    }
+
+    // Plain editable text — no syntax highlighting for the MVP.
+    // TODO: swap for ImGuiColorTextEdit (MIT, ImGui-native) to get Lua colouring.
+    const ImGuiInputTextFlags flags =
+        ImGuiInputTextFlags_AllowTabInput | ImGuiInputTextFlags_CallbackResize;
+    if (ImGui::InputTextMultiline("##code", m_codeText.data(), m_codeText.capacity() + 1,
+                                  ImVec2(-FLT_MIN, -FLT_MIN), flags,
+                                  &RoomEditor::codeResizeCb, &m_codeText)) {
+        m_codeDirty = true;
+    }
+    ImGui::End();
+}
+
+void RoomEditor::setCodeStatus(std::string text) {
+    m_codeStatus = std::move(text);
+    m_codeStatusTtl = 4.0f;
 }
 
 } // namespace meat

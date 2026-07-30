@@ -37,6 +37,7 @@ public:
     void pump(Transport& transport);  // drain net events, queue commands
     void tick(Transport& transport);  // one 60 Hz step; snapshots every 3rd tick
 
+    bool reloadScripts() { return m_scripts.reload(); } // live editing (host/SP)
     std::uint32_t seed() const { return m_seed; }
     std::uint64_t currentTick() const { return m_tick; }
     const GameRules& rules() const { return m_rules; }

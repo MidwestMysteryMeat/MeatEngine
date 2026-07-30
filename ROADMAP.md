@@ -128,11 +128,12 @@ loopback transport.
 - [ ] New-project template that already runs; every authored thing starts from an example
 
 ## Phase 8.5 — Editor IDE panels (ARCHITECTURE §editor/ IDE)
-- [ ] Code editor panel (ImGuiColorTextEdit, MIT): Lua editing + save-as-hot-reload
-      through ScriptHost; live-coding without alt-tab
-- [ ] Lua console/REPL panel (host-gated server-side eval)
-- [ ] Asset browser panel: assets/ tree, texture thumbnails, type-routed open
-      (script→editor, prefab→placement ghost), file-watcher refresh
+- [x] In-engine IDE (VLM-verified): Assets browser (cached dir tree over assets/) + Code
+      editor (InputTextMultiline w/ resize-callback, dirty flag) in the Room Designer.
+      Edit Lua → Save → writes file + hot-reloads into the running server (ScriptHost::
+      reload → ServerSim::reloadScripts via EditorContext file/reload callbacks). No alt-tab.
+- [ ] Syntax highlighting (ImGuiColorTextEdit), Lua console/REPL, texture/model previews,
+      file-watcher refresh
 - [ ] Import pipeline: OS drag-drop + Import for FBX/OBJ/GLB/PNG/JPG/WAV/OGG —
       validate on import (scale/skeleton probe, decode check), copy into project,
       manifest + content hash, attribution tag enforced by audit; per-type previews

@@ -5,6 +5,7 @@
 #include "engine/voxel/VoxelWorld.h"
 
 #include <functional>
+#include <string>
 #include <vector>
 
 namespace meat {
@@ -38,6 +39,12 @@ struct EditorContext {
     std::function<void(glm::ivec3, BlockId)> requestVoxelOp; // → server, validated
     std::function<void(bool)> setRelativeMouse;              // capture for fly-look
     std::function<void()> requestWorldSave;                  // server save + extras
+    // Asset/code panels: enumerate files under a project-relative dir, read/write
+    // text, and hot-reload scripts into the running server (host/single-player).
+    std::function<std::vector<std::string>(const std::string& dir)> listFiles;
+    std::function<std::string(const std::string& path)> readFile;
+    std::function<bool(const std::string& path, const std::string& text)> writeFile;
+    std::function<bool()> reloadScripts;
     BlockId buildBlock = 1; // what brushes place
 };
 

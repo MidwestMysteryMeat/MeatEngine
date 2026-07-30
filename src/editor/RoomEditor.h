@@ -3,8 +3,12 @@
 
 #include <glm/glm.hpp>
 
+#include <map>
 #include <optional>
 #include <string>
+#include <vector>
+
+struct ImGuiInputTextCallbackData; // fwd: code-editor resize callback signature
 
 namespace meat {
 
@@ -26,6 +30,17 @@ private:
     void drawOutliner(EditorContext& ctx);
     void drawGizmo(EditorContext& ctx, const glm::mat4& view, const glm::mat4& proj);
     void handleTool(EditorContext& ctx, glm::vec3 rayOrigin, glm::vec3 rayDir);
+
+    // IDE panels — just more ImGui windows drawn inside update(); all file I/O
+    // goes through the ctx callbacks (never std::filesystem in the editor).
+    void drawAssetBrowser(EditorContext& ctx);
+    void drawDirTree(EditorContext& ctx, const std::string& dir);
+    void drawCodeEditor(EditorContext& ctx);
+    void openLuaFile(EditorContext& ctx, const std::string& path);
+    const std::vector<std::string>& listDir(EditorContext& ctx, const std::string& dir);
+    void setCodeStatus(std::string text);
+    // std::string-backed InputTextMultiline resize handler (imgui_stdlib pattern).
+    static int codeResizeCb(ImGuiInputTextCallbackData* data);
 
     void fillBox(EditorContext& ctx, glm::ivec3 lo, glm::ivec3 hi, BlockId block);
     void carveDoorway(EditorContext& ctx, glm::ivec3 voxel, glm::ivec3 normal);
@@ -55,6 +70,23 @@ private:
     int m_previewLights = 0; // per-frame budget so previews can't eat the light UBO
     std::string m_status;
     float m_statusTtl = 0.0f;
+
+    // --- Asset browser -----------------------------------------------------
+    // Directory listings are cached (keyed by project-relative dir) and only
+    // fetched from ctx.listFiles on first expand or after a Refresh — never per
+    // frame. A trailing "/" in a listing entry marks a subdirectory.
+    std::map<std::string, std::vector<std::string>> m_dirCache;
+    std::string m_selectedAsset; // currently highlighted file in the tree
+
+    // --- Code editor -------------------------------------------------------
+    // The open script's project-relative path (empty = nothing open) and its
+    // editable text. The buffer is a std::string grown by codeResizeCb via
+    // ImGuiInputTextFlags_CallbackResize, so there is no fixed length cap.
+    std::string m_codePath;
+    std::string m_codeText;
+    bool m_codeDirty = false;
+    std::string m_codeStatus;
+    float m_codeStatusTtl = 0.0f;
 };
 
 } // namespace meat

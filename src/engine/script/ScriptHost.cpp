@@ -30,6 +30,7 @@ struct ScriptHost::Impl {
     sol::state lua;
     ScriptApi api;
     bool anyLoaded = false;
+    std::string lastDir;
 
     // Run a protected call to an optional global function under the instruction
     // budget; log+swallow errors (including a budget overrun).
@@ -89,6 +90,7 @@ void ScriptHost::bind(ScriptApi api) {
 }
 
 bool ScriptHost::loadDir(const std::string& dir) {
+    m_impl->lastDir = dir;
     std::error_code ec;
     if (!std::filesystem::is_directory(dir, ec)) return false;
     std::vector<std::filesystem::path> files;
@@ -111,6 +113,15 @@ bool ScriptHost::loadDir(const std::string& dir) {
         log::info("script loaded: {}", path.filename().string());
     }
     return m_impl->anyLoaded;
+}
+
+bool ScriptHost::reload() {
+    // Re-run the scripts: top-level code re-executes and hook functions redefine
+    // over the persistent `game` table and lua state. on_init won't re-fire (the
+    // world is already up), but edited on_tick/join logic takes effect live.
+    if (m_impl->lastDir.empty()) return false;
+    log::info("script: reloading '{}'", m_impl->lastDir);
+    return loadDir(m_impl->lastDir);
 }
 
 bool ScriptHost::loaded() const { return m_impl->anyLoaded; }

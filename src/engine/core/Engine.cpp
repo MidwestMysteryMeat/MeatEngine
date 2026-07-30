@@ -23,6 +23,7 @@
 #include <chrono>
 #include <cmath>
 #include <format>
+#include <iterator>
 #include <thread>
 
 namespace meat {
@@ -355,6 +356,27 @@ void Engine::render(float alpha) {
                               if (m_server) m_server->saveTo("saves/quick.json");
                               saveEditorExtras();
                           }};
+        ctx.listFiles = [](const std::string& dir) {
+            std::vector<std::string> out;
+            std::error_code ec;
+            for (const auto& e : std::filesystem::directory_iterator(dir, ec))
+                out.push_back(e.path().filename().string() +
+                              (e.is_directory() ? "/" : ""));
+            std::sort(out.begin(), out.end());
+            return out;
+        };
+        ctx.readFile = [](const std::string& path) {
+            std::ifstream in(path, std::ios::binary);
+            if (!in) return std::string{};
+            return std::string(std::istreambuf_iterator<char>(in), {});
+        };
+        ctx.writeFile = [](const std::string& path, const std::string& text) {
+            std::ofstream out(path, std::ios::binary);
+            if (!out) return false;
+            out << text;
+            return out.good();
+        };
+        ctx.reloadScripts = [this] { return m_server && m_server->reloadScripts(); };
         m_editor->update(ctx, ImGui::GetIO().DeltaTime);
     }
 
