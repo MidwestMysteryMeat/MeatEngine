@@ -130,10 +130,15 @@ loopback transport.
       ALSO mismatches Mixamo (e.g. the 28-bone PSX character) still mangle and need the
       retargeter. Grade hands with a STRICT extremity-focused VLM rubric — a lenient
       whole-silhouette rubric passes a shard-handed figure.
-- [~] Retarget (WIP, --animretarget): retargetClipsFromFile() bakes a foreign-skeleton clip
-      (UE5 mannequin, MoCap Online) via the rest-relative global-delta method. Bone mapping +
-      delta math done; cross-skeleton WORLD-FRAME alignment still distorts the SWAT — needs
-      the source/target axis-baseline fix before it renders clean (booth-VLM-gated).
+- [x] Retarget WORKS (--animretarget, commit c5a34e0, VLM-verified 3/3): retargetClipsFromFile()
+      bakes a foreign-BIND clip (Mixamo T-pose export, UE5 mannequin, MoCap) onto ANY mixamorig-
+      family char. FIX: reference each joint's world-orientation delta to the CLIP'S OWN FRAME-0
+      pose, not the source T-pose node bind (the Mixamo bind is a T-pose ~90° from the animated
+      arms, so the old rest-relative delta baked an arm-drop onto an arms-down target and flung
+      the arms). Rotation-only, fingers relaxed, 30fps; booth cam orbited 45° so the VLM sees
+      arms. Clean on the 28-bone PSX police + Mixamo walk. Limitation: t=0 pins to bind (extreme
+      frame-0 poses can pop at the loop seam — fine for locomotion). So: exact-bind → --animclip,
+      variant-bind (PSX/operators/acurig) → --animretarget.
 - [ ] Author/obtain a mixamorig locomotion clip for the SWAT (a true Mixamo export plays via
       --animclip today); procedural sway idle (localBind * deltaQuat — now shear-free);
       replace NPC/remote boxes with animated meshes; first-person viewmodel
