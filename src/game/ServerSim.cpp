@@ -502,7 +502,8 @@ void ServerSim::marchBullet(Transport& transport, PeerId peer, Player& player,
     // the budget -> it deals its (boosted) damage to the first material and stops;
     // AP's >1 mult buys more crossings at a reduced per-hit damage. Deterministic.
     float budget = weapon.penBudget * weapon.penetrationMult;
-    const float shotDamage = weapon.damage * weapon.damageMult;
+    // Fold the shooter's active damage modifiers (stim etc.) into every hit.
+    const float shotDamage = weapon.damage * weapon.damageMult * damageMultOf(player);
     float damageScale = 1.0f;
 
     for (int hop = 0; hop < 8 && remaining > 0.1f; ++hop) {
@@ -600,8 +601,13 @@ void ServerSim::marchBullet(Transport& transport, PeerId peer, Player& player,
 
 void ServerSim::spawnProjectile(PeerId owner, glm::vec3 pos, glm::vec3 vel,
                                 const ItemDef& weapon) {
-    m_projectiles.push_back({m_nextEntityId++, owner, pos, vel, weapon.projectileGravity,
-                             weapon.blastRadius, weapon.blastDamage, 6.0f});
+    Projectile p{m_nextEntityId++, owner, pos, vel, weapon.projectileGravity,
+                 weapon.blastRadius, weapon.blastDamage, 6.0f};
+    // Carry the weapon's composed on-impact effects; fall back to a derived
+    // AreaDamage so a legacy weapon (no authored list) still detonates identically.
+    p.onImpact = weapon.effects.empty() ? EffectList{areaDamageEffect(p.damage, p.radius)}
+                                        : weapon.effects;
+    m_projectiles.push_back(std::move(p));
 }
 
 // Radial damage: players by distance falloff, and every solid voxel in range
@@ -665,6 +671,66 @@ void ServerSim::applyBlast(Transport& transport, PeerId source, glm::vec3 center
     for (auto& [peer, unused] : m_players) transport.send(peer, w.data(), true);
 }
 
+// --- Effect-composition core (GAS-lite) -----------------------------------
+// runEffects walks a list; applyEffect is the per-effect switch. Server-only,
+// deterministic, no virtuals — items/abilities compose behaviour from these.
+
+float ServerSim::damageMultOf(const Player& player) {
+    float m = 1.0f;
+    for (const Player::ActiveModifier& mod : player.modifiers) m *= mod.damageMult;
+    return m;
+}
+
+void ServerSim::tickModifiers(Player& player, float dt) {
+    if (player.modifiers.empty()) return; // hot path: most players carry none
+    for (Player::ActiveModifier& mod : player.modifiers) mod.remaining -= dt;
+    std::erase_if(player.modifiers,
+                  [](const Player::ActiveModifier& m) { return m.remaining <= 0.0f; });
+}
+
+void ServerSim::applyEffect(Transport& transport, const Effect& effect, PeerId source,
+                            glm::vec3 targetPos, Player* targetPlayer, Npc* targetNpc) {
+    // Outgoing damage scales by the acting player's active buffs (stim etc.).
+    float srcMult = 1.0f;
+    if (const auto it = m_players.find(source); it != m_players.end())
+        srcMult = damageMultOf(*it->second);
+
+    switch (effect.kind) {
+    case EffectKind::Damage: {
+        const float dmg = effect.params[0] * srcMult;
+        if (targetNpc) {
+            damageNpc(transport, *targetNpc, dmg);
+        } else if (targetPlayer) {
+            targetPlayer->health -= dmg;
+            if (targetPlayer->health <= 0.0f) {
+                dropPlayerLoot(*targetPlayer, targetPlayer->controller.position());
+                targetPlayer->controller.setState(kSpawnPos, glm::vec3(0));
+                targetPlayer->health = 100.0f;
+            }
+        }
+        break;
+    }
+    case EffectKind::AreaDamage:
+        // Reuse the existing blast falloff + voxel-crater carving verbatim.
+        applyBlast(transport, source, targetPos, effect.radius, effect.params[0] * srcMult);
+        break;
+    case EffectKind::Heal:
+        if (targetPlayer)
+            targetPlayer->health = glm::min(100.0f, targetPlayer->health + effect.params[0]);
+        break;
+    case EffectKind::ApplyModifier:
+        if (targetPlayer)
+            targetPlayer->modifiers.push_back({effect.params[0], effect.params[1], effect.duration});
+        break;
+    }
+}
+
+void ServerSim::runEffects(Transport& transport, const EffectList& effects, PeerId source,
+                           glm::vec3 targetPos, Player* targetPlayer, Npc* targetNpc) {
+    for (const Effect& e : effects)
+        applyEffect(transport, e, source, targetPos, targetPlayer, targetNpc);
+}
+
 void ServerSim::updateProjectiles(Transport& transport) {
     for (auto it = m_projectiles.begin(); it != m_projectiles.end();) {
         Projectile& p = *it;
@@ -711,7 +777,9 @@ void ServerSim::updateProjectiles(Transport& transport) {
         if (p.life <= 0.0f) detonate = true;
 
         if (detonate) {
-            applyBlast(transport, p.owner, at, p.radius, p.damage);
+            // Route the blast through the effect core (behaviour-equal to the old
+            // inline applyBlast, now data-driven — the list could add more effects).
+            runEffects(transport, p.onImpact, p.owner, at, nullptr, nullptr);
             it = m_projectiles.erase(it);
         } else {
             ++it;
@@ -741,7 +809,7 @@ void ServerSim::updateProjectiles(Transport& transport) {
             }
         }
         if (triggered) {
-            applyBlast(transport, d.owner, d.pos, d.radius, d.damage);
+            runEffects(transport, d.onTrigger, d.owner, d.pos, nullptr, nullptr);
             it = m_deployables.erase(it);
         } else {
             ++it;
@@ -911,6 +979,7 @@ void ServerSim::giveStartingLoadout(Player& player) {
     player.inventory.add(m_defaultItems.rifleAmmo, 30, m_items);
     player.inventory.add(m_defaultItems.rockets, 4, m_items);
     player.inventory.add(m_defaultItems.medkit, 2, m_items);
+    player.inventory.add(m_defaultItems.stim, 2, m_items); // composed Heal + buff consumable
     player.inventory.add(m_defaultItems.stoneBlock, 32, m_items);
 }
 
@@ -939,6 +1008,7 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
     player.fireCooldown -= kFixedDtServer;
     player.placeCooldown -= kFixedDtServer;
     player.useCooldown -= kFixedDtServer;
+    tickModifiers(player, kFixedDtServer); // decay active ApplyModifier buffs
 
     const glm::vec3 eye =
         player.controller.position() + glm::vec3(0, player.controller.eyeHeight(), 0);
@@ -998,7 +1068,13 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
                         dep.pos = at;
                         dep.radius = heldDef.blastRadius;
                         dep.damage = heldDef.blastDamage;
-                        m_deployables.push_back(dep); // armTime/triggerRange keep defaults
+                        // Composed trigger effects (derive an AreaDamage if the
+                        // def has no authored list) — routed through runEffects.
+                        dep.onTrigger =
+                            heldDef.effects.empty()
+                                ? EffectList{areaDamageEffect(dep.damage, dep.radius)}
+                                : heldDef.effects;
+                        m_deployables.push_back(std::move(dep)); // armTime/triggerRange default
                     }
                 }
             }
@@ -1050,10 +1126,18 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
     if (player.lastCmd.use && player.useCooldown <= 0.0f) {
         player.useCooldown = 0.5f;
         const bool grabbed = tryPickup(transport, peer, player); // loot wins over consuming
-        if (!grabbed && heldDef.type == ItemType::Consumable && player.health < 100.0f) {
-            player.inventory.remove(held.id, 1);
-            player.health = glm::min(100.0f, player.health + 50.0f);
-            player.inventoryDirty = true;
+        if (!grabbed && heldDef.type == ItemType::Consumable && !heldDef.effects.empty()) {
+            // Don't waste a pure-heal item at full health; a buff (or any non-heal
+            // effect) is always worth applying, so a stim works even topped off.
+            bool healOnly = true;
+            for (const Effect& e : heldDef.effects)
+                if (e.kind != EffectKind::Heal) healOnly = false;
+            if (!healOnly || player.health < 100.0f) {
+                runEffects(transport, heldDef.effects, peer,
+                           player.controller.position(), &player, nullptr);
+                player.inventory.remove(held.id, 1);
+                player.inventoryDirty = true;
+            }
         }
     }
 

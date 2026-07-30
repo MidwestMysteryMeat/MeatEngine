@@ -6,6 +6,7 @@
 #include "engine/physics/CharacterController.h"
 #include "engine/physics/PhysicsWorld.h"
 #include "engine/voxel/VoxelWorld.h"
+#include "game/Effects.h"
 #include "game/EntityTypes.h"
 #include "game/GameRules.h"
 #include "game/Inventory.h"
@@ -63,6 +64,15 @@ private:
         Inventory inventory;
         bool inventoryDirty = false;
         std::optional<glm::vec3> spawnOverride; // from a save file
+        // Active timed modifiers (ApplyModifier effects). Ticked down each fixed
+        // tick; the product of damageMult scales this player's outgoing damage.
+        // Small (kits stack a handful) — a flat vector, no per-tick allocation.
+        struct ActiveModifier {
+            float damageMult = 1.0f;
+            float speedMult = 1.0f; // stored; enforcement is a follow-up (engine-owned)
+            float remaining = 0.0f; // seconds left
+        };
+        std::vector<ActiveModifier> modifiers;
     };
 
     struct SavedPlayer {
@@ -79,6 +89,7 @@ private:
         float radius = 0.0f, damage = 0.0f; // blast on impact
         float life = 6.0f;                  // seconds before self-detonate
         float ownerGrace = 0.12f;           // owner-immune while clearing the muzzle
+        EffectList onImpact; // composed detonation effects (copied from the weapon)
     };
     struct Deployable {
         std::uint32_t id = 0;
@@ -87,6 +98,7 @@ private:
         float radius = 0.0f, damage = 0.0f;
         float armTime = 1.0f; // won't trigger on its own owner while arming
         float triggerRange = 2.2f;
+        EffectList onTrigger; // composed detonation effects (copied from the weapon)
     };
     // A placed auto-turret: targets the nearest hostile NPC in range + line of
     // sight and fires hitscan on a cadence. Owned by a player, has health.
@@ -154,6 +166,18 @@ private:
     void updateProjectiles(Transport& transport);
     void applyBlast(Transport& transport, PeerId source, glm::vec3 center, float radius,
                     float damage);
+
+    // Effect-composition core (GAS-lite). runEffects executes a whole list at a
+    // target; applyEffect is the single-effect switch it dispatches to (also used
+    // directly so a caller can run one stack Effect with no allocation). `source`
+    // is the acting player (for outgoing-damage scaling / self-heal); targetPos is
+    // used by AreaDamage, targetPlayer/targetNpc by the single-target kinds.
+    void runEffects(Transport& transport, const EffectList& effects, PeerId source,
+                    glm::vec3 targetPos, Player* targetPlayer, Npc* targetNpc);
+    void applyEffect(Transport& transport, const Effect& effect, PeerId source,
+                     glm::vec3 targetPos, Player* targetPlayer, Npc* targetNpc);
+    void tickModifiers(Player& player, float dt); // decay active timed modifiers
+    static float damageMultOf(const Player& player); // product of active damage mults
 
     struct IVec3Hash {
         std::size_t operator()(const glm::ivec3& v) const {

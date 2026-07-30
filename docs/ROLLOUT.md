@@ -77,7 +77,23 @@ OSS we lean on (license-verified in docs/ENGINE_REUSE_SURVEY.md) and its verific
   navmesh build (434 polys / 28216 tris / 322 chunks, then a throttled rebuild at 416 chunks),
   32 Detour path hits + A* fallback engaging, and NPCs stepping toward the player (aggro+path OK).
   OSS: RecastDemo Sample_SoloMesh (zlib), technique-only.
-- [ ] **9. Abilities / GAS-lite** (effect executors) + **10. game-mode framework** (Breach/Horde).
+- [x] **9. Abilities / GAS-lite** (effect-composition core) — server-authoritative, deterministic
+  EFFECT system so weapons/abilities/items compose from reusable effects instead of bespoke code.
+  A POD `Effect` (`enum Kind + float params[4] + radius/duration`, no RTTI/virtuals) in
+  `game/Effects.h`; `ServerSim::runEffects`/`applyEffect` is the switch. Executors: **Damage**
+  (single target), **AreaDamage** (radial — reuses `applyBlast` falloff + batched voxel-crater
+  ops verbatim), **Heal** (clamped restore), **ApplyModifier** (timed per-player damage/speed
+  mult, stored on the Player and ticked down in the fixed-tick `processCombat`). Wiring: `ItemDef`
+  gained an `EffectList effects`; **medkit → Heal 50** (replaced the inline health bump),
+  **rpg/grenade blast → AreaDamage** (projectiles carry an `onImpact` list; detonation runs it
+  instead of calling `applyBlast` inline — behaviour-equal), **claymore → AreaDamage** too. New
+  composed consumable **"stim"** = `[Heal 25, ApplyModifier(dmg x1.5, spd x1.3, 8s)]`, added to
+  the loadout. The damage mult folds into hitscan (`marchBullet`) and blast magnitude; **speed
+  mult is stored but not enforced** (CharacterController tuning is engine/physics-owned) —
+  follow-up. Build clean (no new warnings), `--play --seed 777` smoke: alive 7 s, no crash, world
+  ready, stim registered, 15 NPCs + dungeon up. AreaDamage NPC-kill confirmed by equivalence
+  (same `applyBlast` args). **Lua-binding of abilities is the FOLLOW-UP** (this pass is the C++
+  effect core + wiring). Item **10. game-mode framework** (Breach/Horde) still open.
 - [ ] **11. Destruction depth** — reinforced blocks, radial voxel damage, structural collapse.
 
 ### Roll 5 — Platform & tooling

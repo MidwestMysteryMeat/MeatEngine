@@ -1,5 +1,6 @@
 #pragma once
 #include "engine/voxel/Block.h"
+#include "game/Effects.h"
 
 #include <cstdint>
 #include <string>
@@ -48,6 +49,12 @@ struct ItemDef {
     bool deploysCompanion = false; // Deployable delivery: spawn a mobile ally, not a mine
     // Block field
     BlockId blockId = 0; // what placing this item builds
+    // Effect-composition (GAS-lite). What this item *does* when it lands, run
+    // through ServerSim::runEffects. A Consumable runs `effects` on the user
+    // (medkit = [Heal], stim = [Heal, ApplyModifier]); a Projectile carries them
+    // as its on-impact list (rpg/grenade = [AreaDamage]). Empty = the item still
+    // uses its legacy bespoke path (or, for blasts, a derived AreaDamage).
+    EffectList effects;
 };
 
 class ItemRegistry {
@@ -73,6 +80,7 @@ struct DefaultItems {
     ItemId smg = 0, shotgun = 0, sniper = 0, rpg = 0, grenade = 0, claymore = 0, turret = 0;
     ItemId companionBeacon = 0;
     ItemId shells = 0, rockets = 0, rifleAmmo = 0;
+    ItemId stim = 0; // composed consumable: Heal + a timed damage/speed buff
 };
 DefaultItems registerDefaultItems(ItemRegistry& items, BlockId stone);
 

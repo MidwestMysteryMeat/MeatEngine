@@ -61,6 +61,10 @@ DefaultItems registerDefaultItems(ItemRegistry& items, BlockId stone) {
                           .fireInterval = 1.1f,
                           .penBudget = 90.0f, // drills through several stone blocks
                           .ammoItem = d.rifleAmmo});
+    // Projectile blasts are now composed: the on-impact EffectList holds an
+    // AreaDamage that runEffects routes back through applyBlast, so behaviour is
+    // identical to the old inline blast (same radius/damage/falloff) but the path
+    // is data — a projectile could carry [AreaDamage, Ignite, ApplyModifier].
     d.rpg = items.add({.name = "rpg",
                        .type = ItemType::Weapon,
                        .fireInterval = 1.4f,
@@ -68,7 +72,8 @@ DefaultItems registerDefaultItems(ItemRegistry& items, BlockId stone) {
                        .delivery = DeliveryKind::Projectile,
                        .projectileSpeed = 34.0f,
                        .blastRadius = 4.5f,
-                       .blastDamage = 120.0f});
+                       .blastDamage = 120.0f,
+                       .effects = {areaDamageEffect(120.0f, 4.5f)}});
     d.grenade = items.add({.name = "grenade",
                            .type = ItemType::Weapon,
                            .maxStack = 6, // thrown consumable-weapon
@@ -77,7 +82,8 @@ DefaultItems registerDefaultItems(ItemRegistry& items, BlockId stone) {
                            .projectileSpeed = 16.0f,
                            .projectileGravity = 14.0f,
                            .blastRadius = 3.5f,
-                           .blastDamage = 90.0f});
+                           .blastDamage = 90.0f,
+                           .effects = {areaDamageEffect(90.0f, 3.5f)}});
     d.claymore = items.add({.name = "claymore",
                             .type = ItemType::Weapon,
                             .maxStack = 4,
@@ -98,7 +104,19 @@ DefaultItems registerDefaultItems(ItemRegistry& items, BlockId stone) {
                                    .fireInterval = 1.0f,
                                    .delivery = DeliveryKind::Deployable,
                                    .deploysCompanion = true});
-    d.medkit = items.add({.name = "medkit", .type = ItemType::Consumable, .maxStack = 4});
+    // Consumables carry their effect on use. Medkit = a plain Heal 50 (was an
+    // inline health bump); the stim STACKS effects to prove composition — it
+    // Heals 25 AND applies a timed buff (x1.5 outgoing damage, x1.3 speed for 8s).
+    // The damage half is enforced server-side now; the speed half is stored and
+    // is a follow-up (CharacterController tuning is engine-owned — see Effects.h).
+    d.medkit = items.add({.name = "medkit",
+                          .type = ItemType::Consumable,
+                          .maxStack = 4,
+                          .effects = {healEffect(50.0f)}});
+    d.stim = items.add({.name = "stim",
+                        .type = ItemType::Consumable,
+                        .maxStack = 4,
+                        .effects = {healEffect(25.0f), modifierEffect(1.5f, 1.3f, 8.0f)}});
     d.stoneBlock = items.add(
         {.name = "stone", .type = ItemType::Block, .maxStack = 250, .blockId = stone});
     return d;

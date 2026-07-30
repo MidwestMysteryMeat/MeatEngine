@@ -158,8 +158,9 @@ loopback transport.
       no second VM); drop-to-code path; slots in as an editor panel
 
 ## Phase 8.6 — Authoring & modeling (ARCHITECTURE §game/authoring, §game/modeling)
-- [ ] Effect-composition core: EffectList on items/abilities, server executors
-      (Damage/AreaDamage/Heal/ApplyModifier/Ignite/Knockback/Slow/Chain/SpawnEntity)
+- [~] Effect-composition core: EffectList on items/abilities, server executors — DONE for
+      Damage/AreaDamage/Heal/ApplyModifier (Phase 11.5); Ignite/Knockback/Slow/Chain/SpawnEntity
+      + Lua-defined effects still open
 - [ ] In-editor "Design" panel: no-code weapon/ability/item authoring → project data
       defs, live-test, optional power-budget balance scorer
 - [ ] Lua authoring path (same defs as tables; custom effects as functions)
@@ -285,8 +286,13 @@ loopback transport.
 - [ ] `--mode <name>`, mode in Welcome; Lua-defined once scripting lands
 
 ## Phase 11.5 — Abilities & spawned actors (GAS-lite, see ARCHITECTURE §game/abilities)
-- [ ] Effect executors: Damage, AreaDamage (explosives + batch voxel ops), Heal, ApplyModifier
-- [ ] Projectiles (server-simulated, explode-on-impact into effects)
+- [x] Effect executors: Damage, AreaDamage (reuses applyBlast falloff + batch voxel ops),
+      Heal, ApplyModifier (timed per-player damage/speed mult, ticked in the fixed tick).
+      POD Effect {kind + params + radius/duration}, EffectList on ItemDef, runEffects switch
+      (game/Effects.h + ServerSim). Routed: medkit → Heal, rpg/grenade blast → AreaDamage,
+      claymore → AreaDamage; new composed "stim" = Heal + ApplyModifier(dmg x1.5/spd x1.3, 8s).
+      Damage mult applied to hitscan + blast; speed mult stored, enforcement a follow-up.
+- [x] Projectiles (server-simulated, explode-on-impact into an onImpact EffectList)
 - [ ] SpawnEntity behaviors: placeable Turret (target-nearest + LoS), Companion (follow/attack)
 - [ ] Lua-defined abilities bound to items (grenade, medkit-as-ability) and to classes
 - [ ] Entity states join snapshots (shared path with player states)
