@@ -16,6 +16,12 @@ loopback transport.
 - [x] Render: GL wrappers, forward Blinn-Phong, PSX pipeline, shaders (agent-built)
 - [x] Physics: Jolt world, chunk colliders, CharacterVirtual controller (agent-built)
 - [x] Engine integration: fixed 60 Hz tick, all modules wired, walkable flat world
+- [x] DEV-CONFIGURABLE VOXEL SIZE (GameRules::voxelSize / --voxelsize / game.json): metres-per-
+      voxel is a runtime choice (clamped 0.1–8 m), set once at startup before any world/mesh/
+      physics; 32³ chunk dimension fixed. Verified: 0.25 m = fine blocks, 2 m = chunkier-than-
+      Minecraft (64 m chunks). Follow-ups: scale spawn height by voxel size (currently the
+      player can spawn under taller terrain at big sizes); sync voxelSize to join-clients in
+      Welcome (host authoritative — today SP/host/dedicated set it locally).
 - [ ] Feel checkpoint #1 — HUMAN PLAYTEST (mouse feel, jump arc, accel)
 
 ## Phase 2 — Netcode foundation (before gameplay, so nothing is built wrong)

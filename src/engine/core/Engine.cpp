@@ -768,8 +768,28 @@ void Engine::stopHosting() {
     if (m_masterHeartbeat.joinable()) m_masterHeartbeat.join();
 }
 
+namespace {
+// Apply the dev-chosen metres-per-voxel to the global ONCE, before any world/mesh/physics
+// exists. Clamp to a sane band: 0.1 m (fine detail) … 8 m (far chunkier than Minecraft's
+// 1 m). Written back into config.rules so server + clients carry the same world scale.
+void applyVoxelSize(EngineConfig& config) {
+    const float requested = config.rules.voxelSize;
+    kVoxelSize = requested < 0.1f ? 0.1f : requested > 8.0f ? 8.0f : requested;
+    config.rules.voxelSize = kVoxelSize;
+    if (kVoxelSize != requested) {
+        log::warn("voxelSize {:.3f} m out of range [0.1, 8.0] — clamped to {:.3f} m", requested,
+                  kVoxelSize);
+    }
+    if (kVoxelSize != kDefaultVoxelSize) {
+        log::info("voxel size = {:.3f} m/voxel (chunk edge {:.1f} m; engine default {:.2f} m)",
+                  kVoxelSize, chunkWorldSize(), kDefaultVoxelSize);
+    }
+}
+} // namespace
+
 int Engine::run(const EngineConfig& configIn) {
     EngineConfig config = configIn;
+    applyVoxelSize(config); // set metres-per-voxel before ANY world/mesh/physics is built
     if (config.mode == EngineConfig::Mode::Dedicated) return runDedicated(config);
 
     if (!initClientSystems()) {

@@ -38,6 +38,7 @@ void loadProject(meat::EngineConfig& config, const std::string& dir) {
     config.rules.minedBlockDrops = j.value("minedBlockDrops", config.rules.minedBlockDrops);
     config.rules.penetration = j.value("penetration", config.rules.penetration);
     config.rules.blockDamage = j.value("blockDamage", config.rules.blockDamage);
+    config.rules.voxelSize = j.value("voxelSize", config.rules.voxelSize);
     meat::log::info("loaded project '{}' (seed {})", config.serverName, config.seed);
 }
 
@@ -92,6 +93,8 @@ meat::EngineConfig parseArgs(int argc, char** argv) {
             if (const char* m = next()) config.animClip = m;
         } else if (arg == "--animretarget") {
             if (const char* m = next()) config.animRetarget = m;
+        } else if (arg == "--voxelsize") {
+            if (const char* v = next()) config.rules.voxelSize = std::strtof(v, nullptr);
         } else {
             meat::log::warn("unknown argument '{}'", arg);
         }

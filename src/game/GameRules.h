@@ -16,6 +16,10 @@ struct GameRules {
     bool minedBlockDrops = true; // broken blocks enter the breaker's inventory
     bool penetration = true;     // bullets spend budget passing through materials
     bool blockDamage = true;     // blocks chip (hp) instead of breaking on first hit
+    // Metres per voxel — world-defining, applied to meat::kVoxelSize at startup. Devs pick
+    // anything from fine (< 0.5) to chunkier-than-Minecraft (> 1). Must match across a
+    // session (server + all clients see the same world), so it is set before world gen.
+    float voxelSize = 0.5f; // == meat::kDefaultVoxelSize (avoid the heavy Chunk.h include here)
 
     std::uint8_t flagsByte() const {
         return static_cast<std::uint8_t>((finiteAmmo ? 1 : 0) | (minedBlockDrops ? 2 : 0) |

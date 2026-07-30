@@ -9,7 +9,16 @@
 namespace meat {
 
 inline constexpr int kChunkSize = 32;
-inline constexpr float kVoxelSize = 0.5f;
+inline constexpr float kDefaultVoxelSize = 0.5f;
+// Metres per voxel. DEV-CONFIGURABLE (GameRules::voxelSize, --voxelsize, game.json
+// "voxelSize"): set ONCE at startup before any world/mesh/physics/job runs, then treated
+// as read-only, so concurrent meshing jobs see a stable value. It only scales the
+// world<->voxel conversions; the 32^3 chunk DIMENSION (kChunkSize) is unaffected. Smaller
+// than 0.5 = finer detail (more chunks/mesh); larger (e.g. >1 m, chunkier than Minecraft)
+// = cheaper, blockier. inline (not constexpr) precisely so it can be a runtime choice.
+inline float kVoxelSize = kDefaultVoxelSize;
+// Chunk edge length in metres — derived, so it tracks a dev-chosen voxel size everywhere.
+inline float chunkWorldSize() { return static_cast<float>(kChunkSize) * kVoxelSize; }
 
 struct ChunkPos {
     int x, y, z;

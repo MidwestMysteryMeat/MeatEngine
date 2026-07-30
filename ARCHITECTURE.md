@@ -14,9 +14,12 @@ or threading rules here is wrong even if it works.
 ## Units & coordinates
 
 - Right-handed, **Y-up**, meters. -Z is "forward" at yaw 0 (OpenGL convention).
-- **1 voxel = 0.5 m**. Chunks are **32³ voxels = 16 m cubes**.
+- **1 voxel = 0.5 m by default, DEV-CONFIGURABLE** (`GameRules::voxelSize`, `--voxelsize`,
+  game.json `"voxelSize"`; clamped 0.1–8 m; applied to `meat::kVoxelSize` once at startup
+  before any world/mesh/physics). The **32³ chunk DIMENSION is fixed** — only the metric
+  scale changes, so a chunk spans `32 × voxelSize` m (16 m at the default, 64 m at 2 m).
 - Voxel coords are `glm::ivec3` (world-voxel space); chunk coords `ChunkPos {int x,y,z}`;
-  `worldToVoxel(p) = floor(p / 0.5f)`.
+  `worldToVoxel(p) = floor(p / kVoxelSize)`.
 - Player capsule: radius 0.35 m, height 1.80 m (crouch 0.95 m), eye at 1.62 m (crouch 0.82 m).
 - Fixed simulation tick: **60 Hz**. Rendering interpolates with accumulator alpha.
 
@@ -173,8 +176,10 @@ using BlockId = std::uint16_t;             // 0 = air
 struct BlockDef { std::string name; std::array<std::uint16_t,6> faceTex; bool solid = true; };
 class BlockRegistry { BlockId add(BlockDef); const BlockDef& get(BlockId) const; };
 
-inline constexpr int   kChunkSize = 32;
-inline constexpr float kVoxelSize = 0.5f;
+inline constexpr int   kChunkSize = 32;          // fixed chunk dimension
+inline constexpr float kDefaultVoxelSize = 0.5f;
+inline           float kVoxelSize = kDefaultVoxelSize; // dev-set once at startup, then read-only
+inline           float chunkWorldSize() { return kChunkSize * kVoxelSize; }
 struct ChunkPos { int x, y, z; auto operator<=>(const ChunkPos&) const = default; };
 
 class Chunk {                              // flat array, x + z*32 + y*32*32

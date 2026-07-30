@@ -29,9 +29,6 @@ namespace meat {
 
 namespace {
 
-// One chunk = 32 voxels * 0.5 m (voxel contract in ARCHITECTURE.md).
-constexpr float kChunkWorldSize = 16.0f;
-
 namespace layers {
 constexpr JPH::ObjectLayer kNonMoving = objlayer::kNonMoving;
 constexpr JPH::ObjectLayer kMoving = objlayer::kMoving;
@@ -166,9 +163,11 @@ void PhysicsWorld::syncChunkCollider(ChunkPos pos, const ChunkMeshData& mesh) {
         return;
     }
 
-    const JPH::RVec3 origin(static_cast<float>(pos.x) * kChunkWorldSize,
-                            static_cast<float>(pos.y) * kChunkWorldSize,
-                            static_cast<float>(pos.z) * kChunkWorldSize);
+    // Chunk world extent tracks the dev-chosen voxel size (mesh verts are already scaled).
+    const float chunkExtent = chunkWorldSize();
+    const JPH::RVec3 origin(static_cast<float>(pos.x) * chunkExtent,
+                            static_cast<float>(pos.y) * chunkExtent,
+                            static_cast<float>(pos.z) * chunkExtent);
     const JPH::BodyCreationSettings bodySettings(result.Get(), origin, JPH::Quat::sIdentity(),
                                                  JPH::EMotionType::Static, layers::kNonMoving);
     const JPH::BodyID id = m_impl->system->GetBodyInterface().CreateAndAddBody(
