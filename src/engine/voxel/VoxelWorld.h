@@ -29,6 +29,7 @@ public:
     VoxelWorld();
 
     BlockId blockAt(glm::ivec3 voxel) const;
+    bool isChunkLoaded(ChunkPos pos) const { return m_chunks.contains(pos); }
     void setBlock(glm::ivec3 voxel, BlockId block); // marks dirty, records VoxelEdit
     void update(glm::vec3 playerPos, JobQueue& jobs); // stream in/out, enqueue remesh
 

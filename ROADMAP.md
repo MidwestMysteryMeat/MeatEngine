@@ -163,9 +163,13 @@ loopback transport.
 - [ ] Ammo types modifying ballistics (AP/HP); recoil/bloom feel pass (playtest)
 
 ## Phase 6.8 — AI & navigation (ARCHITECTURE §game/ai)
-- [ ] v1 voxel-native pathing (3D A*, jump/drop links, destruction-aware by construction)
-- [ ] Behaviors: Chaser, Shooter (voxel-sampled cover seek), Turret, Companion
-- [ ] Spawner volumes (editor tool) + wave logic; v2 = Recast/Detour tiled navmesh swap
+- [x] v1 voxel-native pathing: 3D A* over live voxels (step-up 1 / drop 4, node budget,
+      snap-to-standable) — destruction-aware by construction, no navmesh rebuilds
+- [x] Chaser (melee rush) + Shooter (LoS ranged, holds distance) NPCs: aggro w/ wall
+      check, 0.6 s repath, kinematic waypoint follow; seeded dungeon-room spawns;
+      NPCs take bullet + blast damage, drop ammo on death, ride entity snapshots
+- [ ] Turret + Companion behaviors; voxel-sampled cover seek; spawner volumes + waves
+- [ ] NPC schedules/factions/world clock (living-world layer); Recast/Detour v2 swap
 - [ ] World clock (day cycle in snapshots) + NPC schedules (timeRange→activity@location,
       interrupt stack, factions/aggro matrix, editor spawn+location markers, far-LOD
       coarse ticking) — the living-world layer for Sandbox/PvE

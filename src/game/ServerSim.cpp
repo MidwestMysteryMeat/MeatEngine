@@ -2,6 +2,7 @@
 #include "engine/core/Log.h"
 #include "engine/core/ViewMath.h"
 #include "game/DungeonGen.h"
+#include "game/Pathfinder.h"
 
 #include <nlohmann/json.hpp>
 
@@ -55,7 +56,146 @@ bool ServerSim::init(std::uint32_t worldSeed) {
     m_voxels.setChunkUnloadedCallback(
         [this](ChunkPos pos) { m_physics.removeChunkCollider(pos); });
     spawnDungeonLoot();
+    spawnDungeonNpcs();
     return true;
+}
+
+void ServerSim::spawnDungeonNpcs() {
+    const DungeonLayout layout = DungeonLayout::generate(m_seed, {});
+    std::size_t i = 0;
+    for (const auto& room : layout.rooms()) {
+        // Chasers guard every 3rd room, shooters every 5th; entrance room stays clear.
+        const bool chaser = i % 3 == 1, shooter = i % 5 == 4;
+        if (chaser || shooter) {
+            Npc npc;
+            npc.id = m_nextEntityId++;
+            npc.type = chaser ? EntityArchetype::NpcChaser : EntityArchetype::NpcShooter;
+            npc.health = chaser ? 60.0f : 40.0f;
+            const glm::ivec3 c{std::min((room.min.x + room.max.x) / 2 + 1, room.max.x),
+                               room.min.y,
+                               std::min((room.min.z + room.max.z) / 2 + 1, room.max.z)};
+            npc.pos = (glm::vec3(c) + glm::vec3(0.5f, 0.0f, 0.5f)) * kVoxelSize;
+            m_npcs.push_back(std::move(npc));
+        }
+        ++i;
+    }
+    log::info("server: spawned {} dungeon NPCs", m_npcs.size());
+}
+
+void ServerSim::damageNpc(Transport& transport, Npc& npc, float damage) {
+    if (npc.health <= 0.0f) return; // already dead: no double loot from multi-pellet kills
+    npc.health -= damage;
+    if (npc.health > 0.0f) return;
+    // Death: drop a small ammo cache where it fell (survivors loot the room).
+    WorldEntity drop;
+    drop.id = m_nextEntityId++;
+    drop.type = EntityArchetype::ItemPickup;
+    drop.pos = npc.pos + glm::vec3(0, 0.3f, 0);
+    drop.item = m_defaultItems.ammo9mm;
+    drop.count = 12;
+    m_entities.push_back(drop);
+    (void)transport; // death effects (sound/particles) ride future events
+}
+
+void ServerSim::updateNpcs(Transport& transport) {
+    constexpr float kAggroRange = 18.0f, kChaserSpeed = 3.2f, kShooterSpeed = 2.2f;
+    constexpr float kMeleeRange = 1.4f, kShootRange = 14.0f;
+
+    for (Npc& npc : m_npcs) {
+        if (npc.health <= 0.0f) continue; // killed earlier this tick: no attacks from the grave
+        // Unloaded chunk (co-op players far apart): every voxel reads air there —
+        // LoS would wallhack and pathing would fail. Sleep until terrain exists.
+        if (!m_voxels.isChunkLoaded(voxelToChunk(worldToVoxel(npc.pos)))) continue;
+        npc.repathTimer -= kFixedDtServer;
+        npc.attackCooldown -= kFixedDtServer;
+
+        // Acquire/keep the nearest visible player.
+        PeerId bestPeer = 0;
+        Player* bestPlayer = nullptr;
+        float bestDist = kAggroRange;
+        for (auto& [peer, player] : m_players) {
+            if (!player->spawned) continue;
+            const glm::vec3 eyeTo = player->controller.position() + glm::vec3(0, 0.9f, 0);
+            const glm::vec3 from = npc.pos + glm::vec3(0, 1.2f, 0);
+            const float dist = glm::length(eyeTo - from);
+            if (dist >= bestDist) continue;
+            const glm::vec3 dir = (eyeTo - from) / std::max(dist, 1e-4f);
+            if (const auto hit = m_voxels.raycast(from, dir, dist); hit) continue; // wall
+            bestDist = dist;
+            bestPeer = peer;
+            bestPlayer = player.get();
+        }
+        npc.target = bestPeer;
+        if (!bestPlayer) continue; // idle; schedules/wander land later
+
+        const glm::vec3 targetPos = bestPlayer->controller.position();
+        const glm::vec3 toTarget = targetPos - npc.pos;
+        const float dist = glm::length(toTarget);
+        npc.yaw = std::atan2(-toTarget.x, -toTarget.z); // face target (viewForward inverse)
+
+        // Attack when in envelope.
+        if (npc.type == EntityArchetype::NpcChaser && dist < kMeleeRange) {
+            if (npc.attackCooldown <= 0.0f) {
+                npc.attackCooldown = 1.0f;
+                bestPlayer->health -= 12.0f;
+                if (bestPlayer->health <= 0.0f) {
+                    log::info("server: player {} was mauled", bestPeer);
+                    bestPlayer->controller.setState(kSpawnPos, glm::vec3(0));
+                    bestPlayer->health = 100.0f;
+                }
+            }
+            continue; // in melee range: no need to path
+        }
+        if (npc.type == EntityArchetype::NpcShooter && dist < kShootRange) {
+            if (npc.attackCooldown <= 0.0f) {
+                npc.attackCooldown = 1.4f;
+                bestPlayer->health -= 8.0f; // LoS already verified above
+                if (bestPlayer->health <= 0.0f) {
+                    log::info("server: player {} was shot down", bestPeer);
+                    bestPlayer->controller.setState(kSpawnPos, glm::vec3(0));
+                    bestPlayer->health = 100.0f;
+                }
+            }
+            if (dist < kShootRange * 0.6f) continue; // holds distance, doesn't rush
+        }
+
+        // (Re)path on the timer, or immediately when a non-empty path ran out.
+        // An EMPTY path must wait for the timer — otherwise an unreachable
+        // target re-runs a full failed A* every tick and spirals the server.
+        // Jitter desynchronizes a room that aggroed on the same tick.
+        if (npc.repathTimer <= 0.0f ||
+            (npc.pathIndex >= npc.path.size() && !npc.path.empty())) {
+            npc.repathTimer = 0.6f + 0.01f * static_cast<float>(npc.id % 16);
+            glm::ivec3 from, to;
+            if (snapToStandable(m_voxels, npc.pos, from) &&
+                snapToStandable(m_voxels, targetPos, to)) {
+                npc.path = findPath(m_voxels, from, to, 1500);
+                npc.pathIndex = npc.path.size() > 1 ? 1 : 0; // [0] is where we stand
+            } else {
+                npc.path.clear();
+            }
+        }
+
+        // Follow the path kinematically (voxel cells → world centers).
+        if (npc.pathIndex < npc.path.size()) {
+            const glm::vec3 waypoint =
+                (glm::vec3(npc.path[npc.pathIndex]) + glm::vec3(0.5f, 0.0f, 0.5f)) *
+                kVoxelSize;
+            const glm::vec3 delta = waypoint - npc.pos;
+            const float speed =
+                npc.type == EntityArchetype::NpcChaser ? kChaserSpeed : kShooterSpeed;
+            const float stepLen = speed * kFixedDtServer;
+            if (glm::length(delta) <= stepLen) {
+                npc.pos = waypoint;
+                ++npc.pathIndex;
+            } else {
+                npc.pos += glm::normalize(delta) * stepLen;
+            }
+        }
+    }
+
+    std::erase_if(m_npcs, [](const Npc& n) { return n.health <= 0.0f; });
+    (void)transport;
 }
 
 void ServerSim::spawnDungeonLoot() {
@@ -153,6 +293,25 @@ void ServerSim::marchBullet(Transport& transport, PeerId peer, Player& player,
                 victimPeer = otherPeer;
             }
         }
+        // NPC capsules compete with player capsules for the closest hit.
+        Npc* npcVictim = nullptr;
+        for (Npc& npc : m_npcs) {
+            if (npc.health <= 0.0f) continue; // corpses don't absorb pellets
+            const glm::vec3 a = npc.pos + glm::vec3(0, kCapsuleRadius, 0);
+            const glm::vec3 b = npc.pos + glm::vec3(0, 1.7f - kCapsuleRadius, 0);
+            float tRay = 0;
+            if (raySegmentDistance(origin, dir, segmentEnd, a, b, tRay) <= kCapsuleRadius &&
+                tRay < bestT) {
+                bestT = tRay;
+                npcVictim = &npc;
+                victim = nullptr; // the NPC is now the closest flesh
+            }
+        }
+
+        if (npcVictim) {
+            damageNpc(transport, *npcVictim, weapon.damage * damageScale);
+            return;
+        }
         if (victim) {
             victim->health -= weapon.damage * damageScale;
             if (victim->health <= 0.0f) {
@@ -227,6 +386,11 @@ void ServerSim::applyBlast(Transport& transport, PeerId source, glm::vec3 center
             player->health = 100.0f;
         }
     }
+    for (Npc& npc : m_npcs) {
+        const float dist = glm::length(npc.pos + glm::vec3(0, 0.9f, 0) - center);
+        if (dist > radius) continue;
+        damageNpc(transport, npc, damage * (1.0f - dist / radius));
+    }
 
     // Collect broken voxels, then broadcast ONE batched op message. A 4.5 m
     // crater spans ~6800 voxels; per-voxel applyVoxelOp would fire thousands of
@@ -296,6 +460,16 @@ void ServerSim::updateProjectiles(Transport& transport) {
                 }
             }
         }
+        if (!detonate) { // direct rocket hits on NPCs detonate too
+            for (const Npc& npc : m_npcs) {
+                if (npc.health <= 0.0f) continue;
+                if (glm::length(npc.pos + glm::vec3(0, 0.9f, 0) - next) < 0.6f) {
+                    detonate = true;
+                    at = next;
+                    break;
+                }
+            }
+        }
         p.pos = next;
         p.life -= kFixedDtServer;
         if (p.life <= 0.0f) detonate = true;
@@ -319,6 +493,15 @@ void ServerSim::updateProjectiles(Transport& transport) {
             if (glm::length(body - d.pos) < d.triggerRange) {
                 triggered = true;
                 break;
+            }
+        }
+        if (!triggered && d.armTime <= 0.0f) { // NPCs walking over a claymore set it off
+            for (const Npc& npc : m_npcs) {
+                if (npc.health <= 0.0f) continue;
+                if (glm::length(npc.pos + glm::vec3(0, 0.9f, 0) - d.pos) < d.triggerRange) {
+                    triggered = true;
+                    break;
+                }
             }
         }
         if (triggered) {
@@ -451,6 +634,7 @@ void ServerSim::tick(Transport& transport) {
     }
     m_physics.step(kFixedDtServer);
     updateProjectiles(transport);
+    updateNpcs(transport);
     m_voxels.update(streamCenter, m_jobs);
 
     ++m_tick;
@@ -713,10 +897,12 @@ void ServerSim::broadcastSnapshot(Transport& transport) {
                                 player->lastCmd.pitch, player->controller.onGround(),
                                 player->controller.crouched(), player->health});
     }
-    for (const WorldEntity& e : m_entities) {
+    // Threats first: if the entity cap ever bites, invisible-but-lethal NPCs and
+    // rockets are far worse than an unrendered ammo box.
+    for (const Npc& n : m_npcs) {
         if (snap.entities.size() >= kMaxSnapshotEntities) break;
-        snap.entities.push_back({e.id, static_cast<std::uint8_t>(e.type), e.pos, e.yaw, 0,
-                                 0.0f, e.item});
+        snap.entities.push_back({n.id, static_cast<std::uint8_t>(n.type), n.pos, n.yaw, 0,
+                                 n.health, 0});
     }
     for (const Projectile& p : m_projectiles) {
         if (snap.entities.size() >= kMaxSnapshotEntities) break;
@@ -727,6 +913,11 @@ void ServerSim::broadcastSnapshot(Transport& transport) {
         if (snap.entities.size() >= kMaxSnapshotEntities) break;
         snap.entities.push_back({d.id, static_cast<std::uint8_t>(EntityArchetype::Deployable),
                                  d.pos, 0, 0, 0.0f, 0});
+    }
+    for (const WorldEntity& e : m_entities) {
+        if (snap.entities.size() >= kMaxSnapshotEntities) break;
+        snap.entities.push_back({e.id, static_cast<std::uint8_t>(e.type), e.pos, e.yaw, 0,
+                                 0.0f, e.item});
     }
     for (auto& [peer, player] : m_players) {
         snap.lastCmdTick = player->lastCmdTick; // per-recipient ack of their own input

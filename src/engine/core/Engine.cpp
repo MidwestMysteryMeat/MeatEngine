@@ -203,6 +203,10 @@ void Engine::render(float alpha) {
             m_renderer.submitChunk(m_pickupMesh, e.pos);
             m_renderer.submitPointLight(e.pos, glm::vec3(1.0f, 0.1f, 0.1f), 4.0f);
             break;
+        case 4: // NpcChaser / NpcShooter: box proxies until character meshes land
+        case 5:
+            m_renderer.submitChunk(m_remotePlayerMesh, e.pos);
+            break;
         default:
             break;
         }

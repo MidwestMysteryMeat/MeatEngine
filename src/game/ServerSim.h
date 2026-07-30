@@ -60,6 +60,36 @@ private:
         Inventory inventory;
     };
 
+    struct Projectile {
+        std::uint32_t id = 0;
+        PeerId owner = 0;
+        glm::vec3 pos{0}, vel{0};
+        float gravity = 0.0f;
+        float radius = 0.0f, damage = 0.0f; // blast on impact
+        float life = 6.0f;                  // seconds before self-detonate
+        float ownerGrace = 0.12f;           // owner-immune while clearing the muzzle
+    };
+    struct Deployable {
+        std::uint32_t id = 0;
+        PeerId owner = 0;
+        glm::vec3 pos{0};
+        float radius = 0.0f, damage = 0.0f;
+        float armTime = 1.0f; // won't trigger on its own owner while arming
+        float triggerRange = 2.2f;
+    };
+    struct Npc {
+        std::uint32_t id = 0;
+        EntityArchetype type = EntityArchetype::NpcChaser;
+        glm::vec3 pos{0};
+        float yaw = 0.0f;
+        float health = 60.0f;
+        PeerId target = 0;          // aggroed player
+        std::vector<glm::ivec3> path;
+        std::size_t pathIndex = 0;
+        float repathTimer = 0.0f;
+        float attackCooldown = 0.0f;
+    };
+
     void handlePacket(Transport& transport, PeerId peer, std::span<const std::byte> data);
     void broadcastSnapshot(Transport& transport);
     void applyVoxelOp(Transport& transport, const VoxelOpMsg& op);
@@ -68,6 +98,9 @@ private:
     void giveStartingLoadout(Player& player);
 
     void spawnDungeonLoot();
+    void spawnDungeonNpcs();
+    void updateNpcs(Transport& transport);
+    void damageNpc(Transport& transport, Npc& npc, float damage); // death → loot drop
     void loadSaveBody(const nlohmann::json& j); // may throw; initFromSave bounds it
     bool tryPickup(Transport& transport, PeerId peer, Player& player); // true if grabbed
     void fireHitscan(Transport& transport, PeerId peer, Player& player,
@@ -91,27 +124,11 @@ private:
     JobQueue m_jobs;         // server-side meshing feeds colliders only
     PhysicsWorld m_physics;
     VoxelWorld m_voxels;
-    struct Projectile {
-        std::uint32_t id = 0;
-        PeerId owner = 0;
-        glm::vec3 pos{0}, vel{0};
-        float gravity = 0.0f;
-        float radius = 0.0f, damage = 0.0f; // blast on impact
-        float life = 6.0f;                  // seconds before self-detonate
-        float ownerGrace = 0.12f;           // owner-immune while clearing the muzzle
-    };
-    struct Deployable {
-        std::uint32_t id = 0;
-        PeerId owner = 0;
-        glm::vec3 pos{0};
-        float radius = 0.0f, damage = 0.0f;
-        float armTime = 1.0f; // won't trigger on its own owner while arming
-        float triggerRange = 2.2f;
-    };
 
     std::vector<WorldEntity> m_entities;
     std::vector<Projectile> m_projectiles;
     std::vector<Deployable> m_deployables;
+    std::vector<Npc> m_npcs;
     std::uint32_t m_nextEntityId = 1;
     // Sparse chip-damage: only voxels that have been shot, remaining hp. Entries
     // die with the block; pristine blocks are implicit full-hp.
