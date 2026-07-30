@@ -1,4 +1,5 @@
 #pragma once
+#include "engine/core/EditorHost.h"
 #include "engine/core/EntityRegistry.h"
 #include "engine/core/EventBus.h"
 #include "engine/core/JobQueue.h"
@@ -36,6 +37,7 @@ struct EngineConfig {
 class Engine {
 public:
     int run(const EngineConfig& config);
+    void setEditor(std::unique_ptr<IEditor> editor) { m_editor = std::move(editor); }
 
 private:
     bool initClientSystems();
@@ -77,6 +79,14 @@ private:
     std::uint8_t m_selectedSlot = 0; // hotbar index, sent in every command
     bool m_showBackpack = false;     // Tab
     bool m_imguiReady = false;
+
+    std::unique_ptr<IEditor> m_editor; // injected by main.cpp; may be null
+    bool m_editorActive = false;
+    Camera m_editorCamera;
+    std::vector<EditorLight> m_editorLights;    // rendered every frame, saved as extras
+    std::vector<SeedVolume> m_seedVolumes;      // consumed by dungeon gen later
+    void saveEditorExtras() const;
+    void loadEditorExtras();
 };
 
 } // namespace meat

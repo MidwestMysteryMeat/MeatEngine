@@ -8,6 +8,10 @@
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
+#include <ImGuizmo.h>
+#include <nlohmann/json.hpp>
+
+#include <fstream>
 
 #include <algorithm>
 #include <chrono>
@@ -158,11 +162,19 @@ void Engine::simulateClientTick(const PlayerCommand& frameCmd) {
 }
 
 void Engine::render(float alpha) {
-    Camera camera;
-    camera.pos = glm::mix(m_prevPlayerPos, m_currPlayerPos, alpha) +
-                 glm::vec3(0.0f, m_player.eyeHeight(), 0.0f);
-    camera.yaw = m_lastCmd.yaw; // freshest mouse sample, not the tick's
-    camera.pitch = m_lastCmd.pitch;
+    if (m_imguiReady) { // frame opens before scene submits so the editor can use UI
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+        ImGuizmo::BeginFrame();
+    }
+
+    Camera playerCamera;
+    playerCamera.pos = glm::mix(m_prevPlayerPos, m_currPlayerPos, alpha) +
+                       glm::vec3(0.0f, m_player.eyeHeight(), 0.0f);
+    playerCamera.yaw = m_lastCmd.yaw; // freshest mouse sample, not the tick's
+    playerCamera.pitch = m_lastCmd.pitch;
+    const Camera& camera = m_editorActive ? m_editorCamera : playerCamera;
 
     m_renderer.beginFrame(camera, alpha);
     for (const auto& [pos, mesh] : m_chunkMeshes)
@@ -172,18 +184,40 @@ void Engine::render(float alpha) {
     for (const PlayerState& remote : remotes)
         m_renderer.submitChunk(m_remotePlayerMesh, remote.pos);
 
-    if (m_muzzleFlash > 0.0f)
-        m_renderer.submitPointLight(camera.pos + camera.forward() * 0.4f,
-                                    glm::vec3(1.0f, 0.72f, 0.35f) * (m_muzzleFlash / 0.08f),
-                                    8.0f);
+    for (const EditorLight& light : m_editorLights) { // placed lights are world lights
+        if (light.type == 0)
+            m_renderer.submitPointLight(light.pos, light.color, light.radius);
+        else
+            m_renderer.submitSpotLight(light.pos, light.dir, light.color, light.radius,
+                                       light.angle);
+    }
 
-    m_renderer.drawCrosshair();
+    if (m_editorActive && m_editor && m_imguiReady) {
+        EditorContext ctx{m_editorCamera,
+                          m_voxels,
+                          m_input,
+                          m_renderer,
+                          m_editorLights,
+                          m_seedVolumes,
+                          [this](glm::ivec3 v, BlockId b) { m_client.sendVoxelOp(v, b); },
+                          [this](bool on) { m_window.setRelativeMouse(on); },
+                          [this] {
+                              if (m_server) m_server->saveTo("saves/quick.json");
+                              saveEditorExtras();
+                          }};
+        m_editor->update(ctx, ImGui::GetIO().DeltaTime);
+    }
+
+    if (!m_editorActive) {
+        if (m_muzzleFlash > 0.0f)
+            m_renderer.submitPointLight(camera.pos + camera.forward() * 0.4f,
+                                        glm::vec3(1.0f, 0.72f, 0.35f) * (m_muzzleFlash / 0.08f),
+                                        8.0f);
+        m_renderer.drawCrosshair();
+    }
     m_renderer.endFrame();
 
     if (m_imguiReady) {
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
         ImGui::SetNextWindowPos({12, 12});
         ImGui::Begin("hud", nullptr,
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
@@ -250,6 +284,49 @@ void Engine::drawInventoryUi() {
     }
 }
 
+void Engine::saveEditorExtras() const {
+    nlohmann::json j;
+    for (const EditorLight& l : m_editorLights)
+        j["lights"].push_back({{"type", l.type},
+                               {"pos", {l.pos.x, l.pos.y, l.pos.z}},
+                               {"color", {l.color.x, l.color.y, l.color.z}},
+                               {"radius", l.radius},
+                               {"dir", {l.dir.x, l.dir.y, l.dir.z}},
+                               {"angle", l.angle}});
+    for (const SeedVolume& v : m_seedVolumes)
+        j["seedVolumes"].push_back({{"min", {v.min.x, v.min.y, v.min.z}},
+                                    {"max", {v.max.x, v.max.y, v.max.z}},
+                                    {"seed", v.seed}});
+    std::ofstream out("saves/editor_extras.json");
+    if (out) out << j.dump();
+}
+
+void Engine::loadEditorExtras() {
+    std::ifstream in("saves/editor_extras.json");
+    if (!in) return;
+    nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
+    if (j.is_discarded()) return;
+    for (const auto& l : j.value("lights", nlohmann::json::array())) {
+        EditorLight light;
+        light.type = l.value("type", 0);
+        light.pos = {l["pos"][0], l["pos"][1], l["pos"][2]};
+        light.color = {l["color"][0], l["color"][1], l["color"][2]};
+        light.radius = l.value("radius", 8.0f);
+        light.dir = {l["dir"][0], l["dir"][1], l["dir"][2]};
+        light.angle = l.value("angle", 0.6f);
+        m_editorLights.push_back(light);
+    }
+    for (const auto& v : j.value("seedVolumes", nlohmann::json::array())) {
+        SeedVolume vol;
+        vol.min = {v["min"][0], v["min"][1], v["min"][2]};
+        vol.max = {v["max"][0], v["max"][1], v["max"][2]};
+        vol.seed = v.value("seed", 0u);
+        m_seedVolumes.push_back(vol);
+    }
+    log::info("editor extras loaded ({} lights, {} volumes)", m_editorLights.size(),
+              m_seedVolumes.size());
+}
+
 int Engine::run(const EngineConfig& config) {
     if (config.mode == EngineConfig::Mode::Dedicated) return runDedicated(config);
 
@@ -257,6 +334,7 @@ int Engine::run(const EngineConfig& config) {
         log::error("engine init failed");
         return 1;
     }
+    loadEditorExtras();
     log::info("MeatEngine up — mode {}, 60 Hz tick, {}³ chunks @ {} m voxels",
               static_cast<int>(config.mode), kChunkSize, kVoxelSize);
 
@@ -271,7 +349,21 @@ int Engine::run(const EngineConfig& config) {
 
         if (m_input.pressed(GLFW_KEY_ESCAPE)) break;
         if (m_input.pressed(GLFW_KEY_F6)) m_renderer.reloadShaders();
-        if (m_input.pressed(GLFW_KEY_F5) && m_server) m_server->saveTo("saves/quick.json");
+        if (m_input.pressed(GLFW_KEY_F5) && m_server) {
+            m_server->saveTo("saves/quick.json");
+            saveEditorExtras();
+        }
+        if (m_input.pressed(GLFW_KEY_F1) && m_editor && m_server && m_clientWorldReady) {
+            m_editorActive = !m_editorActive;
+            if (m_editorActive) { // start where the player is looking from
+                m_editorCamera.pos = m_currPlayerPos + glm::vec3(0, m_player.eyeHeight(), 0);
+                m_editorCamera.yaw = m_lastCmd.yaw;
+                m_editorCamera.pitch = m_lastCmd.pitch;
+                m_window.setRelativeMouse(false); // editor UI needs the cursor
+            } else {
+                m_window.setRelativeMouse(true);
+            }
+        }
         if (m_input.pressed(GLFW_KEY_TAB)) m_showBackpack = !m_showBackpack;
         for (int i = 0; i < Inventory::kHotbar; ++i)
             if (m_input.pressed(GLFW_KEY_1 + i)) m_selectedSlot = static_cast<std::uint8_t>(i);
@@ -290,7 +382,14 @@ int Engine::run(const EngineConfig& config) {
         last = now;
         accumulator += frameDt;
 
-        m_lastCmd = m_input.sampleCommand(m_tick); // per-frame: look stays fresh
+        PlayerCommand frameCmd = m_input.sampleCommand(m_tick); // per-frame: look stays fresh
+        if (m_editorActive) { // player idles in place while the editor has input
+            const float yaw = m_lastCmd.yaw, pitch = m_lastCmd.pitch;
+            frameCmd = PlayerCommand{};
+            frameCmd.yaw = yaw;
+            frameCmd.pitch = pitch;
+        }
+        m_lastCmd = frameCmd;
         while (accumulator >= kFixedDt) {
             if (m_clientWorldReady) simulateClientTick(m_lastCmd);
             if (m_server) m_server->tick(*m_serverTransport);
@@ -303,7 +402,10 @@ int Engine::run(const EngineConfig& config) {
         m_window.swap();
     }
 
-    if (m_server) m_server->saveTo("saves/autosave.json"); // graceful exit = autosave
+    if (m_server) {
+        m_server->saveTo("saves/autosave.json"); // graceful exit = autosave
+        saveEditorExtras();
+    }
 
     if (m_imguiReady) {
         ImGui_ImplOpenGL3_Shutdown();

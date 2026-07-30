@@ -1,5 +1,6 @@
 #include "engine/core/Engine.h"
 #include "engine/core/Log.h"
+#include "editor/RoomEditor.h"
 
 #include <cstdlib>
 #include <cstring>
@@ -46,5 +47,6 @@ meat::EngineConfig parseArgs(int argc, char** argv) {
 
 int main(int argc, char** argv) {
     meat::Engine engine;
+    engine.setEditor(std::make_unique<meat::RoomEditor>());
     return engine.run(parseArgs(argc, argv));
 }

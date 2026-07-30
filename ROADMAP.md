@@ -46,9 +46,16 @@ loopback transport.
       abilities phase
 
 ## Phase 5 — Room Designer editor (F1, host/single-player only)
-- [ ] Free-fly camera, grid snap, modular tools (wall/floor/ceiling/doorway/platform)
-- [ ] Lights w/ live preview, outliner, properties, ImGuizmo gizmos
-- [ ] Dungeon-seed volumes; save room/world; exit → sensible player spawn
+- [x] IEditor interface (engine/core/EditorHost.h): editor injected by main, brushes emit
+      VoxelOps through the client→server path — editing replicates in multiplayer
+- [x] Free-fly camera (RMB-held look, WASD/QE, Shift, scroll speed), grid snap (1/2/4 voxel)
+- [x] Modular tools: place/erase, wall (height param), floor, platform (offset), doorway
+      carve; two-click regions w/ preview markers + 4096-op batch cap
+- [x] Lights (point/spot) w/ live preview, ImGuizmo translate gizmo, outliner + properties;
+      persisted in saves/editor_extras.json and rendered as world lights in game
+- [x] Dungeon-seed volumes (A→B + seed), listed/editable, persisted for Phase 6
+- [ ] Editor feel pass — HUMAN PLAYTEST (tool ergonomics, picking accuracy, gizmo feel)
+- [ ] Ceiling brush + click-to-equip in GridOnly model (minor follow-ups)
 
 ## Phase 6 — Procedural dungeons
 - [ ] Seeded rooms+corridors (size range, corridor width, branching, loops, verticality)

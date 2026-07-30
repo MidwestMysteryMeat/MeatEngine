@@ -29,6 +29,10 @@ void Client::sendCommand(const PlayerCommand& cmd) {
     m_transport->send(1, pack(CommandMsg{cmd}), false);
 }
 
+void Client::sendVoxelOp(glm::ivec3 voxel, std::uint16_t block) {
+    if (m_transport) m_transport->send(1, pack(VoxelOpMsg{voxel, block}), true);
+}
+
 void Client::pump(VoxelWorld& voxels, PhysicsWorld& physics, CharacterController& player) {
     if (!m_transport) return;
     std::vector<NetEvent> events;

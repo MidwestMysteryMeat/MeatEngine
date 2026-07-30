@@ -41,12 +41,15 @@ expect 10–20 minutes once). Linux support is intended; CI pending.
 |---|---|
 | WASD / mouse | Move / look |
 | Space / LShift / LCtrl | Jump / sprint / crouch |
-| LMB | Fire |
-| E | Use / pick up |
-| Tab | Inventory |
-| F1 | Editor mode |
-| F5 / F9 | Save / load |
+| LMB / RMB | Fire or mine / place block |
+| 1-9 / scroll | Hotbar select |
+| E | Use held item (medkit) |
+| Tab | Backpack |
+| F1 | Room Designer editor (host/single-player) |
+| F5 | Quicksave (auto-saves on exit; `--load saves/autosave.json` to resume) |
 | F6 | Shader hot-reload |
+
+Multiplayer: `--host` to serve, `--join <ip>` to connect, `--server` for headless dedicated.
 
 ## License
 

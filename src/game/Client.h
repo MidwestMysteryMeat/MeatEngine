@@ -27,6 +27,10 @@ public:
     // Record locally + send to server. Call exactly once per fixed tick.
     void sendCommand(const PlayerCommand& cmd);
 
+    // Voxel edit intent (editor brushes, scripted edits). Server validates,
+    // applies, and echoes to everyone — including us.
+    void sendVoxelOp(glm::ivec3 voxel, std::uint16_t block);
+
     // Drain net events: Welcome, VoxelOps into the mirror, Snapshots into
     // rewind-and-replay reconciliation of the local character.
     void pump(VoxelWorld& voxels, PhysicsWorld& physics, CharacterController& player);
