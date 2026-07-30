@@ -16,7 +16,8 @@ enum class EntityArchetype : std::uint8_t {
     NpcChaser = 4,  // melee rusher
     NpcShooter = 5, // ranged, holds distance
     Turret = 6,     // placed auto-defense
-    // Companion, scheduled NPCs land with their phases.
+    Companion = 7,  // mobile ally: follows its owner, engages hostile NPCs
+    // Scheduled NPCs land with their phases.
 };
 
 // Server-side world entity. Deliberately a plain struct while the roster is

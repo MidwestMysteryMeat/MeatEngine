@@ -38,6 +38,7 @@ struct ItemDef {
     float blastRadius = 0.0f;    // projectile/deployable AoE radius (m)
     float blastDamage = 0.0f;    // center damage, falls off to the edge
     bool deploysTurret = false;  // Deployable delivery: spawn an auto-turret, not a mine
+    bool deploysCompanion = false; // Deployable delivery: spawn a mobile ally, not a mine
     // Block field
     BlockId blockId = 0; // what placing this item builds
 };
@@ -62,6 +63,7 @@ private:
 struct DefaultItems {
     ItemId pistol = 0, ammo9mm = 0, medkit = 0, stoneBlock = 0;
     ItemId smg = 0, shotgun = 0, sniper = 0, rpg = 0, grenade = 0, claymore = 0, turret = 0;
+    ItemId companionBeacon = 0;
     ItemId shells = 0, rockets = 0, rifleAmmo = 0;
 };
 DefaultItems registerDefaultItems(ItemRegistry& items, BlockId stone);

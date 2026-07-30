@@ -287,6 +287,83 @@ void ServerSim::updateTurrets(Transport& transport) {
     }
 }
 
+// Mobile ally: engages the nearest hostile NPC in range (hitscan on a cadence), else
+// follows its owner. Reuses the NPC A* pathing to move toward the goal (target or owner).
+// NPCs don't aggro companions yet, so a companion is a durable escort, not a decoy.
+void ServerSim::updateCompanions(Transport& transport) {
+    constexpr float kEngage = 18.0f, kAttackRange = 14.0f, kDamage = 22.0f, kInterval = 0.9f;
+    constexpr float kFollowDist = 4.0f, kSpeed = 3.6f;
+    for (Companion& c : m_companions) {
+        if (!m_voxels.isChunkLoaded(voxelToChunk(worldToVoxel(c.pos)))) continue;
+        c.fireCooldown -= kFixedDtServer;
+        c.repathTimer -= kFixedDtServer;
+        const glm::vec3 muzzle = c.pos + glm::vec3(0, 1.4f, 0);
+
+        // Acquire the nearest hostile NPC in engage range with a clear line of sight.
+        Npc* target = nullptr;
+        float best = kEngage;
+        for (Npc& npc : m_npcs) {
+            if (npc.health <= 0.0f) continue;
+            const glm::vec3 to = npc.pos + glm::vec3(0, 0.9f, 0) - muzzle;
+            const float d = glm::length(to);
+            if (d >= best) continue;
+            if (m_voxels.raycast(muzzle, to / std::max(d, 1e-4f), d)) continue; // wall
+            best = d;
+            target = &npc;
+        }
+
+        glm::vec3 goal{0};
+        bool haveGoal = false;
+        if (target) {
+            const glm::vec3 to = target->pos - c.pos;
+            c.yaw = std::atan2(-to.x, -to.z); // face the enemy
+            if (glm::length(to) <= kAttackRange) {
+                if (c.fireCooldown <= 0.0f) {
+                    c.fireCooldown = kInterval;
+                    damageNpc(transport, *target, kDamage);
+                }
+            } else {
+                goal = target->pos; // chase into firing range
+                haveGoal = true;
+            }
+        } else if (const auto it = m_players.find(c.owner);
+                   it != m_players.end() && it->second->spawned) {
+            const glm::vec3 op = it->second->controller.position();
+            const glm::vec3 to = op - c.pos;
+            if (glm::length(to) > kFollowDist) { // hang back when already close
+                goal = op;
+                haveGoal = true;
+                c.yaw = std::atan2(-to.x, -to.z);
+            }
+        }
+
+        if (!haveGoal) continue;
+        // (Re)path toward the goal on the timer or when the current path runs out.
+        if (c.repathTimer <= 0.0f || (c.pathIndex >= c.path.size() && !c.path.empty())) {
+            c.repathTimer = 0.5f + 0.01f * static_cast<float>(c.id % 16);
+            glm::ivec3 from, to;
+            if (snapToStandable(m_voxels, c.pos, from) && snapToStandable(m_voxels, goal, to)) {
+                c.path = findPath(m_voxels, from, to, 1500);
+                c.pathIndex = c.path.size() > 1 ? 1 : 0;
+            } else {
+                c.path.clear();
+            }
+        }
+        if (c.pathIndex < c.path.size()) {
+            const glm::vec3 wp =
+                (glm::vec3(c.path[c.pathIndex]) + glm::vec3(0.5f, 0.0f, 0.5f)) * kVoxelSize;
+            const glm::vec3 delta = wp - c.pos;
+            const float step = kSpeed * kFixedDtServer;
+            if (glm::length(delta) <= step) {
+                c.pos = wp;
+                ++c.pathIndex;
+            } else {
+                c.pos += glm::normalize(delta) * step;
+            }
+        }
+    }
+}
+
 void ServerSim::spawnDungeonLoot() {
     // Same pure function the terrain generator uses — identical layout for free.
     const DungeonLayout layout = DungeonLayout::generate(m_seed, {});
@@ -729,6 +806,7 @@ void ServerSim::tick(Transport& transport) {
     updateProjectiles(transport);
     updateNpcs(transport);
     updateTurrets(transport);
+    updateCompanions(transport);
     m_voxels.update(streamCenter, m_jobs);
 
     ++m_tick;
@@ -752,6 +830,7 @@ void ServerSim::giveStartingLoadout(Player& player) {
     player.inventory.add(m_defaultItems.grenade, 3, m_items);
     player.inventory.add(m_defaultItems.claymore, 2, m_items);
     player.inventory.add(m_defaultItems.turret, 2, m_items);
+    player.inventory.add(m_defaultItems.companionBeacon, 2, m_items);
     player.inventory.add(m_defaultItems.ammo9mm, 90, m_items);
     player.inventory.add(m_defaultItems.shells, 24, m_items);
     player.inventory.add(m_defaultItems.rifleAmmo, 30, m_items);
@@ -830,6 +909,13 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
                         t.pos = at;
                         m_turrets.push_back(t);
                         log::info("server: player {} placed a turret", peer);
+                    } else if (heldDef.deploysCompanion) {
+                        Companion c;
+                        c.id = m_nextEntityId++;
+                        c.owner = peer;
+                        c.pos = at;
+                        m_companions.push_back(c);
+                        log::info("server: player {} summoned a companion", peer);
                     } else {
                         Deployable dep;
                         dep.id = m_nextEntityId++;
@@ -1027,6 +1113,11 @@ void ServerSim::broadcastSnapshot(Transport& transport) {
         if (snap.entities.size() >= kMaxSnapshotEntities) break;
         snap.entities.push_back({t.id, static_cast<std::uint8_t>(EntityArchetype::Turret),
                                  t.pos, t.yaw, 0, t.health, 0});
+    }
+    for (const Companion& c : m_companions) {
+        if (snap.entities.size() >= kMaxSnapshotEntities) break;
+        snap.entities.push_back({c.id, static_cast<std::uint8_t>(EntityArchetype::Companion),
+                                 c.pos, c.yaw, 0, c.health, 0});
     }
     for (const Projectile& p : m_projectiles) {
         if (snap.entities.size() >= kMaxSnapshotEntities) break;

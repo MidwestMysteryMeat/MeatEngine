@@ -105,6 +105,17 @@ private:
         float repathTimer = 0.0f;
         float attackCooldown = 0.0f;
     };
+    struct Companion {                // mobile ally: follows owner, shoots hostile NPCs
+        std::uint32_t id = 0;
+        PeerId owner = 0;
+        glm::vec3 pos{0};
+        float yaw = 0.0f;
+        float health = 150.0f;
+        float fireCooldown = 0.0f;
+        std::vector<glm::ivec3> path; // reuses the NPC A* pathing toward owner/target
+        std::size_t pathIndex = 0;
+        float repathTimer = 0.0f;
+    };
 
     void handlePacket(Transport& transport, PeerId peer, std::span<const std::byte> data);
     void broadcastSnapshot(Transport& transport);
@@ -118,6 +129,7 @@ private:
     void spawnDungeonNpcs();
     void updateNpcs(Transport& transport);
     void updateTurrets(Transport& transport);
+    void updateCompanions(Transport& transport);
     void damageNpc(Transport& transport, Npc& npc, float damage); // death → loot drop
     void loadSaveBody(const nlohmann::json& j); // may throw; initFromSave bounds it
     bool tryPickup(Transport& transport, PeerId peer, Player& player); // true if grabbed
@@ -150,6 +162,7 @@ private:
     std::vector<Deployable> m_deployables;
     std::vector<Npc> m_npcs;
     std::vector<Turret> m_turrets;
+    std::vector<Companion> m_companions;
     ScriptHost m_scripts;
     Transport* m_activeTransport = nullptr; // set each pump/tick for script callbacks
     std::uint64_t m_scriptRng = 0x2545F4914F6CDD1Dull; // seeded in init()

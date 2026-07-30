@@ -71,6 +71,12 @@ DefaultItems registerDefaultItems(ItemRegistry& items, BlockId stone) {
                           .fireInterval = 0.8f,
                           .delivery = DeliveryKind::Deployable,
                           .deploysTurret = true});
+    d.companionBeacon = items.add({.name = "companion beacon",
+                                   .type = ItemType::Weapon,
+                                   .maxStack = 2,
+                                   .fireInterval = 1.0f,
+                                   .delivery = DeliveryKind::Deployable,
+                                   .deploysCompanion = true});
     d.medkit = items.add({.name = "medkit", .type = ItemType::Consumable, .maxStack = 4});
     d.stoneBlock = items.add(
         {.name = "stone", .type = ItemType::Block, .maxStack = 250, .blockId = stone});

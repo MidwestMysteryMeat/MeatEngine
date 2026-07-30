@@ -348,6 +348,11 @@ void Engine::render(float alpha) {
             m_renderer.submitPointLight(e.pos + glm::vec3(0, 0.5f, 0),
                                         glm::vec3(0.2f, 0.5f, 1.0f), 5.0f);
             break;
+        case 7: // Companion: humanoid proxy + a friendly green light
+            m_renderer.submitChunk(m_remotePlayerMesh, e.pos);
+            m_renderer.submitPointLight(e.pos + glm::vec3(0, 1.6f, 0),
+                                        glm::vec3(0.2f, 1.0f, 0.35f), 5.0f);
+            break;
         default:
             break;
         }

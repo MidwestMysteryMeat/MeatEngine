@@ -219,7 +219,10 @@ loopback transport.
       NPCs take bullet + blast damage, drop ammo on death, ride entity snapshots
 - [x] Turret: placeable auto-defense (deployable item) — targets nearest hostile NPC in
       range + LoS, fires hitscan on cadence, faces target, has health, rides entity snapshots
-- [ ] Companion behavior; voxel-sampled cover seek; spawner volumes + waves
+- [x] Companion: mobile ally deployable (companion beacon) — follows its owner, acquires
+      the nearest hostile NPC in range + LoS, chases into firing range and shoots it on a
+      cadence, reuses the NPC A* pathing; rides the entity snapshot path; green friendly light
+- [ ] Voxel-sampled cover seek; spawner volumes + waves; NPCs aggro companions (decoy value)
 - [ ] NPC schedules/factions/world clock (living-world layer); Recast/Detour v2 swap
 - [ ] World clock (day cycle in snapshots) + NPC schedules (timeRange→activity@location,
       interrupt stack, factions/aggro matrix, editor spawn+location markers, far-LOD
