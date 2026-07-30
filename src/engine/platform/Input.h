@@ -3,6 +3,8 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
+#include <vector>
 
 struct GLFWwindow;
 
@@ -33,11 +35,16 @@ public:
     float sensitivity = 0.0022f;          // radians per count
     PlayerCommand sampleCommand(std::uint64_t tick);
 
+    // OS file-drops (glfwSetDropCallback) since the last drain. The editor pulls
+    // these to feed ctx.importAsset; unread drops just accumulate harmlessly.
+    std::vector<std::string> drainDroppedPaths();
+
 private:
     static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
     static void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
     static void cursorPosCallback(GLFWwindow* window, double x, double y);
     static void scrollCallback(GLFWwindow* window, double x, double y);
+    static void dropCallback(GLFWwindow* window, int count, const char** paths);
 
     void onButton(int code, int action);
     void onCursorPos(double x, double y);
@@ -55,6 +62,7 @@ private:
     float m_scrollAccum = 0.0f;           // wheel notches, drained by consumeScrollSteps
     float m_yaw = 0.0f;
     float m_pitch = 0.0f;
+    std::vector<std::string> m_droppedPaths; // filled by dropCallback, drained by editor
 };
 
 } // namespace meat

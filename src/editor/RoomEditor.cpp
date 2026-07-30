@@ -60,6 +60,11 @@ void RoomEditor::update(EditorContext& ctx, float dt) {
     ctx.buildBlock = m_buildBlock; // ctx is rebuilt per frame; the editor owns persistence
     if (m_statusTtl > 0.0f && (m_statusTtl -= dt) <= 0.0f) m_status.clear();
     if (m_codeStatusTtl > 0.0f && (m_codeStatusTtl -= dt) <= 0.0f) m_codeStatus.clear();
+    if (m_importStatusTtl > 0.0f && (m_importStatusTtl -= dt) <= 0.0f) m_importStatus.clear();
+
+    // OS drag-drop: any files dropped on the window this frame get imported, so a
+    // dev can drop an .fbx straight onto the viewport instead of typing a path.
+    for (const std::string& dropped : ctx.input.drainDroppedPaths()) doImport(ctx, dropped);
 
     updateFlyCamera(ctx, dt);
 
@@ -500,6 +505,20 @@ void RoomEditor::drawAssetBrowser(EditorContext& ctx) {
     else
         ImGui::Text("sel: %s", m_selectedAsset.c_str());
     ImGui::TextDisabled("double-click a .lua to edit it below");
+
+    // Import row: paste/type a source path + Import, or drag a file onto the
+    // window (handled in update). MVP has no native file-open dialog.
+    ImGui::SetNextItemWidth(320.0f);
+    const bool entered = ImGui::InputText("##importpath", m_importPath, sizeof(m_importPath),
+                                          ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::SameLine();
+    if (ImGui::Button("Import...") || entered) doImport(ctx, m_importPath);
+    ImGui::TextDisabled("paste a path to an .fbx/.obj/.glb/.png/.jpg (or drag a file onto the window)");
+    if (!m_importStatus.empty()) {
+        const bool ok = m_importStatus.rfind("imported", 0) == 0;
+        ImGui::TextColored(ok ? ImVec4(0.4f, 0.9f, 0.4f, 1.0f) : ImVec4(1.0f, 0.5f, 0.4f, 1.0f),
+                           "%s", m_importStatus.c_str());
+    }
     ImGui::Separator();
 
     if (!ctx.listFiles) {
@@ -511,6 +530,26 @@ void RoomEditor::drawAssetBrowser(EditorContext& ctx) {
     // subdirs (trailing "/"), which expand on demand via drawDirTree.
     drawDirTree(ctx, "assets");
     ImGui::End();
+}
+
+// Route a source path through ctx.importAsset (the engine validates + copies) and
+// surface the result. A successful import invalidates the dir cache so the tree
+// re-lists and the new file appears without a manual Refresh.
+void RoomEditor::doImport(EditorContext& ctx, const std::string& sourcePath) {
+    if (sourcePath.empty()) return;
+    if (!ctx.importAsset) {
+        setImportStatus("import unavailable");
+        return;
+    }
+    const std::string result = ctx.importAsset(sourcePath);
+    if (result.empty()) return; // not attempted
+    setImportStatus(result);
+    if (result.rfind("imported", 0) == 0) m_dirCache.clear();
+}
+
+void RoomEditor::setImportStatus(std::string text) {
+    m_importStatus = std::move(text);
+    m_importStatusTtl = 6.0f;
 }
 
 void RoomEditor::openLuaFile(EditorContext& ctx, const std::string& path) {

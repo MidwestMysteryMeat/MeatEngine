@@ -95,8 +95,13 @@ loopback transport.
       skinning FIXED — bind globals derived from inverse(offset) (skin-deformer-authoritative)
       instead of the node chain, which drifted ~100x on the armature's baked FBX unit scale;
       now skinning≡I at bind for all weighted bones. SWAT operator renders as a clean T-pose.
-- [ ] Live clip playback (needs a non-degenerate clip staged; sampler is ready), replace
-      NPC/remote-player boxes with animated meshes, first-person viewmodel
+- [x] Animation PLAYING (VLM-verified): Animator::idlePose drives a looping idle by EXACT
+      bind-local matrix multiply (localBind * rotationDelta) — no TRS decompose, so deep
+      chains (arms/fingers) don't warp (the earlier sampler decompose path exploded them).
+      SWAT operator lowers arms from T-pose + breathing sway; motion confirmed across frames
+- [ ] Real mocap clip playback via samplePose (needs a full-TRS-keyed clip; the exact-matrix
+      insight should fold back into samplePose's partial-track gap-fill), replace NPC/remote
+      boxes with animated meshes, first-person viewmodel
 
 ## Phase 8 — Scripting
 - [x] Lua (sol2) server-side host: sandboxed stdlib (base/math/table/string only — no
@@ -106,6 +111,11 @@ loopback transport.
       deterministic seeded RNG, pimpl (sol2 headers don't leak); example.lua verified live
 - [ ] Expand API (player state/inventory/weapons, dungeon params, world events); wire the
       no-code authoring/Design panel to emit Lua defs (Phase 8.6)
+
+## Phase 8.7 — Visual node scripting (ARCHITECTURE §editor/nodegraph) — NOT built
+- [ ] ImGui node-graph panel (ImNodes MIT or hand-rolled): event nodes → action nodes
+- [ ] Graph saved per-project as JSON; COMPILES TO LUA (reuses ScriptHost sandbox/budget,
+      no second VM); drop-to-code path; slots in as an editor panel
 
 ## Phase 8.6 — Authoring & modeling (ARCHITECTURE §game/authoring, §game/modeling)
 - [ ] Effect-composition core: EffectList on items/abilities, server executors
@@ -134,10 +144,11 @@ loopback transport.
       reload → ServerSim::reloadScripts via EditorContext file/reload callbacks). No alt-tab.
 - [ ] Syntax highlighting (ImGuiColorTextEdit), Lua console/REPL, texture/model previews,
       file-watcher refresh
-- [ ] Import pipeline: OS drag-drop + Import for FBX/OBJ/GLB/PNG/JPG/WAV/OGG —
-      validate on import (scale/skeleton probe, decode check), copy into project,
-      manifest + content hash, attribution tag enforced by audit; per-type previews
-      (orbit model thumb, image, audio play); Mixamo-conformance report on rigs
+- [x] Import GUI (VLM-verified): asset-browser Import button + path field + OS drag-drop
+      (glfwSetDropCallback) for FBX/OBJ/GLB/PNG/JPG — validates on import (loadStaticModel/
+      loadSkeletalModel parse + bounds/bone probe w/ scale warning, stbi_info decode check),
+      copies into assets/, status line, auto-refreshes tree. Manifest/hash/attribution-gate +
+      orbit previews + rig-conformance report are the follow-on.
 
 ## Phase 9 — Audio + polish
 - [x] Audio (miniaudio): AudioEngine w/ 6 PROCEDURALLY-SYNTHESIZED sounds (gunshot,

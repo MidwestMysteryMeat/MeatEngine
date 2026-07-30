@@ -26,4 +26,11 @@ Pose samplePose(const SkeletalModel& model, const AnimClip& clip, float timeSeco
 // fallback when a model ships without clips.
 Pose bindPose(const SkeletalModel& model);
 
+// A looping idle computed by post-multiplying each bone's EXACT bind local by a
+// rotation delta (matrix multiply, not TRS decompose) — precise at rest, so it
+// works on deep chains (arms/fingers) that the decompose gap-fill path warps.
+// Lowers the arms from the T-pose and adds a breathing sway. Used to demonstrate
+// animation when a rig ships no usable clip.
+Pose idlePose(const SkeletalModel& model, float timeSeconds);
+
 } // namespace meat

@@ -35,6 +35,8 @@ private:
     // goes through the ctx callbacks (never std::filesystem in the editor).
     void drawAssetBrowser(EditorContext& ctx);
     void drawDirTree(EditorContext& ctx, const std::string& dir);
+    void doImport(EditorContext& ctx, const std::string& sourcePath);
+    void setImportStatus(std::string text);
     void drawCodeEditor(EditorContext& ctx);
     void openLuaFile(EditorContext& ctx, const std::string& path);
     const std::vector<std::string>& listDir(EditorContext& ctx, const std::string& dir);
@@ -77,6 +79,15 @@ private:
     // frame. A trailing "/" in a listing entry marks a subdirectory.
     std::map<std::string, std::vector<std::string>> m_dirCache;
     std::string m_selectedAsset; // currently highlighted file in the tree
+
+    // --- Asset import ------------------------------------------------------
+    // No native file dialog is wired: the dev pastes/types a source path here and
+    // clicks Import (or drags a file onto the window — drained from Input each
+    // frame). The result string is shown transiently, like the code status line;
+    // a successful import clears m_dirCache so the tree re-lists the new file.
+    char m_importPath[512] = {};
+    std::string m_importStatus;
+    float m_importStatusTtl = 0.0f;
 
     // --- Code editor -------------------------------------------------------
     // The open script's project-relative path (empty = nothing open) and its

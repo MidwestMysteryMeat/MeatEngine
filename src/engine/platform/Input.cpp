@@ -27,6 +27,21 @@ void Input::attach(Window& window) {
     glfwSetMouseButtonCallback(handle, &Input::mouseButtonCallback);
     glfwSetCursorPosCallback(handle, &Input::cursorPosCallback);
     glfwSetScrollCallback(handle, &Input::scrollCallback);
+    // ImGui's GLFW backend (installed later) chains the callbacks it manages but
+    // never touches drop, so this handler survives ImGui init unchained.
+    glfwSetDropCallback(handle, &Input::dropCallback);
+}
+
+void Input::dropCallback(GLFWwindow* window, int count, const char** paths) {
+    if (Input* input = self(window))
+        for (int i = 0; i < count; ++i)
+            if (paths[i]) input->m_droppedPaths.emplace_back(paths[i]);
+}
+
+std::vector<std::string> Input::drainDroppedPaths() {
+    std::vector<std::string> out;
+    out.swap(m_droppedPaths);
+    return out;
 }
 
 int Input::consumeScrollSteps() {

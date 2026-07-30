@@ -80,6 +80,8 @@ meat::EngineConfig parseArgs(int argc, char** argv) {
                 config.seed = static_cast<std::uint32_t>(std::strtoul(s, nullptr, 10));
         } else if (arg == "--project") {
             if (const char* d = next()) loadProject(config, d);
+        } else if (arg == "--editor") {
+            config.startEditor = true;
         } else {
             meat::log::warn("unknown argument '{}'", arg);
         }

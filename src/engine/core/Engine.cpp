@@ -6,6 +6,7 @@
 #include "engine/net/HttpTiny.h"
 
 #include <GLFW/glfw3.h>
+#include <stb_image.h> // stbi_info: cheap header-probe validation for texture imports
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -20,6 +21,7 @@
 #include <glm/gtc/constants.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <format>
@@ -225,16 +227,19 @@ void Engine::loadAnimTestActor() {
         actor->transform = glm::translate(glm::mat4(1.0f), place) *
                            glm::scale(glm::mat4(1.0f), glm::vec3(norm)) * orient;
 
-        // A degenerate clip (Fab reference poses are ~1 frame) would throw the mesh
-        // apart — prove the loader with the bind pose until a real clip is staged.
-        actor->useBindPose = model->clips.empty() ||
-                             model->clips[0].duration / model->clips[0].ticksPerSec < 0.15f;
+        // Many imported rigs ship no usable clip (Fab reference poses are ~1 frame).
+        // With a real clip, sample it; otherwise drive a procedural idle computed
+        // by EXACT bind-local matrix multiply (Animator::idlePose — no decompose,
+        // so deep chains like arms/fingers don't warp).
         actor->model = std::move(*model);
+        actor->hasRealClip =
+            !actor->model.clips.empty() &&
+            actor->model.clips[0].duration / actor->model.clips[0].ticksPerSec >= 0.15f;
         m_animActor = std::move(actor);
-        log::info("anim actor '{}' up: {} clips, {}, textured={} (up-extent {:.2f} m → x{:.3f})",
+        log::info("anim actor '{}' up: {} clips, {}, textured={} (up-extent {:.2f} m -> x{:.3f})",
                   path, m_animActor->model.clips.size(),
-                  m_animActor->useBindPose ? "BIND POSE" : "animating clip 0", textured,
-                  upExtent, norm);
+                  m_animActor->hasRealClip ? "clip 0" : "procedural idle", textured, upExtent,
+                  norm);
         return;
     }
     log::info("no assets/models/anim_test.{{fbx,glb}} staged — skeletal proof skipped");
@@ -328,9 +333,9 @@ void Engine::render(float alpha) {
     if (m_animActor && m_animActor->mesh != 0) { // Phase 7b proof: loop clip 0
         m_animActor->time += m_frameDt;
         const Pose pose =
-            m_animActor->useBindPose
-                ? bindPose(m_animActor->model)
-                : samplePose(m_animActor->model, m_animActor->model.clips[0], m_animActor->time);
+            m_animActor->hasRealClip
+                ? samplePose(m_animActor->model, m_animActor->model.clips[0], m_animActor->time)
+                : idlePose(m_animActor->model, m_animActor->time);
         m_renderer.submitSkinned(m_animActor->mesh, m_animActor->transform, pose,
                                  m_animActor->material);
     }
@@ -377,6 +382,65 @@ void Engine::render(float alpha) {
             return out.good();
         };
         ctx.reloadScripts = [this] { return m_server && m_server->reloadScripts(); };
+        // Import a dropped/typed asset: validate by type, then copy into the right
+        // assets/ subdir. Models are validated by actually loading them (and probed
+        // for a rig); textures by an stbi_info header decode. All filesystem work
+        // is error_code-based — no exceptions cross this boundary.
+        ctx.importAsset = [](const std::string& sourcePath) -> std::string {
+            namespace fs = std::filesystem;
+            if (sourcePath.empty()) return {}; // nothing typed/dropped: not attempted
+            std::error_code ec;
+            const fs::path src(sourcePath);
+            if (!fs::exists(src, ec) || fs::is_directory(src, ec))
+                return "rejected: " + sourcePath + " is not a file";
+
+            std::string ext = src.extension().string();
+            std::transform(ext.begin(), ext.end(), ext.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            const std::string filename = src.filename().string();
+
+            const bool isModel =
+                ext == ".fbx" || ext == ".obj" || ext == ".glb" || ext == ".gltf";
+            const bool isTexture = ext == ".png" || ext == ".jpg" || ext == ".jpeg";
+
+            const auto copyInto = [&](const char* subdir) -> std::string {
+                const fs::path destDir = fs::path("assets") / subdir;
+                fs::create_directories(destDir, ec);
+                const fs::path dest = destDir / src.filename();
+                fs::copy_file(src, dest, fs::copy_options::overwrite_existing, ec);
+                if (ec) return "rejected: " + sourcePath + " copy failed (" + ec.message() + ")";
+                return {}; // empty = copy succeeded
+            };
+
+            if (isModel) {
+                const auto model = loadStaticModel(src);
+                if (!model) return "rejected: " + sourcePath + " failed to load";
+                // OBJ never carries a skeleton; probe FBX/GLB for a rig so the
+                // summary can report bone count like the anim pipeline expects.
+                int bones = 0;
+                if (ext == ".fbx" || ext == ".glb")
+                    if (const auto skel = loadSkeletalModel(src))
+                        bones = static_cast<int>(skel->bones.size());
+                if (const std::string err = copyInto("models"); !err.empty()) return err;
+
+                const float height = model->boundsMax.y - model->boundsMin.y;
+                std::string summary = std::format("imported models/{} ({:.1f}m", filename, height);
+                if (bones > 0) summary += std::format(", {} bones", bones);
+                summary += ")";
+                if (height > 20.0f) summary += " — check scale"; // imported, but units look off
+                return summary;
+            }
+
+            if (isTexture) {
+                int w = 0, h = 0, c = 0;
+                if (!stbi_info(sourcePath.c_str(), &w, &h, &c))
+                    return "rejected: " + sourcePath + " is not a decodable image";
+                if (const std::string err = copyInto("textures"); !err.empty()) return err;
+                return std::format("imported textures/{} ({}x{})", filename, w, h);
+            }
+
+            return "rejected: unsupported type (" + ext + ")";
+        };
         m_editor->update(ctx, ImGui::GetIO().DeltaTime);
     }
 
@@ -747,15 +811,31 @@ int Engine::run(const EngineConfig& configIn) {
             accumulator -= kFixedDt;
         }
 
+        if (config.startEditor && m_clientWorldReady && !m_editorActive && m_editor && m_server) {
+            m_editorActive = true; // --editor: open the Room Designer on spawn
+            m_editorCamera.pos = m_currPlayerPos + glm::vec3(0, m_player.eyeHeight(), 0);
+            m_window.setRelativeMouse(false);
+        }
         if (m_clientWorldReady) m_voxels.update(m_currPlayerPos, m_jobs);
         m_frameDt = static_cast<float>(frameDt);
         render(static_cast<float>(accumulator / kFixedDt));
         m_window.swap();
 
-        // --shot: let the world stream/settle, capture one frame, then quit.
-        if (!config.autoShot.empty() && m_clientWorldReady && ++frameCount == 240) {
-            m_renderer.captureScreenshot(config.autoShot);
-            break;
+        // --shot: capture a 3-frame sequence (spaced ~0.9 s apart) so motion is
+        // visible across the PNGs, then quit. name.png → name_0/_1/_2.png.
+        if (!config.autoShot.empty() && m_clientWorldReady) {
+            ++frameCount;
+            const int shots[] = {150, 215, 280};
+            for (int i = 0; i < 3; ++i) {
+                if (frameCount == shots[i]) {
+                    std::string p = config.autoShot;
+                    const auto dot = p.rfind('.');
+                    p.insert(dot == std::string::npos ? p.size() : dot,
+                             "_" + std::to_string(i));
+                    m_renderer.captureScreenshot(p);
+                }
+            }
+            if (frameCount >= 281) break;
         }
     }
 

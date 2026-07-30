@@ -454,6 +454,18 @@ The voxel world makes AAA destruction tech almost free — the plan leans into i
   RPG, frag grenade, claymore, medkit — one of each archetype so every code path has a
   proving item and devs have templates to copy.
 
+### editor/nodegraph — planned (visual node scripting — NOT YET BUILT)
+The original spec listed a node editor as a non-goal; it's now a wanted feature.
+Design: an ImGui node-graph panel where a dev wires **event nodes** (onTick, onHit,
+onUse, onEnter) → **action nodes** (spawn, setBlock, damage, applyEffect, playSound,
+if/branch, math) into a graph saved per project as JSON. The graph does NOT interpret
+at runtime — it **compiles to Lua** (the existing sandboxed ScriptHost), so nodes and
+handwritten Lua share one execution path and one capability surface. This keeps the
+engine from carrying a second VM, lets power users drop from nodes to code, and means
+node scripts inherit the instruction-budget/sandbox hardening for free. Library for the
+canvas: ImNodes (MIT) or hand-rolled. Compilation is a straightforward topological walk
+emitting Lua statements. Slots into the editor as another panel (Phase 8.5 pattern).
+
 ### game/authoring — planned (make weapons/abilities/items without code)
 Two tiers over the same data, so a designer never has to touch C++ and rarely Lua:
 

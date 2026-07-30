@@ -45,6 +45,10 @@ struct EditorContext {
     std::function<std::string(const std::string& path)> readFile;
     std::function<bool(const std::string& path, const std::string& text)> writeFile;
     std::function<bool()> reloadScripts;
+    // Import a file into the project: validates by type, copies into assets/<subdir>,
+    // returns a human-readable result string ("imported models/foo.fbx (1.8m, 65 bones)"
+    // or "rejected: <reason>"). Empty return = not attempted.
+    std::function<std::string(const std::string& sourcePath)> importAsset;
     BlockId buildBlock = 1; // what brushes place
 };
 

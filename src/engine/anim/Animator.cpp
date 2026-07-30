@@ -138,4 +138,34 @@ Pose bindPose(const SkeletalModel& model) {
     return resolve(model, locals);
 }
 
+Pose idlePose(const SkeletalModel& model, float t) {
+    std::vector<glm::mat4> locals(model.bones.size());
+    for (std::size_t b = 0; b < locals.size(); ++b) locals[b] = model.bones[b].localBind;
+
+    // Rotate a bone in its LOCAL space by post-multiplying its bind local. Exact
+    // at angle 0 (== bind), so no chain warps regardless of bind scale.
+    const auto rotateBone = [&](const char* name, glm::vec3 axis, float deg) {
+        const auto it = model.boneByName.find(name);
+        if (it == model.boneByName.end()) return;
+        locals[static_cast<std::size_t>(it->second)] =
+            model.bones[static_cast<std::size_t>(it->second)].localBind *
+            glm::rotate(glm::mat4(1.0f), glm::radians(deg), glm::normalize(axis));
+    };
+
+    const float sway = std::sin(t * 1.6f);   // breathing
+    const float sway2 = std::sin(t * 1.6f + 1.0f);
+    // Lower both upper arms out of the T-pose to hang at the sides + a little
+    // sway. Mixamo arm bones run down their local +X, so swinging them down to
+    // the body is a rotation about local Z; sign mirrors per side.
+    rotateBone("mixamorig:LeftArm", {0, 0, 1}, -68.0f - sway * 5.0f);
+    rotateBone("mixamorig:RightArm", {0, 0, 1}, 68.0f + sway * 5.0f);
+    rotateBone("mixamorig:LeftForeArm", {0, 0, 1}, -20.0f - sway2 * 6.0f);
+    rotateBone("mixamorig:RightForeArm", {0, 0, 1}, 20.0f + sway2 * 6.0f);
+    // Breathing through the spine + a slow head turn.
+    rotateBone("mixamorig:Spine", {1, 0, 0}, 3.0f + sway * 3.0f);
+    rotateBone("mixamorig:Head", {0, 1, 0}, sway2 * 10.0f);
+
+    return resolve(model, locals);
+}
+
 } // namespace meat

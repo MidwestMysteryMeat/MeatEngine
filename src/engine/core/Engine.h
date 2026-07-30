@@ -40,6 +40,7 @@ struct EngineConfig {
     GameRules rules;        // from a project's game.json (or defaults)
     std::string autoShot;   // --shot <png>: capture after a few seconds, then quit
     std::string projectDir; // --project <dir>: load a game (game.json + scripts/)
+    bool startEditor = false; // --editor: enter the Room Designer on spawn
 };
 
 // Composition root. The simulation authority is always a ServerSim; this class
@@ -101,7 +102,7 @@ private:
         SkeletalModel model; // kept for clip sampling every frame
         glm::mat4 transform{1.0f};
         float time = 0.0f;
-        bool useBindPose = false; // true when no clip is usable (degenerate/absent)
+        bool hasRealClip = false; // false → drive the procedural idle (exact-matrix)
     };
     std::unique_ptr<AnimActor> m_animActor;
     void loadAnimTestActor();
