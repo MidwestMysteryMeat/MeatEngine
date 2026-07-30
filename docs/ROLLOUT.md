@@ -28,9 +28,16 @@ OSS we lean on (license-verified in docs/ENGINE_REUSE_SURVEY.md) and its verific
   environment, no magenta/missing.
 
 ### Roll 2 — Animation depth
-- [ ] **3. Animation blend/state graph** — idle↔walk↔run blending + additive aim, driven by NPC
-  speed (design in docs/ANIMATION_BLEND_GRAPH.md). OSS: ozz-animation (MIT), Esoterica (MIT).
-  Gate: VLM sees a moving NPC's gait match its speed, no popping.
+- [x] **3. Animation blend graph** (commits 848de4d + 2a9c378): blendPose in local TRS space
+  (slerp rot, lerp pos/scale, resolve once — never lerp skinning matrices); NPCs blend
+  idle↔walk by client-derived speed. VLM-verified clean; samplePose bit-identical. OSS:
+  ozz/Esoterica (MIT). Follow-ups: additive aim layers + a full state machine (design in
+  docs/ANIMATION_BLEND_GRAPH.md §2–3); run clip for a 3-way idle↔walk↔run blend space.
+
+> **Execution note (learned the hard way):** running multiple agents on the SHARED working
+> tree corrupts uncommitted work — their build/commit git operations checkout-revert each
+> other's (and my) in-progress edits. Only COMMITTED work survives. Do the roll SERIALLY
+> (one workstream at a time, commit before the next) or give each agent an isolated worktree.
 
 ### Roll 3 — Netcode hardening (PvP path)
 - [ ] **4. Delta-compressed snapshots + ack** — per-client baseline diff (design in
