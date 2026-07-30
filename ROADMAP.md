@@ -58,8 +58,17 @@ loopback transport.
 - [ ] Ceiling brush + click-to-equip in GridOnly model (minor follow-ups)
 
 ## Phase 6 — Procedural dungeons
-- [ ] Seeded rooms+corridors (size range, corridor width, branching, loops, verticality)
-- [ ] Room templates/themes; blend with authored areas; workers; clients regen from seed
+- [x] v1 core: seeded rooms+corridors carved under the terrain (DungeonGen: rejection
+      placement, nearest-chain connectivity + loop edges, 2 stacked levels, vertical
+      shafts, surface entrance shaft; SplitMix64 PRNG — cross-platform deterministic;
+      chunk-local carving in the shared generator, clients regen from seed, fully
+      destructible)
+- [ ] v2 template stitching (design locked in docs/BORROWING.md): editor-built rooms as
+      templates w/ door sockets, opposite-door mating, layout-graph skeleton
+      (TinyKeep-lite; delaunator-cpp MIT if Delaunay wanted), corridor fallback,
+      isValidDungeon retry loop; editor seed volumes drive placement (needs volume
+      replication in Welcome)
+- [ ] Themes/loot rooms; key/lock progression w/ solver acceptance test
 
 ## Phase 7 — Models & animation
 - [ ] Assimp FBX/OBJ/GLB static + PNG/JPG materials

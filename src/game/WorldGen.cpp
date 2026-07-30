@@ -1,4 +1,8 @@
 #include "game/WorldGen.h"
+#include "engine/core/Log.h"
+#include "game/DungeonGen.h"
+
+#include <memory>
 
 namespace meat {
 namespace {
@@ -35,16 +39,30 @@ BlockPalette registerDefaultBlocks(BlockRegistry& blocks) {
 
 std::function<void(Chunk&, ChunkPos)> makeTerrainGenerator(std::uint32_t seed,
                                                            BlockPalette palette) {
-    return [seed, palette](Chunk& chunk, ChunkPos pos) {
+    // The dungeon is derived from the same seed as the terrain, so every peer
+    // carves identical rooms with zero network traffic. shared_ptr because the
+    // generator std::function must stay copyable.
+    auto dungeon = std::make_shared<DungeonLayout>(DungeonLayout::generate(seed, {}));
+    log::info("worldgen: dungeon has {} rooms, entrance shaft at ({}, {}, {})",
+              dungeon->rooms().size(), dungeon->entranceTop().x, dungeon->entranceTop().y,
+              dungeon->entranceTop().z);
+
+    return [seed, palette, dungeon](Chunk& chunk, ChunkPos pos) {
+        const glm::ivec3 chunkLo{pos.x * kChunkSize, pos.y * kChunkSize, pos.z * kChunkSize};
+        const auto carveBoxes =
+            dungeon->boxesIntersecting(chunkLo, chunkLo + glm::ivec3(kChunkSize - 1));
+
         for (int z = 0; z < kChunkSize; ++z) {
             for (int x = 0; x < kChunkSize; ++x) {
-                const int wx = pos.x * kChunkSize + x, wz = pos.z * kChunkSize + z;
+                const int wx = chunkLo.x + x, wz = chunkLo.z + z;
                 const float h = valueNoise(static_cast<float>(wx), static_cast<float>(wz),
                                            24.0f, seed);
                 const int surface = 6 + static_cast<int>(h * 6.0f); // world-voxel y of grass
                 for (int y = 0; y < kChunkSize; ++y) {
-                    const int wy = pos.y * kChunkSize + y;
+                    const int wy = chunkLo.y + y;
                     if (wy > surface) break;
+                    if (!carveBoxes.empty() && dungeon->isAir({wx, wy, wz}, carveBoxes))
+                        continue; // dungeon air wins over solid ground
                     const BlockId id = wy == surface          ? palette.grass
                                        : wy >= surface - 2    ? palette.dirt
                                                               : palette.stone;

@@ -285,7 +285,9 @@ void Engine::drawInventoryUi() {
 }
 
 void Engine::saveEditorExtras() const {
-    nlohmann::json j;
+    nlohmann::json j = nlohmann::json::object();
+    j["lights"] = nlohmann::json::array();
+    j["seedVolumes"] = nlohmann::json::array();
     for (const EditorLight& l : m_editorLights)
         j["lights"].push_back({{"type", l.type},
                                {"pos", {l.pos.x, l.pos.y, l.pos.z}},
@@ -305,7 +307,7 @@ void Engine::loadEditorExtras() {
     std::ifstream in("saves/editor_extras.json");
     if (!in) return;
     nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
-    if (j.is_discarded()) return;
+    if (j.is_discarded() || !j.is_object()) return;
     for (const auto& l : j.value("lights", nlohmann::json::array())) {
         EditorLight light;
         light.type = l.value("type", 0);

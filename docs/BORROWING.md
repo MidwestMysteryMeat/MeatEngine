@@ -58,4 +58,26 @@ ecosystem — our dungeon path is already ahead. Takeaways adopted as design gui
 - **Dynamic budget scaling** (Vita fork): auto-tune fog/draw distance to hold framerate —
   cheap and on-brand for the PSX renderer.
 
+## Dungeon-generator study (both ideas-only; evaluated 2026-07-30)
+
+- **BenPyton/ProceduralDungeon** (UE plugin, active): **CeCILL-C license — LGPL-class,
+  NOT copyable** into Apache-2.0. Ideas adopted for the template-stitching layer:
+  room template = content + door sockets (integer cell + cardinal dir + door type) +
+  integer-AABB-union bounds + constraints; opposite-door mating with type
+  compatibility; stack-vs-queue growth policy; two-tier retry (per-placement +
+  whole-dungeon regen with an isValidDungeon predicate); 4-callback extensibility
+  surface (chooseFirst/chooseNext/continueToAdd/isValid).
+- **AtlantiaKing/Procedural-2D-Dungeon-Generator** (student project, dormant):
+  **NO license — all rights reserved, cannot port** despite clean separation. Ideas:
+  TinyKeep pipeline (disc-scatter → separation → Delaunay → Kruskal MST + loop
+  edges → L-corridors) and the backtracking dungeon-solver as an acceptance test
+  for key/lock progression.
+- **Adopted architecture** (docs live in this repo; see ServerSim/WorldGen):
+  Layer A layout skeleton (seeded, integer math, own PRNG — std distributions are
+  not cross-compiler deterministic) → Layer B editor-room template stitching with
+  door mating + generated-corridor fallback → Layer C chunk-local carving from the
+  compact plan. v1 shipping now = simplified A+C (rejection-placed rooms,
+  nearest-chain + loop corridors, entrance shaft). If drop-in code is ever wanted:
+  **delaunator-cpp (MIT)** for the Delaunay step.
+
 Every ported file or transcribed routine gets its upstream notice in THIRD_PARTY.md.
