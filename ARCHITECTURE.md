@@ -454,6 +454,69 @@ The voxel world makes AAA destruction tech almost free — the plan leans into i
   RPG, frag grenade, claymore, medkit — one of each archetype so every code path has a
   proving item and devs have templates to copy.
 
+### game/authoring — planned (make weapons/abilities/items without code)
+Two tiers over the same data, so a designer never has to touch C++ and rarely Lua:
+
+- **Effect-composition model (the "put any effect into a weapon or spell" system,
+  Morrowind-spellmaker style).** An item/ability is a `DeliveryKind` +
+  `EffectList` — an ordered list of `{ EffectType, magnitude, radius, duration,
+  chance }`. EffectTypes are the server executors from §game/abilities (Damage,
+  AreaDamage, Heal, ApplyModifier{speed/jump/armor}, Ignite/DoT, Knockback, Teleport,
+  Slow, SpawnEntity, ChainToNearby…). "Fireball" = Projectile delivery + [Damage 40,
+  AreaDamage 25 r3, Ignite 5s]. "Vampiric shotgun" = Hitscan 8-pellet + [Damage 11,
+  Heal self 30% of dealt]. The engine doesn't distinguish gun from spell — delivery +
+  effects + presentation do. Same list drives grenades, traps, melee, potions.
+- **In-editor authoring UI (no code).** A "Design" panel in the editor: pick delivery,
+  add effect rows from a dropdown with sliders, set fire mode / cadence / ammo / cost,
+  attach a model (see §game/modeling) and presentation (muzzle sprite, sound, tracer
+  color), live-test in the running world, Save → writes an item/ability def into the
+  project's data files (JSON now, Lua-emitting later). This is the fast path.
+- **Lua authoring (power path).** The same defs are Lua tables; complex custom effects
+  (conditional logic, scripted on-hit behavior) are Lua functions the effect list can
+  call. Simple designers use the UI; systems designers drop to Lua; both produce the
+  same runtime def. Balance validation: an optional "power budget" scorer flags an
+  effect stack far outside the reference arsenal's cost curve.
+
+### game/modeling — planned (author objects & weapons in-engine)
+A general modeling layer so games build their own props/weapons without external DCC:
+
+- **Voxel/primitive object modeler.** An editor mode that builds a standalone model
+  in a bounded grid, with a **shape library** the user stamps and then fine-tunes:
+  box, cylinder, sphere, cone, wedge, torus, prism, capsule, plus swept/extruded and
+  lathe (revolve a profile) for barrels/blades/handles. Each stamped shape is a live,
+  re-editable node (move/scale/rotate/taper/bevel/boolean-subtract) until flattened to
+  voxels; per-voxel and per-shape **color/material palette**, mirror-X/Y/Z, smoothing.
+  So a user roughs a gun from a box + cylinder + lathe barrel, then nudges proportions
+  and paints it — no external DCC. Saves as an object prefab (voxel blob + palette +
+  sockets), reused by placement, the dungeon stitcher, weapon parts, and prop/pickup
+  meshes. Greedy mesher displays it live as you edit.
+- **Object classification.** Every authored object gets a `class` the engine uses for
+  behavior and slotting: `Prop` (static/physics), `Item` (inventory, no use action),
+  `Consumable`, `MeleeWeapon`, `Gun` (hitscan), `RangedWeapon` (projectile/bow),
+  `ThrowableWeapon`, `Deployable`, `Wearable/Armor`, `Ammo`, `Block`, `Vehicle`
+  (later). The class picks which authoring fields the Design panel shows (a Gun exposes
+  fire mode / pellets / spread / ammo; a MeleeWeapon exposes swing arc / stamina; a
+  Consumable exposes its effect list only) and how the item behaves when equipped/used.
+  Classification + delivery + effect list fully define an object with zero code.
+- **Modular part-based weapons (Borderlands-style).** A weapon = an assembly of
+  **parts** (body, barrel, grip, magazine, sight, stock, accessory), each a small
+  model with **attach sockets** (the same socket/opposite-mating idea as dungeon room
+  templates — one socket system, three consumers). Each part carries **stat
+  modifiers** (damage±, fireInterval±, spread±, penBudget±, pellets±, ammo, recoil,
+  and effect-list contributions). Assembling parts:
+  1. snaps meshes at matching sockets → one combined mesh (cached),
+  2. rolls up modifiers into a concrete `ItemDef` + `EffectList`,
+  3. optionally rolls rarity/manufacturer tints.
+  This yields Borderlands' "millions of guns" from a few dozen authored parts — and
+  because parts are just models + modifier data, the editor authors both the parts and
+  the assembly rules. Random generation (loot) = a seeded pick of compatible parts,
+  deterministic like everything else. Melee/tools/mod-able armor use the same system.
+- **Attachments at runtime**: sockets double as attachment points (suppressor, scope,
+  grip) that modify the live `ItemDef` when installed — the inventory/mod screen is the
+  assembly UI in a lighter form.
+- Parts and assemblies live in the project data dir; the asset browser imports part
+  models (FBX/OBJ/GLB or voxel-modeled), the authoring UI wires sockets and modifiers.
+
 ### game/entities on the wire — planned (unblocks AI, pickups, turrets, projectiles)
 `SnapshotMsg` grows an `entities` vector alongside players:
 `EntityState { EntityId id; u8 archetype; vec3 pos; float yaw; u8 anim; float health; }`.
@@ -587,6 +650,38 @@ player-modified chunk only. F5 save, F9 load, `--load <slot>` on startup.
 Canonical skeleton = **Mixamo bone names**. Loaders map source skeletons (Mixamo direct,
 UE mannequin via name table) onto it at import. One shared clip set plays on every
 conforming character. Viewmodel = separate simple 2-clip player (idle/fire).
+
+## Developer UX — first-class, not an afterthought
+The engine is judged on how fast a newcomer goes from launch to a testable idea. The
+whole editor/authoring/IDE stack serves one loop: **get in → add assets → wire behavior
+→ test → tweak → ship, without leaving the window or writing boilerplate.**
+
+- **One window, dockable panels.** Everything (game viewport, asset browser, code
+  editor, Design panel, outliner, console, profiler) is an ImGui docking panel the dev
+  arranges and the layout persists. No separate tools, no alt-tab.
+- **Live loop.** F1 toggles editor over the *running* game; script/asset/authoring saves
+  hot-reload into the live world (host-authoritative). "Play here" spawns the FPS player
+  at the editor camera to test a spot instantly; F1 back to keep building. No compile,
+  no relaunch for gameplay/content changes.
+- **Drag-drop everything.** Drop an FBX/PNG/WAV on the window → imported, validated,
+  previewed, usable. Drag a prefab into the world → placed. Drag a part onto a weapon →
+  attached.
+- **Templates over blank pages.** New project = a working sandbox (player, a few blocks,
+  the reference arsenal) that already runs, not an empty void. Every authored thing
+  (weapon/ability/item/mode) starts from a duplicatable example. The reference arsenal
+  and default blocks are the worked examples devs copy.
+- **Guardrails that teach.** Import rejections say *why*; the rig conformance report
+  names unmapped bones; the power-budget scorer flags outlier weapons; a reachability
+  check tells a host who can connect. Errors are actionable sentences, never silent
+  failure or a bare code.
+- **Progressive disclosure.** No-code UI covers the common 90% (Design panel, modeler,
+  room editor); Lua is there for the 10% that needs logic; C++ only for engine work.
+  A dev should never be forced down a layer to do a normal thing.
+- **In-engine help.** A first-run overlay, hover tooltips on authoring fields, and a
+  command palette (searchable actions) so features are discoverable without docs.
+
+These are design commitments the editor/authoring phases (5, 6.7, 8.5, 8.6) implement;
+listed here so every panel is built to this bar, not retrofitted to it.
 
 ## Style rules
 

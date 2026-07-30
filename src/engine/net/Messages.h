@@ -19,7 +19,9 @@
 // partially written and must be discarded.
 namespace meat {
 
-enum class MsgType : std::uint8_t { Hello = 1, Welcome, Command, Snapshot, VoxelOp, Inventory };
+enum class MsgType : std::uint8_t {
+    Hello = 1, Welcome, Command, Snapshot, VoxelOp, Inventory, BatchVoxelOp
+};
 
 struct HelloMsg {
     std::string name;

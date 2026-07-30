@@ -87,11 +87,44 @@ void ServerSim::spawnDungeonLoot() {
 // Penetrating hitscan: the ray marches through materials spending a penetration
 // budget; each block crossed attenuates damage; flesh stops the bullet. Chip
 // damage accumulates in the sparse map until a block breaks into a VoxelOp.
+// Deterministic per-shot spread: a hash of (peer, tick, pellet) rotates the aim
+// direction inside the cone. Same inputs on any peer → same pattern, so a future
+// client-side tracer prediction stays in sync without a shared RNG object.
+glm::vec3 spreadDir(glm::vec3 dir, float coneDeg, PeerId peer, std::uint64_t tick, int idx) {
+    if (coneDeg <= 0.0f) return dir;
+    std::uint64_t h = peer * 0x9E3779B97F4A7C15ull + tick * 0xBF58476D1CE4E5B9ull +
+                      static_cast<std::uint64_t>(idx) * 0x94D049BB133111EBull;
+    h = (h ^ (h >> 31)) * 0xD6E8FEB86659FD93ull;
+    const float u = static_cast<float>((h >> 11) & 0xFFFFF) / static_cast<float>(0xFFFFF);
+    const float v = static_cast<float>((h >> 33) & 0xFFFFF) / static_cast<float>(0xFFFFF);
+    const float cone = glm::radians(coneDeg);
+    const float theta = u * 6.2831853f;
+    const float r = std::sqrt(v) * cone; // uniform over the cone disc
+    // Build a basis around dir and tilt by (r, theta).
+    const glm::vec3 up = std::abs(dir.y) < 0.99f ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
+    const glm::vec3 right = glm::normalize(glm::cross(dir, up));
+    const glm::vec3 realUp = glm::cross(right, dir);
+    const glm::vec3 offset = (right * std::cos(theta) + realUp * std::sin(theta)) * std::sin(r);
+    return glm::normalize(dir * std::cos(r) + offset);
+}
+
 void ServerSim::fireHitscan(Transport& transport, PeerId peer, Player& player,
                             const ItemDef& weapon) {
+    const glm::vec3 aim = viewForward(player.lastCmd.yaw, player.lastCmd.pitch);
+    const int pellets = std::max<int>(1, weapon.pellets);
+    for (int i = 0; i < pellets; ++i) {
+        // Seed spread on the server tick, not lastCmdTick: an auto weapon fires
+        // several times per received command, so lastCmdTick would freeze the
+        // pattern into a fixed offset. m_tick advances every shot.
+        const glm::vec3 dir = spreadDir(aim, weapon.spreadDeg, peer, m_tick, i);
+        marchBullet(transport, peer, player, weapon, dir);
+    }
+}
+
+void ServerSim::marchBullet(Transport& transport, PeerId peer, Player& player,
+                            const ItemDef& weapon, glm::vec3 dir) {
     const glm::vec3 eye =
         player.controller.position() + glm::vec3(0, player.controller.eyeHeight(), 0);
-    const glm::vec3 dir = viewForward(player.lastCmd.yaw, player.lastCmd.pitch);
 
     glm::vec3 origin = eye;
     float remaining = kHitscanRange;
@@ -171,6 +204,132 @@ void ServerSim::fireHitscan(Transport& transport, PeerId peer, Player& player,
     }
 }
 
+void ServerSim::spawnProjectile(PeerId owner, glm::vec3 pos, glm::vec3 vel,
+                                const ItemDef& weapon) {
+    m_projectiles.push_back({m_nextEntityId++, owner, pos, vel, weapon.projectileGravity,
+                             weapon.blastRadius, weapon.blastDamage, 6.0f});
+}
+
+// Radial damage: players by distance falloff, and every solid voxel in range
+// takes damage scaled by proximity (explosives carve craters). Server-only.
+void ServerSim::applyBlast(Transport& transport, PeerId source, glm::vec3 center,
+                           float radius, float damage) {
+    for (auto& [peer, player] : m_players) {
+        if (!player->spawned) continue;
+        const glm::vec3 body = player->controller.position() + glm::vec3(0, 0.9f, 0);
+        const float dist = glm::length(body - center);
+        if (dist > radius) continue;
+        const float dealt = damage * (1.0f - dist / radius);
+        player->health -= dealt;
+        if (player->health <= 0.0f) {
+            log::info("server: player {} blew up player {}", source, peer);
+            player->controller.setState(kSpawnPos, glm::vec3(0));
+            player->health = 100.0f;
+        }
+    }
+
+    // Collect broken voxels, then broadcast ONE batched op message. A 4.5 m
+    // crater spans ~6800 voxels; per-voxel applyVoxelOp would fire thousands of
+    // reliable packets per rocket. Server state is still updated per voxel.
+    const int r = static_cast<int>(std::ceil(radius / kVoxelSize));
+    const glm::ivec3 c = glm::ivec3(glm::floor(center / kVoxelSize));
+    std::vector<glm::ivec3> broken;
+    for (int dy = -r; dy <= r; ++dy)
+        for (int dz = -r; dz <= r; ++dz)
+            for (int dx = -r; dx <= r; ++dx) {
+                const glm::ivec3 v = c + glm::ivec3(dx, dy, dz);
+                const BlockId id = m_voxels.blockAt(v);
+                if (id == 0) continue;
+                const glm::vec3 vc = (glm::vec3(v) + 0.5f) * kVoxelSize;
+                const float dist = glm::length(vc - center);
+                if (dist > radius) continue;
+                bool destroy = !m_rules.blockDamage;
+                if (m_rules.blockDamage) {
+                    const BlockDef& mat = m_voxels.blockRegistry().get(id);
+                    auto [entry, inserted] = m_voxelDamage.try_emplace(v, mat.hp);
+                    entry->second -= damage * (1.0f - dist / radius);
+                    destroy = entry->second <= 0.0f;
+                }
+                if (destroy) broken.push_back(v);
+            }
+    if (broken.empty()) return;
+    for (const glm::ivec3& v : broken) {
+        m_voxelDamage.erase(v);
+        m_voxels.setBlock(v, 0);
+    }
+    // One BatchVoxelOp to every client.
+    ByteWriter w;
+    w.write(static_cast<std::uint8_t>(MsgType::BatchVoxelOp));
+    w.write(static_cast<std::uint32_t>(broken.size()));
+    for (const glm::ivec3& v : broken) w.write(v);
+    for (auto& [peer, unused] : m_players) transport.send(peer, w.data(), true);
+}
+
+void ServerSim::updateProjectiles(Transport& transport) {
+    for (auto it = m_projectiles.begin(); it != m_projectiles.end();) {
+        Projectile& p = *it;
+        p.ownerGrace -= kFixedDtServer;
+        p.vel.y -= p.gravity * kFixedDtServer;
+        const glm::vec3 next = p.pos + p.vel * kFixedDtServer;
+
+        bool detonate = false;
+        glm::vec3 at = next;
+        // Voxel impact along this step.
+        const glm::vec3 step = next - p.pos;
+        const float dist = glm::length(step);
+        if (dist > 1e-4f) {
+            if (const auto hit = m_voxels.raycast(p.pos, step / dist, dist)) {
+                detonate = true;
+                at = p.pos + (step / dist) * hit->t;
+            }
+        }
+        // Player impact (skip the owner for the first moments handled by muzzle offset).
+        if (!detonate) {
+            for (auto& [peer, player] : m_players) {
+                if (!player->spawned) continue;
+                if (peer == p.owner && p.ownerGrace > 0.0f) continue; // clearing our own muzzle
+                const glm::vec3 body = player->controller.position() + glm::vec3(0, 0.9f, 0);
+                if (glm::length(body - next) < 0.6f) {
+                    detonate = true;
+                    at = next;
+                    break;
+                }
+            }
+        }
+        p.pos = next;
+        p.life -= kFixedDtServer;
+        if (p.life <= 0.0f) detonate = true;
+
+        if (detonate) {
+            applyBlast(transport, p.owner, at, p.radius, p.damage);
+            it = m_projectiles.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    for (auto it = m_deployables.begin(); it != m_deployables.end();) {
+        Deployable& d = *it;
+        d.armTime -= kFixedDtServer;
+        bool triggered = false;
+        for (auto& [peer, player] : m_players) {
+            if (!player->spawned) continue;
+            if (peer == d.owner && d.armTime > 0.0f) continue; // don't kill the layer while arming
+            const glm::vec3 body = player->controller.position() + glm::vec3(0, 0.9f, 0);
+            if (glm::length(body - d.pos) < d.triggerRange) {
+                triggered = true;
+                break;
+            }
+        }
+        if (triggered) {
+            applyBlast(transport, d.owner, d.pos, d.radius, d.damage);
+            it = m_deployables.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
 bool ServerSim::tryPickup(Transport& transport, PeerId peer, Player& player) {
     const glm::vec3 feet = player.controller.position();
     for (auto it = m_entities.begin(); it != m_entities.end(); ++it) {
@@ -244,9 +403,12 @@ void ServerSim::handlePacket(Transport& transport, PeerId peer,
     case MsgType::Command: {
         CommandMsg msg;
         if (!decode(msg, reader)) return;
-        if (msg.cmd.tick <= player.lastCmdTick && player.lastCmdTick != 0) return; // stale
+        // Strictly-increasing after the first accepted command; hasCmd closes
+        // the tick-0 replay window (tick 0 would else re-pass the != 0 guard).
+        if (player.hasCmd && msg.cmd.tick <= player.lastCmdTick) return; // stale/replayed
         player.lastCmd = msg.cmd;
         player.lastCmdTick = msg.cmd.tick;
+        player.hasCmd = true;
         break;
     }
     case MsgType::VoxelOp: {
@@ -288,6 +450,7 @@ void ServerSim::tick(Transport& transport) {
         }
     }
     m_physics.step(kFixedDtServer);
+    updateProjectiles(transport);
     m_voxels.update(streamCenter, m_jobs);
 
     ++m_tick;
@@ -301,8 +464,18 @@ void ServerSim::applyVoxelOp(Transport& transport, const VoxelOpMsg& op) {
 }
 
 void ServerSim::giveStartingLoadout(Player& player) {
+    // Full reference arsenal so every weapon archetype is reachable in the slice.
     player.inventory.add(m_defaultItems.pistol, 1, m_items);
-    player.inventory.add(m_defaultItems.ammo9mm, 60, m_items);
+    player.inventory.add(m_defaultItems.smg, 1, m_items);
+    player.inventory.add(m_defaultItems.shotgun, 1, m_items);
+    player.inventory.add(m_defaultItems.sniper, 1, m_items);
+    player.inventory.add(m_defaultItems.rpg, 1, m_items);
+    player.inventory.add(m_defaultItems.grenade, 3, m_items);
+    player.inventory.add(m_defaultItems.claymore, 2, m_items);
+    player.inventory.add(m_defaultItems.ammo9mm, 90, m_items);
+    player.inventory.add(m_defaultItems.shells, 24, m_items);
+    player.inventory.add(m_defaultItems.rifleAmmo, 30, m_items);
+    player.inventory.add(m_defaultItems.rockets, 4, m_items);
     player.inventory.add(m_defaultItems.medkit, 2, m_items);
     player.inventory.add(m_defaultItems.stoneBlock, 32, m_items);
 }
@@ -330,13 +503,40 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
         if (heldDef.type == ItemType::Weapon) {
             const bool hasAmmo = !m_rules.finiteAmmo || heldDef.ammoItem == 0 ||
                                  player.inventory.countOf(heldDef.ammoItem) > 0;
-            if (hasAmmo) {
+            // Thrown/placed weapons (grenade/claymore) consume the weapon item
+            // itself; hitscan/rpg consume their ammo item.
+            const bool selfConsumed = heldDef.delivery != DeliveryKind::Hitscan &&
+                                      heldDef.ammoItem == 0;
+            const bool hasCharge = !m_rules.finiteAmmo || !selfConsumed || held.count > 0;
+            if (hasAmmo && hasCharge) {
                 player.fireCooldown = heldDef.fireInterval;
                 if (m_rules.finiteAmmo && heldDef.ammoItem != 0) {
                     player.inventory.remove(heldDef.ammoItem, 1);
                     player.inventoryDirty = true;
+                } else if (m_rules.finiteAmmo && selfConsumed) {
+                    player.inventory.remove(held.id, 1);
+                    player.inventoryDirty = true;
                 }
-                fireHitscan(transport, peer, player, heldDef);
+
+                const glm::vec3 muzzle = eye + dir * 0.6f;
+                if (heldDef.delivery == DeliveryKind::Hitscan) {
+                    fireHitscan(transport, peer, player, heldDef);
+                } else if (heldDef.delivery == DeliveryKind::Projectile) {
+                    const glm::vec3 vel = dir * heldDef.projectileSpeed;
+                    spawnProjectile(peer, muzzle, vel, heldDef);
+                } else if (heldDef.delivery == DeliveryKind::Deployable) {
+                    // Stick it on the surface the player is looking at (short reach).
+                    glm::vec3 at = eye + dir * 2.5f;
+                    if (const auto hit = m_voxels.raycast(eye, dir, 3.0f))
+                        at = eye + dir * std::max(0.5f, hit->t - 0.2f);
+                    Deployable dep;
+                    dep.id = m_nextEntityId++;
+                    dep.owner = peer;
+                    dep.pos = at;
+                    dep.radius = heldDef.blastRadius;
+                    dep.damage = heldDef.blastDamage;
+                    m_deployables.push_back(dep); // armTime/triggerRange keep their defaults
+                }
             }
         } else if (heldDef.type == ItemType::Block) {
             // Holding a block: LMB is the mining tool (short range, no player damage).
@@ -438,6 +638,11 @@ bool ServerSim::saveTo(const std::string& path) const {
         return false;
     }
     out << j.dump();
+    out.flush();
+    if (!out.good()) { // disk full / write error must not report success
+        log::error("save: write to '{}' failed", path);
+        return false;
+    }
     log::info("saved to '{}' ({} edited chunks, {} players)", path, j["chunks"].size(),
               j["players"].size());
     return true;
@@ -512,6 +717,16 @@ void ServerSim::broadcastSnapshot(Transport& transport) {
         if (snap.entities.size() >= kMaxSnapshotEntities) break;
         snap.entities.push_back({e.id, static_cast<std::uint8_t>(e.type), e.pos, e.yaw, 0,
                                  0.0f, e.item});
+    }
+    for (const Projectile& p : m_projectiles) {
+        if (snap.entities.size() >= kMaxSnapshotEntities) break;
+        snap.entities.push_back({p.id, static_cast<std::uint8_t>(EntityArchetype::Projectile),
+                                 p.pos, 0, 0, 0.0f, 0});
+    }
+    for (const Deployable& d : m_deployables) {
+        if (snap.entities.size() >= kMaxSnapshotEntities) break;
+        snap.entities.push_back({d.id, static_cast<std::uint8_t>(EntityArchetype::Deployable),
+                                 d.pos, 0, 0, 0.0f, 0});
     }
     for (auto& [peer, player] : m_players) {
         snap.lastCmdTick = player->lastCmdTick; // per-recipient ack of their own input

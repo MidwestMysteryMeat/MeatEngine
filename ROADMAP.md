@@ -89,6 +89,26 @@ loopback transport.
 - [ ] Lua (sol2) server-side gameplay: entity spawn, voxel edit, player/inventory/weapons,
       events, dungeon params; weapons/pickups/dummy enemy in assets/scripts/
 
+## Phase 8.6 — Authoring & modeling (ARCHITECTURE §game/authoring, §game/modeling)
+- [ ] Effect-composition core: EffectList on items/abilities, server executors
+      (Damage/AreaDamage/Heal/ApplyModifier/Ignite/Knockback/Slow/Chain/SpawnEntity)
+- [ ] In-editor "Design" panel: no-code weapon/ability/item authoring → project data
+      defs, live-test, optional power-budget balance scorer
+- [ ] Lua authoring path (same defs as tables; custom effects as functions)
+- [ ] Voxel/primitive object modeler: shape library (box/cyl/sphere/cone/wedge/torus/
+      lathe/extrude), re-editable shape nodes (scale/taper/bevel/boolean), color/material
+      palette, mirror, → object prefab; object CLASS (Prop/Item/Melee/Gun/Ranged/
+      Throwable/Deployable/Wearable/Ammo/Block) drives Design-panel fields + behavior
+- [ ] Modular part-based weapons: parts (body/barrel/grip/sight/…) w/ sockets +
+      stat/effect modifiers, snap-assembly → concrete ItemDef, seeded loot generation,
+      runtime attachments (suppressor/scope) — one socket system shared with dungeons
+
+## Cross-cutting: Developer UX bar (ARCHITECTURE §Developer UX)
+- [ ] Dockable single-window panel layout (persisted), command palette, tooltips/first-run
+- [ ] "Play here" spawn-at-editor-camera; hot-reload of scripts/assets/authoring into live world
+- [ ] Actionable errors everywhere (import/rig/balance/reachability say why)
+- [ ] New-project template that already runs; every authored thing starts from an example
+
 ## Phase 8.5 — Editor IDE panels (ARCHITECTURE §editor/ IDE)
 - [ ] Code editor panel (ImGuiColorTextEdit, MIT): Lua editing + save-as-hot-reload
       through ScriptHost; live-coding without alt-tab
@@ -130,12 +150,17 @@ loopback transport.
 - [ ] Structural integrity flood-fill collapse (GameRules toggle)
 
 ## Phase 6.7 — Weapon archetypes (ARCHITECTURE §game/weapons)
-- [ ] WeaponSpec: FireMode (semi/auto/burst/charge) + recoil/bloom model
-- [ ] Hitscan variants: shotgun pellets/spread, sniper budget, AR/SMG auto
-- [ ] Projectiles as server entities: RPG (impact AoE + voxel destruction), frag (fuse)
-- [ ] Deployables: claymore (proximity trap), reuses SpawnEntity path
-- [ ] Ammo types modifying ballistics (AP/HP)
-- [ ] Reference arsenal: pistol/SMG/shotgun/sniper/RPG/grenade/claymore/medkit
+- [x] ItemDef weapon spec: FireMode (semi/auto/burst), DeliveryKind
+      (hitscan/projectile/deployable), pellets/spread/blast fields
+- [x] Hitscan variants via pellets+spread+budget: shotgun (8 pellets/6°), sniper
+      (90 budget, drills stone), SMG (auto, 2.2° bloom), pistol; deterministic
+      hashed spread cone (peer/tick/pellet)
+- [x] Projectiles as server entities: RPG (fast, 4.5 m blast + crater), grenade
+      (gravity/fuse, 3.5 m blast); radial player + voxel damage; entity-path render
+- [x] Deployables: claymore (proximity trap, arm time, owner-safe while arming)
+- [x] Reference arsenal all spawned at loadout: pistol/SMG/shotgun/sniper/RPG/
+      grenade/claymore + 4 ammo types + medkit + blocks
+- [ ] Ammo types modifying ballistics (AP/HP); recoil/bloom feel pass (playtest)
 
 ## Phase 6.8 — AI & navigation (ARCHITECTURE §game/ai)
 - [ ] v1 voxel-native pathing (3D A*, jump/drop links, destruction-aware by construction)

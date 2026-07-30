@@ -42,6 +42,7 @@ private:
         CharacterController controller;
         PlayerCommand lastCmd{};
         std::uint64_t lastCmdTick = 0;
+        bool hasCmd = false; // false until the first command; closes tick-0 replay
         bool spawned = false;
         bool helloDone = false; // guards Welcome/loadout against Hello replay
         float health = 100.0f;
@@ -71,6 +72,12 @@ private:
     bool tryPickup(Transport& transport, PeerId peer, Player& player); // true if grabbed
     void fireHitscan(Transport& transport, PeerId peer, Player& player,
                      const ItemDef& weapon);
+    void marchBullet(Transport& transport, PeerId peer, Player& player,
+                     const ItemDef& weapon, glm::vec3 dir);
+    void spawnProjectile(PeerId owner, glm::vec3 pos, glm::vec3 vel, const ItemDef& weapon);
+    void updateProjectiles(Transport& transport);
+    void applyBlast(Transport& transport, PeerId source, glm::vec3 center, float radius,
+                    float damage);
 
     struct IVec3Hash {
         std::size_t operator()(const glm::ivec3& v) const {
@@ -84,7 +91,27 @@ private:
     JobQueue m_jobs;         // server-side meshing feeds colliders only
     PhysicsWorld m_physics;
     VoxelWorld m_voxels;
+    struct Projectile {
+        std::uint32_t id = 0;
+        PeerId owner = 0;
+        glm::vec3 pos{0}, vel{0};
+        float gravity = 0.0f;
+        float radius = 0.0f, damage = 0.0f; // blast on impact
+        float life = 6.0f;                  // seconds before self-detonate
+        float ownerGrace = 0.12f;           // owner-immune while clearing the muzzle
+    };
+    struct Deployable {
+        std::uint32_t id = 0;
+        PeerId owner = 0;
+        glm::vec3 pos{0};
+        float radius = 0.0f, damage = 0.0f;
+        float armTime = 1.0f; // won't trigger on its own owner while arming
+        float triggerRange = 2.2f;
+    };
+
     std::vector<WorldEntity> m_entities;
+    std::vector<Projectile> m_projectiles;
+    std::vector<Deployable> m_deployables;
     std::uint32_t m_nextEntityId = 1;
     // Sparse chip-damage: only voxels that have been shot, remaining hp. Entries
     // die with the block; pristine blocks are implicit full-hp.

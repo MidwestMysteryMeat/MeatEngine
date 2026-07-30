@@ -81,6 +81,16 @@ void Client::pump(VoxelWorld& voxels, PhysicsWorld& physics, CharacterController
             voxels.setBlock(op.voxel, op.block); // server-echoed; mirror applies verbatim
             break;
         }
+        case MsgType::BatchVoxelOp: { // explosion crater: many voxels → air, one packet
+            std::uint32_t count = 0;
+            if (!reader.read(count) || count > 200000) break;
+            for (std::uint32_t i = 0; i < count; ++i) {
+                glm::ivec3 v;
+                if (!reader.read(v)) break;
+                voxels.setBlock(v, 0);
+            }
+            break;
+        }
         default:
             break;
         }

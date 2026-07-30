@@ -11,7 +11,9 @@ namespace meat {
 enum class EntityArchetype : std::uint8_t {
     None = 0,
     ItemPickup = 1,
-    // Projectile, Turret, NpcChaser, ... land with their phases.
+    Projectile = 2,
+    Deployable = 3,
+    // Turret, NpcChaser, ... land with their phases.
 };
 
 // Server-side world entity. Deliberately a plain struct while the roster is

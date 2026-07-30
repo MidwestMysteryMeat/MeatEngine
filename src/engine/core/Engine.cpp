@@ -190,9 +190,22 @@ void Engine::render(float alpha) {
 
     const float bobPhase = static_cast<float>(m_tick % 120) / 120.0f * glm::two_pi<float>();
     for (const EntityState& e : m_client.entities()) {
-        if (e.archetype == 1) // ItemPickup: gentle bob so loot reads as loot
+        switch (e.archetype) {
+        case 1: // ItemPickup: gentle bob so loot reads as loot
             m_renderer.submitChunk(m_pickupMesh,
                                    e.pos + glm::vec3(0, 0.08f * std::sin(bobPhase), 0));
+            break;
+        case 2: // Projectile: glowing tracer
+            m_renderer.submitChunk(m_pickupMesh, e.pos);
+            m_renderer.submitPointLight(e.pos, glm::vec3(1.0f, 0.5f, 0.15f), 6.0f);
+            break;
+        case 3: // Deployable: armed trap, red pulse
+            m_renderer.submitChunk(m_pickupMesh, e.pos);
+            m_renderer.submitPointLight(e.pos, glm::vec3(1.0f, 0.1f, 0.1f), 4.0f);
+            break;
+        default:
+            break;
+        }
     }
 
     for (const EditorLight& light : m_editorLights) { // placed lights are world lights

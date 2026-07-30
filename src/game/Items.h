@@ -10,6 +10,14 @@ namespace meat {
 using ItemId = std::uint16_t; // 0 = empty
 enum class ItemType : std::uint8_t { Weapon, Ammo, Consumable, KeyItem, Block };
 
+// How the trigger behaves; the client uses this to decide auto-repeat feel.
+enum class FireMode : std::uint8_t { SemiAuto, Auto, Burst };
+
+// What a shot delivers. Hitscan covers pistol/AR/SMG/shotgun/sniper (pellets +
+// spread + budget parameterize them); Projectile covers RPG/grenade as server
+// entities; Deployable places a trap/turret entity on the aimed surface.
+enum class DeliveryKind : std::uint8_t { Hitscan, Projectile, Deployable };
+
 struct ItemDef {
     std::string name;
     ItemType type = ItemType::KeyItem;
@@ -19,6 +27,16 @@ struct ItemDef {
     float fireInterval = 0.0f;
     float penBudget = 0.0f; // penetration budget spent on materials crossed
     ItemId ammoItem = 0;    // consumed per shot when GameRules::finiteAmmo
+    FireMode fireMode = FireMode::SemiAuto;
+    DeliveryKind delivery = DeliveryKind::Hitscan;
+    std::uint8_t pellets = 1;    // hitscan: rays per shot (shotgun > 1)
+    float spreadDeg = 0.0f;      // hitscan cone half-angle
+    int burstCount = 3;          // burst mode: rounds per pull
+    // Projectile fields
+    float projectileSpeed = 0.0f;
+    float projectileGravity = 0.0f;
+    float blastRadius = 0.0f;    // projectile/deployable AoE radius (m)
+    float blastDamage = 0.0f;    // center damage, falls off to the edge
     // Block field
     BlockId blockId = 0; // what placing this item builds
 };
@@ -42,6 +60,8 @@ private:
 // registered identically on server and client — ids are wire data.
 struct DefaultItems {
     ItemId pistol = 0, ammo9mm = 0, medkit = 0, stoneBlock = 0;
+    ItemId smg = 0, shotgun = 0, sniper = 0, rpg = 0, grenade = 0, claymore = 0;
+    ItemId shells = 0, rockets = 0, rifleAmmo = 0;
 };
 DefaultItems registerDefaultItems(ItemRegistry& items, BlockId stone);
 
