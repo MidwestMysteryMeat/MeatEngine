@@ -392,3 +392,16 @@ low-risk and unblocks the Linux testing hardware already on hand.
   an audio stack** (`engine/audio/AudioEngine`), so SFML's audio module is redundant. Effort estimates
   assume a single developer already fluent in the codebase and include test coverage but not design
   iteration.
+
+## Addendum — engines evaluated on request but NOT usable for code (ideas-only)
+
+- **s&box** (Facepunch, spiritual successor to Garry's Mod): the engine is **Source 2 —
+  proprietary Valve tech**. Only the C# game/addon layer (`Facepunch/sbox-*`) is source-available,
+  under Facepunch's own (non-permissive) license. **Cannot copy code** into MeatEngine (Apache-2.0,
+  public) regardless of C#→C++ convertibility. Take only the *design idea*: its hot-reload C#
+  iteration loop (edit → live without restart), which MeatEngine already targets via Lua hot-reload
+  (ScriptHost::reload) and the in-engine editor.
+- **NeoAxis**: source-available but under its own restrictive license — **ideas-only**, do not copy.
+
+Rule reaffirmed: source-available ≠ open-source-permissive. Only MIT/BSD/zlib/Apache/PD code is
+copyable; everything else is a technique reference at most.

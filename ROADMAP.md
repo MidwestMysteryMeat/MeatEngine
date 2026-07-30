@@ -100,13 +100,21 @@ loopback transport.
       auto-spawn camera was too far to see mesh spikes, so "verified" grades were false.
 - [x] Static skeletal character CLEAN (booth-VLM ok): bind pose renders as a recognizable
       armored humanoid — skinning is correct. idlePose currently returns bind pose (honest).
-- [ ] ANIMATION still broken: ANY procedural per-bone rotation shears the mesh into spikes
-      up close (rotateBone math wrong even for the spine). Fix = reworking bone-rotation /
-      keyframe application from reference-engine sources (ezEngine/Ogre/O3DE/Assimp), then
-      play a REAL Mixamo full-TRS clip via samplePose. Booth-VLM-gate every attempt.
-- [ ] Real mocap clip playback via samplePose (needs a full-TRS-keyed clip; the exact-matrix
-      insight should fold back into samplePose's partial-track gap-fill), replace NPC/remote
-      boxes with animated meshes, first-person viewmodel
+- [x] ANIMATION FIXED (commit 313736c, R720 qwen3vl-verified): clip playback is shear-free.
+      Root cause (2 OSS-engine research agents + empirical probes vs Ogre/Irrlicht/ozz): the
+      loader's inverse(offset) bind reconstruction put localBind in a different space than the
+      node-native animation keys — a 179-unit gap at the wrist flung extremities into spikes.
+      Fix (Ogre reset-to-bind + delta): keep the offset-authoritative clean bind, store each
+      bone's raw nodeBindLocal, apply keys as a delta: local = localBind * nodeBindLocalInv *
+      animatedLocal (identity at bind ⇒ clean bind preserved). Ruled out the naive raw-node-
+      chain + aiProcess_GlobalScale approach empirically (still exploded ~100x; the unit scale
+      lives on the SWAT MESH node with an identity scene root, so nothing cancels it).
+- [x] Real multi-second clip playback PROVEN: booth-loaded an external 12s raptoid glTF (112
+      bones, 4 clips) via --animmodel; R720 graded 3/3 frames clean with visible motion (head
+      elevated→mid-height across frames). --animmodel <path> booth-checks any FBX/glTF.
+- [ ] Author a mixamorig locomotion clip for the SWAT (its shipped clip is a 1-tick static
+      reference pose); procedural sway idle (localBind * deltaQuat — now shear-free); replace
+      NPC/remote boxes with animated meshes; first-person viewmodel
 
 ## Phase 8 — Scripting
 - [x] Lua (sol2) server-side host: sandboxed stdlib (base/math/table/string only — no
