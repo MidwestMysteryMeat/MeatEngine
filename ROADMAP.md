@@ -9,7 +9,7 @@ loopback transport.
 - [x] Repo, license, docs, CMake + FetchContent (GLFW, glad, glm, Assimp, Jolt, Lua+sol2, ImGui, ImGuizmo, stb, miniaudio, nlohmann-json)
 - [x] Dependencies compile on MSVC/Ninja (ImGuizmo layout + CRT fixes)
 
-## Phase 1 — Core loop & modules ⏳
+## Phase 1 — Core loop & modules ✅ (code complete; human feel-playtest still pending)
 - [x] Core spine: EntityRegistry, JobQueue, EventBus, logging
 - [x] Platform: window, raw mouse, PlayerCommand (agent-built, integrated)
 - [x] Voxel: chunks, greedy mesher (0fps algorithm, pure/worker-safe), DDA raycast, streaming (agent-built)
@@ -122,6 +122,14 @@ loopback transport.
       loaded model by bone name (exact then namespace-normalized mixamorig:Hips↔Hips),
       rotation-only so proportion differences don't fling the mesh. Works for identical-bind
       clips (a true Mixamo export). --animclip flag; booth plays the longest clip.
+      FINGER-BONE SKIP (isFingerBone, commit 37e020e): finger channels are dropped from the
+      merge because variant mixamorig finger binds collapse into a shard when driven; fingers
+      hold their relaxed bind. The WRIST is deliberately NOT skipped — skinning straddles
+      wrist+forearm, so freezing the wrist while the forearm swings TEARS the joint (do not
+      "fix" future retarget shear by also skipping the wrist). Variant rigs whose wrist bind
+      ALSO mismatches Mixamo (e.g. the 28-bone PSX character) still mangle and need the
+      retargeter. Grade hands with a STRICT extremity-focused VLM rubric — a lenient
+      whole-silhouette rubric passes a shard-handed figure.
 - [~] Retarget (WIP, --animretarget): retargetClipsFromFile() bakes a foreign-skeleton clip
       (UE5 mannequin, MoCap Online) via the rest-relative global-delta method. Bone mapping +
       delta math done; cross-skeleton WORLD-FRAME alignment still distorts the SWAT — needs
