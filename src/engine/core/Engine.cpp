@@ -411,13 +411,42 @@ void Engine::render(float alpha) {
     const Camera& camera =
         m_animBooth && m_animActor ? boothCamera : (m_editorActive ? m_editorCamera : playerCamera);
 
+    // Audio listener follows the active camera so positional SFX attenuate/pan
+    // relative to what the player is looking from. right = forward × world-up.
+    {
+        const glm::vec3 fwd = camera.forward();
+        const glm::vec3 right = glm::normalize(glm::cross(fwd, glm::vec3(0.0f, 1.0f, 0.0f)));
+        m_audio.setListener(camera.pos, fwd, right);
+    }
+
     m_renderer.beginFrame(camera, alpha);
     for (const auto& [pos, mesh] : m_chunkMeshes)
         m_renderer.submitChunk(mesh, glm::vec3(pos.x, pos.y, pos.z) * (kChunkSize * kVoxelSize));
 
     const std::vector<PlayerState> remotes = m_client.remoteViewStates();
-    for (const PlayerState& remote : remotes)
+    for (const PlayerState& remote : remotes) {
         m_renderer.submitChunk(m_remotePlayerMesh, remote.pos);
+        // Positional footsteps for remote players: speed is derived from the
+        // interpolated position delta (no net change), paced like local footsteps,
+        // and played through playAt so distant players are quieter / panned.
+        RemoteAudioState& ra = m_remoteAudio[remote.playerId];
+        float speed = 0.0f;
+        if (ra.seen && m_frameDt > 0.0f)
+            speed = glm::length(glm::vec2(remote.pos.x - ra.prevPos.x,
+                                          remote.pos.z - ra.prevPos.z)) /
+                    m_frameDt;
+        ra.prevPos = remote.pos;
+        ra.seen = true;
+        if (remote.onGround && speed > 1.0f) {
+            ra.stepTimer -= m_frameDt;
+            if (ra.stepTimer <= 0.0f) {
+                ra.stepTimer = 0.42f;
+                m_audio.playAt(Sound::Footstep, remote.pos, 0.6f);
+            }
+        } else {
+            ra.stepTimer = 0.0f;
+        }
+    }
 
     // Shared animated humanoid for NPCs/companions. One clip, sampled per-instance at a
     // per-id phase so a room of NPCs isn't lock-stepped; placed at the entity's pos + yaw.

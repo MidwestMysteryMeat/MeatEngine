@@ -73,7 +73,17 @@ OSS we lean on (license-verified in docs/ENGINE_REUSE_SURVEY.md) and its verific
   needed; ENet handles its own platform sockets. `.github/workflows/ci.yml` builds Ubuntu/Clang +
   Windows/MSVC Release. Windows build re-verified clean (exit 0); **Linux path is unverified on
   real hardware** (authored on a Windows box) — test on a Linux PC. OSS: GLFW/ezEngine platform layer.
-- [ ] **13. Positional 3D audio.** **14. Cooked mesh serializer** (Ogre, MIT).
+- [x] **13. Positional 3D audio** — `AudioEngine::setListener(pos,fwd,right)` (updated each frame
+  from the active camera) + `playAt(sound, worldPos, vol)`: deterministic, hand-rolled gain/pan
+  (no ma 3D engine, no new deps, no audio-callback-thread work) — linear distance falloff (full
+  ≤1.5 u, silent ≥40 u; past the radius no voice is taken) and stereo pan = dot(dir, listenerRight)
+  scaled 0.85 so the far ear never fully drops. 2D `play()` retained for first-person/HUD SFX and
+  now resets pan (voice pool shared). Wired remote-player footsteps through playAt (speed derived
+  client-side from interpolated position deltas — net/* untouched). Remote gunshots need a fire bit
+  in PlayerState (net/* + ServerSim, out of scope) — deferred. Build clean (exit 0, no new warnings);
+  `--play --seed 777` smoke: alive 6 s, no crash, "audio: engine up (6 synthesized sounds)". Audible
+  result is human-verify-only (headless has no speakers). OSS: miniaudio (ma_sound_set_pan/volume),
+  technique-only manual spatialization. **14. Cooked mesh serializer** (Ogre, MIT) still open.
 
 ### Roll 6 — Authoring (biggest, most speculative; last)
 - [ ] **15. In-editor Design panel** (no-code weapon/ability/item) + **16. visual node graph →

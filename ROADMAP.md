@@ -195,7 +195,12 @@ loopback transport.
       footstep, pickup, hit, explosion, ui-click — no bundled files, license-clean),
       voice-pool overlap, best-effort init (silent if no device); wired to fire/movement/
       damage/inventory/UI from client-side state deltas; pimpl (miniaudio out of headers)
-- [ ] Positional 3D audio (remote gunshots/footsteps by distance), music, README polish
+- [x] Positional 3D audio: listener pose follows the active camera; `playAt(sound, worldPos)`
+      applies linear distance attenuation (full within 1.5 u, silent past 40 u) + stereo pan by
+      bearing; remote-player footsteps wired through it (speed client-derived from interpolated
+      pos, no net change) so distant players are quieter. Local first-person/HUD SFX stay 2D.
+      Remote GUNSHOTS need a fire bit in the snapshot (net/*, deferred). Music + README polish TODO
+- [ ] Music, README polish
 
 ## Phase 10 — Packaging & game-project SDK ✅
 - [x] Game-as-project model: `--project <dir>` loads game.json (name/seed/GameRules) +

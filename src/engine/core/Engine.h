@@ -125,6 +125,15 @@ private:
     // Previous entity positions (client-side), to derive each humanoid's speed for the
     // idle↔walk blend weight without a server-side anim-state byte.
     std::unordered_map<std::uint32_t, glm::vec3> m_entityPrevPos;
+    // Per-remote-player audio pacing: derive each remote's speed from its
+    // interpolated position (client-side, no net change) to pace positional
+    // footstep SFX. Keyed by PeerId; grows with players seen (bounded, like above).
+    struct RemoteAudioState {
+        glm::vec3 prevPos{0.0f};
+        float stepTimer = 0.0f;
+        bool seen = false;
+    };
+    std::unordered_map<std::uint32_t, RemoteAudioState> m_remoteAudio;
     bool m_animBooth = false; // fixed camera framing the anim actor (VLM capture)
     std::string m_animModel;  // --animmodel override path (else the default proof asset)
     std::string m_animClip;   // --animclip: animation file merged onto the model by bone name
