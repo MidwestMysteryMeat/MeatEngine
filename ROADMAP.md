@@ -35,8 +35,15 @@ loopback transport.
 - [ ] Combat feel pass — HUMAN PLAYTEST (fire cadence, hit feedback, flash timing)
 
 ## Phase 4 — Inventory + Save/Load
-- [ ] Slot inventory, pickups, equip/use, Tab UI; server owns inventory truth
-- [ ] Save/load: meta.json + RLE chunks.bin (same encoding as net chunk deltas), F5/F9
+- [x] Slot inventory (36 slots, stacking), THREE dev-selectable models via GameRules
+      (hotbar+backpack / grid-only / weapon-slots+counters) + economy flags (finiteAmmo,
+      minedBlockDrops); item-driven combat (pistol+ammo, block tool, medkit); server owns
+      truth, Inventory msg mirrors to client; hotbar UI (1-9 + scroll) + Tab backpack
+- [x] Save/load: JSON save (seed + edit overlay + players w/ inventory), F5 quicksave,
+      autosave on graceful exit, `--load <file>`; edit-loss-on-chunk-reload fixed via
+      persistent edit overlay
+- [ ] World item pickups (ground entities) — lands with the entity-snapshot path in the
+      abilities phase
 
 ## Phase 5 — Room Designer editor (F1, host/single-player only)
 - [ ] Free-fly camera, grid snap, modular tools (wall/floor/ceiling/doorway/platform)
