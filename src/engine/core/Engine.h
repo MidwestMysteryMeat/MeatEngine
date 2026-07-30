@@ -64,10 +64,14 @@ private:
     bool m_clientWorldReady = false;
 
     std::unordered_map<ChunkPos, MeshHandle> m_chunkMeshes;
+    MeshHandle m_remotePlayerMesh = 0; // box proxy until character meshes land
     PlayerCommand m_lastCmd{};
     std::uint64_t m_tick = 0;
     glm::vec3 m_prevPlayerPos{0};
     glm::vec3 m_currPlayerPos{0};
+    float m_localFireCooldown = 0.0f; // cosmetic mirror of the server's cooldown
+    float m_muzzleFlash = 0.0f;
+    bool m_imguiReady = false;
 };
 
 } // namespace meat

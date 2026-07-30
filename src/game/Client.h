@@ -29,22 +29,29 @@ public:
     // rewind-and-replay reconciliation of the local character.
     void pump(VoxelWorld& voxels, PhysicsWorld& physics, CharacterController& player);
 
-    // Newest known state per remote player (interpolation buffers come with
-    // visible player meshes; until then newest-state is enough).
-    const std::unordered_map<PeerId, PlayerState>& remotePlayers() const { return m_remotes; }
+    float health() const { return m_ownHealth; }
+
+    // Remote players sampled 100 ms behind the newest snapshot, interpolated
+    // between the bracketing snapshot states — smooth despite 20 Hz updates.
+    std::vector<PlayerState> remoteViewStates() const;
 
 private:
     void applySnapshot(const SnapshotMsg& snap, PhysicsWorld& physics,
                        CharacterController& player);
+
+    struct RemoteHistory {
+        std::deque<std::pair<std::uint64_t, PlayerState>> states; // tick-ascending
+    };
 
     Transport* m_transport = nullptr;
     std::string m_playerName;
     PeerId m_playerId = 0;
     std::uint32_t m_seed = 0;
     bool m_welcomed = false;
+    float m_ownHealth = 100.0f;
     std::uint64_t m_latestSnapshotTick = 0;
     std::deque<PlayerCommand> m_unacked; // commands newer than the server's ack
-    std::unordered_map<PeerId, PlayerState> m_remotes;
+    std::unordered_map<PeerId, RemoteHistory> m_remotes;
 };
 
 } // namespace meat

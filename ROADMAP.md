@@ -27,8 +27,12 @@ loopback transport.
 - [x] Two-process smoke test on localhost (host=player 1, joiner=player 2, shared seed)
 
 ## Phase 3 — FPS gameplay core (server-authoritative)
-- [ ] Hitscan weapon, voxel damage, health/death/respawn, crosshair, muzzle light pulse
-- [ ] Co-op hit tests server-side; PvP lag compensation deferred to Phase 12
+- [x] Hitscan weapon (server ray-vs-capsule + voxel DDA, 0.15 s cadence), voxel damage
+      (shoot blocks out), RMB block place (anti-entombment check), health/respawn,
+      muzzle light pulse (client-predicted), remote players visible w/ 100 ms interp,
+      ImGui HUD (HP / players / pos / fps)
+- [x] Co-op hit tests server-side; PvP lag compensation deferred to Phase 12
+- [ ] Combat feel pass — HUMAN PLAYTEST (fire cadence, hit feedback, flash timing)
 
 ## Phase 4 — Inventory + Save/Load
 - [ ] Slot inventory, pickups, equip/use, Tab UI; server owns inventory truth

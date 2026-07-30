@@ -1,5 +1,6 @@
 #include "game/ServerSim.h"
 #include "engine/core/Log.h"
+#include "engine/core/ViewMath.h"
 
 #include <thread>
 
@@ -8,6 +9,29 @@ namespace {
 constexpr float kFixedDtServer = 1.0f / 60.0f;
 constexpr int kSnapshotEvery = 3; // 60 Hz sim → 20 Hz snapshots
 constexpr glm::vec3 kSpawnPos{8.0f, 8.0f, 8.0f};
+
+constexpr float kFireInterval = 0.15f;
+constexpr float kPlaceInterval = 0.20f;
+constexpr float kHitscanRange = 60.0f;
+constexpr float kHitDamage = 25.0f;
+constexpr float kCapsuleRadius = 0.35f; // keep in sync with CharacterTuning
+
+// Distance between a ray segment [ro, ro + rd*range] and segment [a, b];
+// tRayOut = distance along the ray at the closest approach. Standard clamped
+// closest-point-of-two-segments; rd must be unit length.
+float raySegmentDistance(glm::vec3 ro, glm::vec3 rd, float range, glm::vec3 a, glm::vec3 b,
+                         float& tRayOut) {
+    const glm::vec3 u = rd * range, v = b - a, w0 = ro - a;
+    const float A = glm::dot(u, u), B = glm::dot(u, v), C = glm::dot(v, v);
+    const float D = glm::dot(u, w0), E = glm::dot(v, w0);
+    const float denom = A * C - B * B;
+    float s = denom > 1e-6f ? glm::clamp((B * E - C * D) / denom, 0.0f, 1.0f) : 0.0f;
+    float t = C > 1e-6f ? glm::clamp((B * s + E) / C, 0.0f, 1.0f) : 0.0f;
+    // Re-clamp s against the chosen t (one refinement is exact for segments).
+    s = A > 1e-6f ? glm::clamp((B * t - D) / A, 0.0f, 1.0f) : 0.0f;
+    tRayOut = s * range;
+    return glm::length((ro + u * s) - (a + v * t));
+}
 } // namespace
 
 bool ServerSim::init(std::uint32_t worldSeed) {
@@ -77,10 +101,7 @@ void ServerSim::handlePacket(Transport& transport, PeerId peer,
     case MsgType::VoxelOp: {
         VoxelOpMsg op;
         if (!decode(op, reader)) return;
-        // Server validates (registry knows the id) then applies + broadcasts;
-        // clients only ever apply ops echoed by the server.
-        m_voxels.setBlock(op.voxel, op.block);
-        for (auto& [otherPeer, unused] : m_players) transport.send(otherPeer, pack(op), true);
+        applyVoxelOp(transport, op); // client intent; server is the only writer
         break;
     }
     default:
@@ -101,6 +122,7 @@ void ServerSim::tick(Transport& transport) {
         player->controller.update(player->lastCmd, kFixedDtServer, m_physics);
         if (player->controller.position().y < -30.0f) // fell out (colliders pending)
             player->controller.setState(kSpawnPos, glm::vec3(0));
+        processCombat(transport, peer, *player);
         if (first) { // TODO: multi-center streaming once co-op players roam apart
             streamCenter = player->controller.position();
             first = false;
@@ -113,6 +135,78 @@ void ServerSim::tick(Transport& transport) {
     if (m_tick % kSnapshotEvery == 0 && !m_players.empty()) broadcastSnapshot(transport);
 }
 
+void ServerSim::applyVoxelOp(Transport& transport, const VoxelOpMsg& op) {
+    m_voxels.setBlock(op.voxel, op.block);
+    for (auto& [peer, unused] : m_players) transport.send(peer, pack(op), true);
+}
+
+void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player) {
+    player.fireCooldown -= kFixedDtServer;
+    player.placeCooldown -= kFixedDtServer;
+
+    const glm::vec3 eye =
+        player.controller.position() + glm::vec3(0, player.controller.eyeHeight(), 0);
+    const glm::vec3 dir = viewForward(player.lastCmd.yaw, player.lastCmd.pitch);
+
+    if (player.lastCmd.fire && player.fireCooldown <= 0.0f) {
+        player.fireCooldown = kFireInterval;
+
+        const auto voxelHit = m_voxels.raycast(eye, dir, kHitscanRange);
+        const float voxelT = voxelHit ? voxelHit->t : kHitscanRange;
+
+        // Closest player capsule in front of the voxel hit wins.
+        Player* victim = nullptr;
+        PeerId victimPeer = 0;
+        float bestT = voxelT;
+        for (auto& [otherPeer, other] : m_players) {
+            if (otherPeer == peer || !other->spawned) continue;
+            const glm::vec3 feet = other->controller.position();
+            const float height = other->controller.crouched() ? 0.95f : 1.8f;
+            const glm::vec3 a = feet + glm::vec3(0, kCapsuleRadius, 0);
+            const glm::vec3 b = feet + glm::vec3(0, height - kCapsuleRadius, 0);
+            float tRay = 0;
+            if (raySegmentDistance(eye, dir, kHitscanRange, a, b, tRay) <= kCapsuleRadius &&
+                tRay < bestT) {
+                bestT = tRay;
+                victim = other.get();
+                victimPeer = otherPeer;
+            }
+        }
+
+        if (victim) {
+            victim->health -= kHitDamage;
+            if (victim->health <= 0.0f) {
+                log::info("server: player {} fragged player {}", peer, victimPeer);
+                victim->controller.setState(kSpawnPos, glm::vec3(0));
+                victim->health = 100.0f;
+            }
+        } else if (voxelHit && voxelHit->block != 0) {
+            applyVoxelOp(transport, {voxelHit->voxel, 0}); // shoot a block out
+        }
+    }
+
+    if (player.lastCmd.place && player.placeCooldown <= 0.0f) {
+        player.placeCooldown = kPlaceInterval;
+        if (const auto hit = m_voxels.raycast(eye, dir, 8.0f); hit && hit->normal != glm::ivec3(0)) {
+            const glm::ivec3 target = hit->voxel + hit->normal;
+            // Don't entomb anyone: reject placement overlapping a player capsule.
+            const glm::vec3 center = (glm::vec3(target) + 0.5f) * kVoxelSize;
+            bool blocked = false;
+            for (auto& [otherPeer, other] : m_players) {
+                if (!other->spawned) continue;
+                const glm::vec3 feet = other->controller.position();
+                if (glm::abs(center.x - feet.x) < 0.6f && glm::abs(center.z - feet.z) < 0.6f &&
+                    center.y > feet.y - 0.5f && center.y < feet.y + 2.0f) {
+                    blocked = true;
+                    break;
+                }
+            }
+            if (!blocked && m_voxels.blockAt(target) == 0)
+                applyVoxelOp(transport, {target, m_palette.stone});
+        }
+    }
+}
+
 void ServerSim::broadcastSnapshot(Transport& transport) {
     SnapshotMsg snap;
     snap.tick = m_tick;
@@ -121,7 +215,7 @@ void ServerSim::broadcastSnapshot(Transport& transport) {
         snap.players.push_back({peer, player->controller.position(),
                                 player->controller.velocity(), player->lastCmd.yaw,
                                 player->lastCmd.pitch, player->controller.onGround(),
-                                player->controller.crouched()});
+                                player->controller.crouched(), player->health});
     }
     for (auto& [peer, player] : m_players) {
         snap.lastCmdTick = player->lastCmdTick; // per-recipient ack of their own input

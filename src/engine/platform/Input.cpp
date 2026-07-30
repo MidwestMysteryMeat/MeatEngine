@@ -69,6 +69,7 @@ PlayerCommand Input::sampleCommand(std::uint64_t tick) {
     cmd.fire = down(GLFW_MOUSE_BUTTON_LEFT);
     cmd.use = down(GLFW_KEY_E);
     cmd.reload = down(GLFW_KEY_R);
+    cmd.place = down(GLFW_MOUSE_BUTTON_RIGHT);
     return cmd;
 }
 

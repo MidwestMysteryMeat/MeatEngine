@@ -43,6 +43,7 @@ struct PlayerState {
     float pitch = 0;
     bool onGround = false;
     bool crouched = false;
+    float health = 100.0f;
 };
 
 struct SnapshotMsg {

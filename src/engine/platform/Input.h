@@ -15,6 +15,7 @@ struct PlayerCommand {
     glm::vec2 move{0};         // x strafe, y forward, unit-clamped
     float yaw = 0, pitch = 0;  // absolute radians, pitch clamped ±89°
     bool jump = false, crouch = false, sprint = false, fire = false, use = false, reload = false;
+    bool place = false; // RMB: place block at the aimed face
 };
 
 // Keyboard/mouse state via GLFW callbacks. The ONE place raw input becomes a

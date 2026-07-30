@@ -14,6 +14,7 @@ enum CommandButton : std::uint8_t {
     kBtnFire = 1u << 3,
     kBtnUse = 1u << 4,
     kBtnReload = 1u << 5,
+    kBtnPlace = 1u << 6,
 };
 
 } // namespace
@@ -30,6 +31,7 @@ void encode(const PlayerCommand& cmd, ByteWriter& w) {
     if (cmd.fire) buttons |= kBtnFire;
     if (cmd.use) buttons |= kBtnUse;
     if (cmd.reload) buttons |= kBtnReload;
+    if (cmd.place) buttons |= kBtnPlace;
     w.write(buttons);
 }
 
@@ -45,6 +47,7 @@ bool decode(PlayerCommand& cmd, ByteReader& r) {
     cmd.fire = (buttons & kBtnFire) != 0;
     cmd.use = (buttons & kBtnUse) != 0;
     cmd.reload = (buttons & kBtnReload) != 0;
+    cmd.place = (buttons & kBtnPlace) != 0;
     return true;
 }
 
@@ -82,12 +85,13 @@ void encode(const PlayerState& state, ByteWriter& w) {
     w.write(state.pitch);
     w.write(state.onGround);
     w.write(state.crouched);
+    w.write(state.health);
 }
 
 bool decode(PlayerState& state, ByteReader& r) {
     return r.read(state.playerId) && r.read(state.pos) && r.read(state.vel) &&
            r.read(state.yaw) && r.read(state.pitch) && r.read(state.onGround) &&
-           r.read(state.crouched);
+           r.read(state.crouched) && r.read(state.health);
 }
 
 void encode(const SnapshotMsg& msg, ByteWriter& w) {

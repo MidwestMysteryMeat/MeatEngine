@@ -6,6 +6,10 @@
 #include "engine/physics/PhysicsWorld.h"
 #include "engine/voxel/VoxelWorld.h"
 
+#include <glm/gtc/constants.hpp>
+
+#include <algorithm>
+
 namespace meat {
 namespace {
 constexpr std::size_t kMaxUnacked = 120; // 2 s of input; beyond this we're desynced anyway
@@ -74,21 +78,67 @@ void Client::pump(VoxelWorld& voxels, PhysicsWorld& physics, CharacterController
 
 void Client::applySnapshot(const SnapshotMsg& snap, PhysicsWorld& physics,
                            CharacterController& player) {
-    m_remotes.clear();
     const PlayerState* own = nullptr;
     for (const PlayerState& state : snap.players) {
-        if (state.playerId == m_playerId)
+        if (state.playerId == m_playerId) {
             own = &state;
-        else
-            m_remotes.emplace(state.playerId, state);
+            continue;
+        }
+        auto& history = m_remotes[state.playerId].states;
+        history.emplace_back(snap.tick, state);
+        while (history.size() > 32) history.pop_front(); // ~1.6 s at 20 Hz
     }
+    // Full-state snapshots: anyone absent has disconnected.
+    std::erase_if(m_remotes, [&](const auto& entry) {
+        return std::none_of(snap.players.begin(), snap.players.end(),
+                            [&](const PlayerState& s) { return s.playerId == entry.first; });
+    });
     if (!own) return;
+    m_ownHealth = own->health;
 
     // Rewind-and-replay: adopt the authoritative state, then re-apply every
     // command the server hasn't seen yet. When prediction was right this lands
     // exactly where we already were, so no correction is visible.
     player.setState(own->pos, own->vel);
     for (const PlayerCommand& cmd : m_unacked) player.update(cmd, kFixedDt, physics);
+}
+
+std::vector<PlayerState> Client::remoteViewStates() const {
+    std::vector<PlayerState> out;
+    if (m_latestSnapshotTick < 6) return out;
+    const auto targetTick = static_cast<double>(m_latestSnapshotTick - 6); // 100 ms behind
+
+    for (const auto& [peerId, history] : m_remotes) {
+        const auto& states = history.states;
+        if (states.empty()) continue;
+        // Find the bracketing pair around targetTick.
+        const auto after = std::find_if(states.begin(), states.end(), [&](const auto& e) {
+            return static_cast<double>(e.first) >= targetTick;
+        });
+        if (after == states.begin()) {
+            out.push_back(states.front().second);
+            continue;
+        }
+        if (after == states.end()) {
+            out.push_back(states.back().second); // starved buffer: hold last known
+            continue;
+        }
+        const auto& [tickB, stateB] = *after;
+        const auto& [tickA, stateA] = *std::prev(after);
+        const float t = tickB > tickA
+                            ? static_cast<float>((targetTick - static_cast<double>(tickA)) /
+                                                 static_cast<double>(tickB - tickA))
+                            : 1.0f;
+        PlayerState blended = stateB;
+        blended.pos = glm::mix(stateA.pos, stateB.pos, t);
+        // Shortest-arc yaw blend so crossing ±π doesn't spin the character.
+        float dyaw = stateB.yaw - stateA.yaw;
+        while (dyaw > glm::pi<float>()) dyaw -= glm::two_pi<float>();
+        while (dyaw < -glm::pi<float>()) dyaw += glm::two_pi<float>();
+        blended.yaw = stateA.yaw + dyaw * t;
+        out.push_back(blended);
+    }
+    return out;
 }
 
 } // namespace meat

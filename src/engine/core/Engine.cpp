@@ -1,9 +1,13 @@
 #include "engine/core/Engine.h"
 #include "engine/core/Log.h"
+#include "engine/core/ViewMath.h"
 
 #include <GLFW/glfw3.h>
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_opengl3.h>
 
 #include <algorithm>
 #include <chrono>
@@ -13,6 +17,33 @@ namespace meat {
 namespace {
 constexpr float kFallResetY = -30.0f; // below any terrain: teleport back to spawn
 constexpr glm::vec3 kClientSpawn{8.0f, 8.0f, 8.0f};
+constexpr float kFireInterval = 0.15f; // cosmetic mirror; the server enforces its own
+
+// Box proxy for remote players (feet at local origin) rendered through the
+// chunk pipeline: atlas tile per face, so no separate shader needed.
+ChunkMeshData makePlayerBoxMesh() {
+    ChunkMeshData data;
+    const float hw = 0.35f, h = 1.8f;
+    const glm::vec3 lo{-hw, 0.0f, -hw}, hi{hw, h, hw};
+    const struct {
+        glm::i8vec3 n;
+        glm::vec3 corners[4]; // CCW from outside
+    } faces[] = {
+        {{1, 0, 0}, {{hi.x, lo.y, hi.z}, {hi.x, lo.y, lo.z}, {hi.x, hi.y, lo.z}, {hi.x, hi.y, hi.z}}},
+        {{-1, 0, 0}, {{lo.x, lo.y, lo.z}, {lo.x, lo.y, hi.z}, {lo.x, hi.y, hi.z}, {lo.x, hi.y, lo.z}}},
+        {{0, 1, 0}, {{lo.x, hi.y, hi.z}, {hi.x, hi.y, hi.z}, {hi.x, hi.y, lo.z}, {lo.x, hi.y, lo.z}}},
+        {{0, -1, 0}, {{lo.x, lo.y, lo.z}, {hi.x, lo.y, lo.z}, {hi.x, lo.y, hi.z}, {lo.x, lo.y, hi.z}}},
+        {{0, 0, 1}, {{lo.x, lo.y, hi.z}, {hi.x, lo.y, hi.z}, {hi.x, hi.y, hi.z}, {lo.x, hi.y, hi.z}}},
+        {{0, 0, -1}, {{hi.x, lo.y, lo.z}, {lo.x, lo.y, lo.z}, {lo.x, hi.y, lo.z}, {hi.x, hi.y, lo.z}}},
+    };
+    const glm::vec2 uv[4] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    for (const auto& f : faces) {
+        const auto base = static_cast<std::uint32_t>(data.vertices.size());
+        for (int i = 0; i < 4; ++i) data.vertices.push_back({f.corners[i], f.n, uv[i], 2});
+        for (std::uint32_t idx : {0u, 1u, 2u, 0u, 2u, 3u}) data.indices.push_back(base + idx);
+    }
+    return data;
+}
 } // namespace
 
 bool Engine::initClientSystems() {
@@ -48,6 +79,15 @@ bool Engine::initClientSystems() {
     m_renderer.setAtlas(atlas);
     m_renderer.setDirectionalLight(glm::normalize(glm::vec3(-0.4f, -1.0f, -0.3f)),
                                    glm::vec3(1.0f, 0.96f, 0.88f));
+    m_remotePlayerMesh = m_renderer.uploadChunkMesh(makePlayerBoxMesh());
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui::StyleColorsDark();
+    // After Input::attach: ImGui chains and forwards the existing callbacks.
+    ImGui_ImplGlfw_InitForOpenGL(m_window.handle(), true);
+    ImGui_ImplOpenGL3_Init("#version 450");
+    m_imguiReady = true;
     return true;
 }
 
@@ -95,6 +135,14 @@ void Engine::simulateClientTick(const PlayerCommand& frameCmd) {
     PlayerCommand cmd = frameCmd;
     cmd.tick = m_tick; // unique per tick even when one frame spans several ticks
     m_client.sendCommand(cmd);
+
+    m_localFireCooldown -= kFixedDt;
+    m_muzzleFlash -= kFixedDt;
+    if (cmd.fire && m_localFireCooldown <= 0.0f) {
+        m_localFireCooldown = kFireInterval;
+        m_muzzleFlash = 0.08f;
+    }
+
     m_player.update(cmd, kFixedDt, m_physics);
     m_physics.step(kFixedDt);
     if (m_player.position().y < kFallResetY)
@@ -113,8 +161,36 @@ void Engine::render(float alpha) {
     m_renderer.beginFrame(camera, alpha);
     for (const auto& [pos, mesh] : m_chunkMeshes)
         m_renderer.submitChunk(mesh, glm::vec3(pos.x, pos.y, pos.z) * (kChunkSize * kVoxelSize));
+
+    const std::vector<PlayerState> remotes = m_client.remoteViewStates();
+    for (const PlayerState& remote : remotes)
+        m_renderer.submitChunk(m_remotePlayerMesh, remote.pos);
+
+    if (m_muzzleFlash > 0.0f)
+        m_renderer.submitPointLight(camera.pos + camera.forward() * 0.4f,
+                                    glm::vec3(1.0f, 0.72f, 0.35f) * (m_muzzleFlash / 0.08f),
+                                    8.0f);
+
     m_renderer.drawCrosshair();
     m_renderer.endFrame();
+
+    if (m_imguiReady) {
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos({12, 12});
+        ImGui::Begin("hud", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+                         ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBackground);
+        ImGui::Text("HP %.0f", m_client.health());
+        ImGui::Text("players %zu", remotes.size() + 1);
+        ImGui::Text("pos %.1f %.1f %.1f", m_currPlayerPos.x, m_currPlayerPos.y,
+                    m_currPlayerPos.z);
+        ImGui::Text("%.0f fps", ImGui::GetIO().Framerate);
+        ImGui::End();
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    }
 }
 
 int Engine::run(const EngineConfig& config) {
@@ -160,6 +236,12 @@ int Engine::run(const EngineConfig& config) {
         if (m_clientWorldReady) m_voxels.update(m_currPlayerPos, m_jobs);
         render(static_cast<float>(accumulator / kFixedDt));
         m_window.swap();
+    }
+
+    if (m_imguiReady) {
+        ImGui_ImplOpenGL3_Shutdown();
+        ImGui_ImplGlfw_Shutdown();
+        ImGui::DestroyContext();
     }
     return 0;
 }

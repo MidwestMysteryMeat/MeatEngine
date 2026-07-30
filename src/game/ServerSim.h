@@ -30,10 +30,15 @@ private:
         PlayerCommand lastCmd{};
         std::uint64_t lastCmdTick = 0;
         bool spawned = false;
+        float health = 100.0f;
+        float fireCooldown = 0.0f;
+        float placeCooldown = 0.0f;
     };
 
     void handlePacket(Transport& transport, PeerId peer, std::span<const std::byte> data);
     void broadcastSnapshot(Transport& transport);
+    void applyVoxelOp(Transport& transport, const VoxelOpMsg& op);
+    void processCombat(Transport& transport, PeerId peer, Player& player);
 
     JobQueue m_jobs;         // server-side meshing feeds colliders only
     PhysicsWorld m_physics;
