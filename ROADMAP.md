@@ -99,8 +99,13 @@ loopback transport.
       NPC/remote-player boxes with animated meshes, first-person viewmodel
 
 ## Phase 8 — Scripting
-- [ ] Lua (sol2) server-side gameplay: entity spawn, voxel edit, player/inventory/weapons,
-      events, dungeon params; weapons/pickups/dummy enemy in assets/scripts/
+- [x] Lua (sol2) server-side host: sandboxed stdlib (base/math/table/string only — no
+      io/os/package/debug), capability `game` table (log/set_block/get_block/spawn_pickup/
+      player_count/randi/tick/item_id), hooks (on_init/on_player_join/on_player_death/
+      on_tick @ 3 Hz), protected calls (script errors logged, never crash server),
+      deterministic seeded RNG, pimpl (sol2 headers don't leak); example.lua verified live
+- [ ] Expand API (player state/inventory/weapons, dungeon params, world events); wire the
+      no-code authoring/Design panel to emit Lua defs (Phase 8.6)
 
 ## Phase 8.6 — Authoring & modeling (ARCHITECTURE §game/authoring, §game/modeling)
 - [ ] Effect-composition core: EffectList on items/abilities, server executors

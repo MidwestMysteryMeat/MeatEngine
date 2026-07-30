@@ -57,7 +57,66 @@ bool ServerSim::init(std::uint32_t worldSeed) {
         [this](ChunkPos pos) { m_physics.removeChunkCollider(pos); });
     spawnDungeonLoot();
     spawnDungeonNpcs();
+    setupScripting();
+    m_scripts.onInit(m_seed);
     return true;
+}
+
+void ServerSim::setupScripting() {
+    m_scriptRng ^= m_seed * 0x9E3779B97F4A7C15ull; // per-world deterministic stream
+    // Capability table: scripts get exactly these server-authoritative actions.
+    ScriptApi api;
+    api.log = [](const std::string& s) { log::info("[lua] {}", s); };
+    api.setBlock = [this](int x, int y, int z, int b) {
+        const auto id = static_cast<BlockId>(b < 0 ? 0 : b);
+        if (!m_voxels.blockRegistry().isValid(id)) return;
+        if (std::abs(x) > 100000 || std::abs(y) > 100000 || std::abs(z) > 100000)
+            return; // same guard as the network path; unbounded coords → OOM
+        // Edits go through applyVoxelOp when a client is connected (broadcasts);
+        // otherwise into the overlay, which overlay-on-join replays to joiners.
+        if (m_activeTransport)
+            applyVoxelOp(*m_activeTransport, {glm::ivec3(x, y, z), id});
+        else
+            m_voxels.setBlock(glm::ivec3(x, y, z), id);
+    };
+    api.getBlock = [this](int x, int y, int z) {
+        return static_cast<int>(m_voxels.blockAt(glm::ivec3(x, y, z)));
+    };
+    api.spawnPickup = [this](float x, float y, float z, int item, int count) {
+        if (item <= 0 || count <= 0) return;
+        if (m_entities.size() >= 4096) return; // entity cap: a runaway loop can't OOM us
+        WorldEntity e;
+        e.id = m_nextEntityId++;
+        e.type = EntityArchetype::ItemPickup;
+        e.pos = {x, y, z};
+        e.item = static_cast<ItemId>(item);
+        e.count = static_cast<std::uint16_t>(std::min(count, 0xFFFF)); // clamp, no wrap
+        m_entities.push_back(e);
+    };
+    api.playerCount = [this] { return playerCount(); };
+    api.tick = [this] { return m_tick; };
+    // Deterministic seeded RNG so scripted content matches across peers/replays.
+    api.randi = [this](int lo, int hi) {
+        if (hi < lo) std::swap(lo, hi);
+        m_scriptRng = m_scriptRng * 6364136223846793005ull + 1442695040888963407ull;
+        // Widen before subtracting: (hi - lo) in int would overflow on a wide range.
+        const std::uint64_t span =
+            static_cast<std::uint64_t>(static_cast<std::int64_t>(hi) - lo) + 1;
+        return static_cast<int>(lo + static_cast<std::int64_t>((m_scriptRng >> 33) % span));
+    };
+    api.itemId = [this](const std::string& n) -> int {
+        if (n == "pistol") return m_defaultItems.pistol;
+        if (n == "ammo9mm") return m_defaultItems.ammo9mm;
+        if (n == "shells") return m_defaultItems.shells;
+        if (n == "rockets") return m_defaultItems.rockets;
+        if (n == "medkit") return m_defaultItems.medkit;
+        if (n == "stone") return m_defaultItems.stoneBlock;
+        if (n == "rpg") return m_defaultItems.rpg;
+        if (n == "shotgun") return m_defaultItems.shotgun;
+        return 0;
+    };
+    m_scripts.bind(std::move(api));
+    m_scripts.loadDir("assets/scripts");
 }
 
 void ServerSim::spawnDungeonNpcs() {
@@ -533,6 +592,7 @@ bool ServerSim::tryPickup(Transport& transport, PeerId peer, Player& player) {
 }
 
 void ServerSim::pump(Transport& transport) {
+    m_activeTransport = &transport; // script callbacks may broadcast
     std::vector<NetEvent> events;
     transport.poll(events);
     for (NetEvent& e : events) {
@@ -580,7 +640,9 @@ void ServerSim::handlePacket(Transport& transport, PeerId peer,
             giveStartingLoadout(player);
         }
         sendInventory(transport, peer, player);
+        sendOverlayTo(transport, peer); // world edits (editor/script/save) → this client
         log::info("server: '{}' joined as player {}", hello.name, peer);
+        m_scripts.onPlayerJoin(peer);
         break;
     }
     case MsgType::Command: {
@@ -613,6 +675,7 @@ void ServerSim::handlePacket(Transport& transport, PeerId peer,
 }
 
 void ServerSim::tick(Transport& transport) {
+    m_activeTransport = &transport;
     m_jobs.drainMainThread(); // collider syncs from finished mesh jobs
 
     glm::vec3 streamCenter = kSpawnPos;
@@ -638,6 +701,7 @@ void ServerSim::tick(Transport& transport) {
     m_voxels.update(streamCenter, m_jobs);
 
     ++m_tick;
+    if (m_scripts.loaded() && m_tick % 20 == 0) m_scripts.onTick(m_tick); // ~3 Hz gameplay hook
     if (m_tick % kSnapshotEvery == 0 && !m_players.empty()) broadcastSnapshot(transport);
 }
 
@@ -662,6 +726,20 @@ void ServerSim::giveStartingLoadout(Player& player) {
     player.inventory.add(m_defaultItems.rockets, 4, m_items);
     player.inventory.add(m_defaultItems.medkit, 2, m_items);
     player.inventory.add(m_defaultItems.stoneBlock, 32, m_items);
+}
+
+void ServerSim::sendOverlayTo(Transport& transport, PeerId peer) const {
+    // Clients regenerate terrain from the seed, so any server-side edit (editor
+    // brush, script, or a loaded save) must be replayed or the joiner desyncs.
+    for (const auto& [cp, edits] : m_voxels.editOverlay()) {
+        for (const auto& [index, block] : edits) {
+            const int x = index % kChunkSize, z = (index / kChunkSize) % kChunkSize,
+                      y = index / (kChunkSize * kChunkSize);
+            const glm::ivec3 v(cp.x * kChunkSize + x, cp.y * kChunkSize + y,
+                               cp.z * kChunkSize + z);
+            transport.send(peer, pack(VoxelOpMsg{v, block}), true);
+        }
+    }
 }
 
 void ServerSim::sendInventory(Transport& transport, PeerId peer, const Player& player) const {

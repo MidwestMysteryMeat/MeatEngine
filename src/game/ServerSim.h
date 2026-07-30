@@ -2,6 +2,7 @@
 #include "engine/core/JobQueue.h"
 #include "engine/net/Messages.h"
 #include "engine/net/Transport.h"
+#include "engine/script/ScriptHost.h"
 #include "engine/physics/CharacterController.h"
 #include "engine/physics/PhysicsWorld.h"
 #include "engine/voxel/VoxelWorld.h"
@@ -95,6 +96,7 @@ private:
     void applyVoxelOp(Transport& transport, const VoxelOpMsg& op);
     void processCombat(Transport& transport, PeerId peer, Player& player);
     void sendInventory(Transport& transport, PeerId peer, const Player& player) const;
+    void sendOverlayTo(Transport& transport, PeerId peer) const; // replay world edits
     void giveStartingLoadout(Player& player);
 
     void spawnDungeonLoot();
@@ -125,10 +127,15 @@ private:
     PhysicsWorld m_physics;
     VoxelWorld m_voxels;
 
+    void setupScripting();
+
     std::vector<WorldEntity> m_entities;
     std::vector<Projectile> m_projectiles;
     std::vector<Deployable> m_deployables;
     std::vector<Npc> m_npcs;
+    ScriptHost m_scripts;
+    Transport* m_activeTransport = nullptr; // set each pump/tick for script callbacks
+    std::uint64_t m_scriptRng = 0x2545F4914F6CDD1Dull; // seeded in init()
     std::uint32_t m_nextEntityId = 1;
     // Sparse chip-damage: only voxels that have been shot, remaining hp. Entries
     // die with the block; pristine blocks are implicit full-hp.
