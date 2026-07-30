@@ -1,0 +1,9 @@
+build/
+out/
+.vs/
+.idea/
+.cache/
+*.user
+imgui.ini
+saves/
+CMakeUserPresets.json
