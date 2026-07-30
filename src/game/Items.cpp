@@ -18,6 +18,27 @@ DefaultItems registerDefaultItems(ItemRegistry& items, BlockId stone) {
                           .fireInterval = 0.15f,
                           .penBudget = 20.0f, // punches dirt/grass, stopped by stone
                           .ammoItem = d.ammo9mm});
+    // AP/HP ammo-loadout variants of the pistol: same 9mm frame, different round,
+    // so both ammo-multiplier paths are reachable straight from the loadout.
+    // AP (armor-piercing): drills more materials (penBudget x1.6) for a softer hit
+    // (damage x0.85). HP (hollow-point): hits hard (damage x1.4) but stops in the
+    // first material it strikes (penetration x0 -> zero budget).
+    d.apPistol = items.add({.name = "AP pistol",
+                            .type = ItemType::Weapon,
+                            .damage = 25.0f,
+                            .fireInterval = 0.15f,
+                            .penBudget = 20.0f,
+                            .ammoItem = d.ammo9mm,
+                            .damageMult = 0.85f,
+                            .penetrationMult = 1.6f});
+    d.hpPistol = items.add({.name = "HP pistol",
+                            .type = ItemType::Weapon,
+                            .damage = 25.0f,
+                            .fireInterval = 0.15f,
+                            .penBudget = 20.0f,
+                            .ammoItem = d.ammo9mm,
+                            .damageMult = 1.4f,
+                            .penetrationMult = 0.0f});
     d.smg = items.add({.name = "smg",
                        .type = ItemType::Weapon,
                        .damage = 14.0f,

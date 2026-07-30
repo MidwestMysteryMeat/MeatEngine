@@ -27,6 +27,13 @@ struct ItemDef {
     float fireInterval = 0.0f;
     float penBudget = 0.0f; // penetration budget spent on materials crossed
     ItemId ammoItem = 0;    // consumed per shot when GameRules::finiteAmmo
+    // AP/HP ammo tuning, applied per shot in the hitscan march (fireHitscan/
+    // marchBullet): damageMult scales the damage delivered to flesh/blocks, and
+    // penetrationMult scales the penetration budget. AP drills more but hits
+    // softer (damage < 1, pen > 1); HP hits hard but stops in the first material
+    // (pen 0). 1.0/1.0 = a plain full-metal-jacket round (every existing weapon).
+    float damageMult = 1.0f;
+    float penetrationMult = 1.0f;
     FireMode fireMode = FireMode::SemiAuto;
     DeliveryKind delivery = DeliveryKind::Hitscan;
     std::uint8_t pellets = 1;    // hitscan: rays per shot (shotgun > 1)
@@ -62,6 +69,7 @@ private:
 // registered identically on server and client — ids are wire data.
 struct DefaultItems {
     ItemId pistol = 0, ammo9mm = 0, medkit = 0, stoneBlock = 0;
+    ItemId apPistol = 0, hpPistol = 0; // AP/HP ammo-loadout variants of the pistol
     ItemId smg = 0, shotgun = 0, sniper = 0, rpg = 0, grenade = 0, claymore = 0, turret = 0;
     ItemId companionBeacon = 0;
     ItemId shells = 0, rockets = 0, rifleAmmo = 0;

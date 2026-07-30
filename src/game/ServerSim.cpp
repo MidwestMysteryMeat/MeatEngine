@@ -434,7 +434,12 @@ void ServerSim::marchBullet(Transport& transport, PeerId peer, Player& player,
 
     glm::vec3 origin = eye;
     float remaining = kHitscanRange;
-    float budget = weapon.penBudget;
+    // AP/HP ammo: bake the round's multipliers into the shot up front so every
+    // flesh/block hit below inherits its character. HP's 0 penetrationMult zeroes
+    // the budget -> it deals its (boosted) damage to the first material and stops;
+    // AP's >1 mult buys more crossings at a reduced per-hit damage. Deterministic.
+    float budget = weapon.penBudget * weapon.penetrationMult;
+    const float shotDamage = weapon.damage * weapon.damageMult;
     float damageScale = 1.0f;
 
     for (int hop = 0; hop < 8 && remaining > 0.1f; ++hop) {
@@ -475,11 +480,11 @@ void ServerSim::marchBullet(Transport& transport, PeerId peer, Player& player,
         }
 
         if (npcVictim) {
-            damageNpc(transport, *npcVictim, weapon.damage * damageScale);
+            damageNpc(transport, *npcVictim, shotDamage * damageScale);
             return;
         }
         if (victim) {
-            victim->health -= weapon.damage * damageScale;
+            victim->health -= shotDamage * damageScale;
             if (victim->health <= 0.0f) {
                 log::info("server: player {} fragged player {}", peer, victimPeer);
                 victim->controller.setState(kSpawnPos, glm::vec3(0));
@@ -494,7 +499,7 @@ void ServerSim::marchBullet(Transport& transport, PeerId peer, Player& player,
         bool broke = !m_rules.blockDamage; // instant-break rules skip the hp model
         if (m_rules.blockDamage) {
             auto [entry, inserted] = m_voxelDamage.try_emplace(voxelHit->voxel, material.hp);
-            entry->second -= weapon.damage * damageScale;
+            entry->second -= shotDamage * damageScale;
             if (entry->second <= 0.0f) {
                 m_voxelDamage.erase(entry);
                 broke = true;
@@ -823,6 +828,8 @@ void ServerSim::applyVoxelOp(Transport& transport, const VoxelOpMsg& op) {
 void ServerSim::giveStartingLoadout(Player& player) {
     // Full reference arsenal so every weapon archetype is reachable in the slice.
     player.inventory.add(m_defaultItems.pistol, 1, m_items);
+    player.inventory.add(m_defaultItems.apPistol, 1, m_items); // AP/HP ammo variants
+    player.inventory.add(m_defaultItems.hpPistol, 1, m_items);
     player.inventory.add(m_defaultItems.smg, 1, m_items);
     player.inventory.add(m_defaultItems.shotgun, 1, m_items);
     player.inventory.add(m_defaultItems.sniper, 1, m_items);
