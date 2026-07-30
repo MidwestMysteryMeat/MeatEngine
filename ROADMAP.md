@@ -90,11 +90,13 @@ loopback transport.
       now correct grass/dirt/stone
 - [x] Screenshot tooling: Renderer::captureScreenshot (glReadPixels→PNG), F12 key,
       `--shot <png>` auto-capture-and-exit — enables visual validation of each step
-- [~] 7b skeletal: loader parses Mixamo rigs (65 bones/40k verts), pose sampler,
-      skinned render path + shader, upright auto-fit + root-inverse, screenshot-gated.
-      Static/terrain VLM-verified; skinned bind-pose still distorts on the multi-mesh
-      test asset — WIP, gated behind an optional staged asset so the repo is unaffected
-- [ ] Fix skinned bind-pose distortion; replace NPC/remote boxes with meshes; viewmodel
+- [x] 7b skeletal WORKING (VLM-verified): loader parses Mixamo rigs (65 bones/40k verts),
+      pose sampler (LERP/SLERP), skinned render path + shader, upright auto-fit. Bind-pose
+      skinning FIXED — bind globals derived from inverse(offset) (skin-deformer-authoritative)
+      instead of the node chain, which drifted ~100x on the armature's baked FBX unit scale;
+      now skinning≡I at bind for all weighted bones. SWAT operator renders as a clean T-pose.
+- [ ] Live clip playback (needs a non-degenerate clip staged; sampler is ready), replace
+      NPC/remote-player boxes with animated meshes, first-person viewmodel
 
 ## Phase 8 — Scripting
 - [ ] Lua (sol2) server-side gameplay: entity spawn, voxel edit, player/inventory/weapons,

@@ -81,7 +81,10 @@ Pose resolve(const SkeletalModel& model, const std::vector<glm::mat4>& locals) {
         const glm::mat4& parentGlobal =
             bone.parent >= 0 ? globals[static_cast<std::size_t>(bone.parent)] : glm::mat4(1.0f);
         globals[b] = parentGlobal * bone.pre * locals[b];
-        pose.skinningMatrices[b] = globals[b] * bone.offset;
+        // rootInverse (GlobalInverseTransform) cancels the scene-root transform
+        // that Assimp bakes into every offset matrix — without it the whole rig
+        // inherits the FBX unit scale (~100x) and shatters.
+        pose.skinningMatrices[b] = model.rootInverse * globals[b] * bone.offset;
     }
     return pose;
 }

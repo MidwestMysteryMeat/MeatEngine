@@ -212,7 +212,11 @@ void Engine::loadAnimTestActor() {
             upExtent = ext.x;
         }
         const float norm = 1.8f / std::max(0.01f, upExtent);
-        const glm::vec3 place = kClientSpawn + glm::vec3(0.0f, 0.0f, -3.5f);
+        // Stand it on the terrain surface a few m ahead, so the whole body frames
+        // in the spawn camera rather than floating at spawn height (y 8).
+        const glm::vec3 place{kClientSpawn.x, 5.0f, kClientSpawn.z - 4.0f};
+        // rootInverse now lives in the skinning matrices (Animator), so the model
+        // transform is just display placement.
         actor->transform = glm::translate(glm::mat4(1.0f), place) *
                            glm::scale(glm::mat4(1.0f), glm::vec3(norm)) * orient;
 

@@ -53,36 +53,68 @@ bool subtreeHasWeightedBone(const aiNode& node, const SkeletonInputs& in) {
     return false;
 }
 
-// Pre-order walk ⇒ parents always precede children in the flat array. A node
-// is a bone if it carries vertex weights, or if it is animated and sits above
-// weighted bones (Mixamo sometimes animates the armature root; without this
-// that motion — and the bind transforms it replaces — would be lost). Non-bone
-// nodes in between fold into the next bone's `pre` matrix instead.
-void buildSkeleton(const aiNode& node, int parentBone, const glm::mat4& prefix, float scale,
-                   const SkeletonInputs& in, SkeletalModel& out) {
+// Pre-order walk ⇒ parents always precede children in the flat array. A node is
+// a bone if it carries vertex weights, or if it is animated and sits above
+// weighted bones (Mixamo animates the armature root). We track the TRUE bind
+// global (accumulated node transforms from the scene root, scale-conjugated) for
+// every bone in `pre` temporarily; a post-pass converts it to the parent-bone-
+// relative bind. Deriving the relative transform from true globals telescopes to
+// identity at bind exactly — the earlier pre*localBind reconstruction accumulated
+// error down the chain (fingers drifted ~100x). `worldSoFar` is that running
+// global; it includes intermediate non-bone nodes automatically.
+void buildSkeleton(const aiNode& node, int parentBone, const glm::mat4& worldSoFar,
+                   float scale, const SkeletonInputs& in, SkeletalModel& out) {
     const std::string name = node.mName.C_Str();
+    const glm::mat4 world = worldSoFar * scaleTranslation(toGlm(node.mTransformation), scale);
     const auto offsetIt = in.offsets.find(name);
     const bool isBone = (offsetIt != in.offsets.end() ||
                          (in.channelNames.contains(name) && subtreeHasWeightedBone(node, in))) &&
                         !out.boneByName.contains(name); // duplicate names: first wins
+    int childParent = parentBone;
     if (isBone) {
         Bone bone;
         bone.name = name;
         bone.parent = parentBone;
-        bone.pre = prefix;
-        bone.localBind = scaleTranslation(toGlm(node.mTransformation), scale);
+        bone.pre = world; // stash the true bind global; relativized post-walk
+        bone.localBind = glm::mat4(1.0f);
         bone.offset = offsetIt != in.offsets.end() ? offsetIt->second : glm::mat4(1.0f);
-        const int index = static_cast<int>(out.bones.size());
+        childParent = static_cast<int>(out.bones.size());
+        out.boneByName.emplace(name, childParent);
         out.bones.push_back(std::move(bone));
-        out.boneByName.emplace(name, index);
-        for (unsigned c = 0; c < node.mNumChildren; ++c) {
-            buildSkeleton(*node.mChildren[c], index, glm::mat4(1.0f), scale, in, out);
-        }
-    } else {
-        const glm::mat4 next = prefix * scaleTranslation(toGlm(node.mTransformation), scale);
-        for (unsigned c = 0; c < node.mNumChildren; ++c) {
-            buildSkeleton(*node.mChildren[c], parentBone, next, scale, in, out);
-        }
+    }
+    for (unsigned c = 0; c < node.mNumChildren; ++c) {
+        buildSkeleton(*node.mChildren[c], childParent, world, scale, in, out);
+    }
+}
+
+// Reconstruct each bone's bind GLOBAL, then convert it to the parent-bone-relative
+// local stored in `localBind` (with `pre` reset to identity). resolve() composes
+// global[b] = global[parent] * localBind[b], telescoping back to the bind global,
+// so skinning[b] = rootInverse * global[b] * offset[b] collapses to rootInverse
+// (identity for this rig) at bind — reproducing the mesh exactly.
+//
+// The authoritative bind global for a WEIGHTED bone is inverse(offset): the offset
+// (inverse-bind) matrix comes straight from the skin deformer, so inverse(offset[b])
+// IS that bone's bind global in the mesh's own space, and inverse(offset)*offset is
+// identity by construction. The node-transform chain stashed in `pre` is NOT
+// reliable here: the armature root node carries a ~100x unit scale that Assimp bakes
+// into the offset matrices but distributes differently through node.mTransformation,
+// so accumulating nodes drifts — worse the deeper the bone (fingers went ~200x off).
+// Promoted bones (armature root: animated, no vertex weights, offset=identity) have
+// no deformer bind, so they keep their node-accumulated global from `pre`; they skin
+// nothing and telescope out of every weighted child's chain, so their value is inert.
+void relativizeSkeleton(SkeletalModel& out, const SkeletonInputs& in) {
+    std::vector<glm::mat4> bindGlobal(out.bones.size());
+    for (std::size_t b = 0; b < out.bones.size(); ++b) {
+        const Bone& bone = out.bones[b];
+        bindGlobal[b] = in.offsets.contains(bone.name) ? glm::inverse(bone.offset) : bone.pre;
+    }
+    for (std::size_t b = 0; b < out.bones.size(); ++b) {
+        const int p = out.bones[b].parent;
+        out.bones[b].localBind = p >= 0 ? glm::inverse(bindGlobal[static_cast<std::size_t>(p)]) *
+                                              bindGlobal[b]
+                                        : bindGlobal[b];
+        out.bones[b].pre = glm::mat4(1.0f);
     }
 }
 
@@ -283,9 +315,11 @@ std::optional<SkeletalModel> loadSkeletalModel(const std::filesystem::path& path
         return std::nullopt;
     }
 
-    // Pass 2: skeleton in pre-order (parents before children).
+    // Pass 2: skeleton in pre-order (parents before children), then relativize
+    // the stashed bind globals into parent-relative locals.
     SkeletalModel model;
     buildSkeleton(*scene->mRootNode, -1, glm::mat4(1.0f), opts.scale, inputs, model);
+    relativizeSkeleton(model, inputs);
     if (model.bones.size() > static_cast<std::size_t>(kMaxBones)) {
         log::error("skeletal model '{}': {} bones exceeds kMaxBones={}", path.string(),
                    model.bones.size(), kMaxBones);
