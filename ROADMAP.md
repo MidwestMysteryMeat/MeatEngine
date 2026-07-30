@@ -91,6 +91,38 @@ loopback transport.
 - [ ] tools/audit_assets.py: skeleton/scale/texture/attribution gate; --capture + VLM QA
 - [ ] Asset staging from verified CC-BY sources + ATTRIBUTION.md automation
 
+## Phase 6.5 — Entities on the wire (foundation for everything below)
+- [ ] EntityState in snapshots (id/archetype/pos/yaw/anim/health), reliable spawn/despawn,
+      client interpolation generalized from remote players; box/sprite render proxies
+- [ ] Ground item pickups (drop on death, E to take) — closes the Phase 4 leftover
+
+## Phase 6.6 — Ballistics & destruction ("Siege but further", ARCHITECTURE §game/ballistics)
+- [ ] Material props on blocks (hp, penCost, reinforced variants)
+- [ ] Penetrating hitscan: ray-march w/ penetration budget, attenuated damage through cover
+- [ ] Sparse voxel damage map (chip destruction); explosives apply radial voxel damage
+- [ ] Structural integrity flood-fill collapse (GameRules toggle)
+- [ ] Reinforcement via place-onto-face upgrade
+
+## Phase 6.7 — Weapon archetypes (ARCHITECTURE §game/weapons)
+- [ ] WeaponSpec: FireMode (semi/auto/burst/charge) + recoil/bloom model
+- [ ] Hitscan variants: shotgun pellets/spread, sniper budget, AR/SMG auto
+- [ ] Projectiles as server entities: RPG (impact AoE + voxel destruction), frag (fuse)
+- [ ] Deployables: claymore (proximity trap), reuses SpawnEntity path
+- [ ] Ammo types modifying ballistics (AP/HP)
+- [ ] Reference arsenal: pistol/SMG/shotgun/sniper/RPG/grenade/claymore/medkit
+
+## Phase 6.8 — AI & navigation (ARCHITECTURE §game/ai)
+- [ ] v1 voxel-native pathing (3D A*, jump/drop links, destruction-aware by construction)
+- [ ] Behaviors: Chaser, Shooter (voxel-sampled cover seek), Turret, Companion
+- [ ] Spawner volumes (editor tool) + wave logic; v2 = Recast/Detour tiled navmesh swap
+
+## Phase 6.9 — Game modes (ARCHITECTURE §game/modes)
+- [ ] GameMode framework: teams, friendly fire, respawn policy, win-condition hooks
+- [ ] Reference modes: Breach (attack/defend + destruction), Horde (PvE waves),
+      Deathmatch, Sandbox (open-world creative/survival: no win condition, per-player
+      streaming centers, persistent dedicated-server worlds)
+- [ ] `--mode <name>`, mode in Welcome; Lua-defined once scripting lands
+
 ## Phase 11.5 — Abilities & spawned actors (GAS-lite, see ARCHITECTURE §game/abilities)
 - [ ] Effect executors: Damage, AreaDamage (explosives + batch voxel ops), Heal, ApplyModifier
 - [ ] Projectiles (server-simulated, explode-on-impact into effects)

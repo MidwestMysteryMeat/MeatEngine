@@ -333,6 +333,114 @@ than `lastCmdTick`; corrections under 1 mm are ignored. Engine composes them by 
 Game = ServerSim + Client over LoopbackPair; Host = same + ENet listen;
 Join = Client + EnetClientTransport; Dedicated = ServerSim + ENet, no window/renderer.
 
+### game/ballistics — planned (material penetration + destruction, "Siege but further")
+The voxel world makes AAA destruction tech almost free — the plan leans into it:
+
+- **Materials on blocks.** `BlockDef` grows `MaterialProps { float hp; float penCost;
+  BlockId debris; }`. Wood is cheap to shoot through, concrete expensive, reinforced
+  steel nearly opaque. All data — devs define materials, not code.
+- **Penetrating hitscan.** A shot is a **ray-march with a penetration budget** (from the
+  weapon's `ItemDef`): each solid voxel crossed subtracts its material's `penCost`;
+  damage delivered past cover scales with remaining budget. One code path yields COD
+  wallbangs, shooting through floors, and shotguns that stop at drywall while AP rounds
+  keep going. Player capsules behind N layers of cover take attenuated damage.
+- **Voxel HP (chip destruction).** Blocks accumulate damage in a **sparse server-side
+  damage map** (voxel → remaining hp; only touched voxels stored). A block breaks when
+  hp ≤ 0 → existing VoxelOp broadcast. Bullets chip murder-holes through walls
+  progressively; explosives (AreaDamage) apply radial damage to every voxel in range.
+  Damage map entries decay-save into the edit overlay only when a block actually breaks.
+- **Structural integrity (the "further").** Optional per-GameRules: after edits, a
+  bounded flood-fill from the destroyed region checks support; voxel islands with no
+  path to ground **collapse** (batch VoxelOps → falling debris entities later). Blow the
+  supports, drop the floor — beyond what Siege ships. Off by default in creative-style
+  rules, on in destruction modes.
+- **Reinforcement.** Placing a block *onto* an existing block face of the same id
+  upgrades it to its reinforced variant (higher hp/penCost) — the Siege wall-reinforce
+  loop using the existing place mechanic.
+- GameRules additions: `penetration`, `blockDamage`, `structuralIntegrity` toggles +
+  scale factors. Server-only logic; clients just see ops.
+
+### game/weapons — planned (archetype-driven variety, all data)
+`ItemDef` weapon fields grow into a `WeaponSpec` devs author per weapon (Lua later):
+
+- **`FireMode`**: `SemiAuto | Auto | Burst(n) | Charge` — cadence/trigger behavior.
+- **`DeliveryKind`**:
+  - `Hitscan { pellets=1; spreadDeg; penetrationBudget; falloffStart/End }` — 1 pellet
+    tight spread = **sniper/DMR** (high budget = deep wallbangs), 8-12 pellets wide
+    spread low budget = **shotgun**, 1 pellet medium spread auto = **AR/SMG**. Same code
+    path as today's pistol, parameterized.
+  - `Projectile { speed; gravity; fuse; onImpact: EffectList }` — server-simulated
+    entities (ride the entity snapshot path). **RPG** = fast projectile, AreaDamage +
+    batch voxel destruction on impact. **Grenade** = lobbed, gravity + fuse. Slow
+    visible projectiles double as **spells** (a fireball is an RPG with a different
+    sprite and effect list — the engine doesn't know the difference; presentation +
+    effect data decide fantasy vs military).
+  - `Deployable { entityArchetype; armTime }` — places a server entity on the aimed
+    surface: **claymore** (proximity-trigger trap entity → directional AreaDamage),
+    sensor, turret (ability layer's SpawnEntity reused). Placement uses the block-place
+    validity checks.
+- **Recoil/spread model**: per-weapon bloom (spread grows per shot, recovers) + vertical
+  kick pattern — server applies to hit rays (authoritative), client mirrors for feel.
+- **Ammo types** (extends `ammoItem`): different ammo swaps ballistic params (AP = more
+  penetration budget, HP = more flesh damage less pen) — Tarkov-style depth for free
+  since ammo is already an item.
+- Reference arsenal shipped with the slice: pistol (exists), SMG, shotgun, sniper,
+  RPG, frag grenade, claymore, medkit — one of each archetype so every code path has a
+  proving item and devs have templates to copy.
+
+### game/entities on the wire — planned (unblocks AI, pickups, turrets, projectiles)
+`SnapshotMsg` grows an `entities` vector alongside players:
+`EntityState { EntityId id; u8 archetype; vec3 pos; float yaw; u8 anim; float health; }`.
+Server owns entity logic; clients interpolate exactly like remote players (same 100 ms
+buffer code, generalized). Archetype tables (client-side) map to render proxies — box
+today, models/sprites after the asset phase. This single wire change unblocks: ground
+item pickups, projectiles, turrets, companions, and PvE enemies. Reliable spawn/despawn
+events; unreliable state in snapshots; interest management (only entities near the
+player) when counts grow.
+
+### game/ai + navigation — planned
+- **v1: voxel-native navigation.** 3D A* / hierarchical flood-fill directly on the voxel
+  grid (walkable = solid below + 2 air above), with jump/drop links. Destruction
+  integrates natively: a wall breached by gunfire is instantly pathable — AI flows
+  through the new hole with zero extra bookkeeping. Path caching per region,
+  invalidated by the same dirty-chunk signal meshing uses.
+- **v2: Recast/Detour (zlib, adoptable)** tiled navmesh rebuilt per dirty chunk from
+  collider geometry (the OpenMW per-cell pattern) — smoother paths, off-mesh links,
+  crowds, at the cost of a dependency. The interface (`findPath(a, b)`) stays identical
+  so v1→v2 is a swap.
+- **Behaviors (server-side, data-tuned, Lua-extensible later):** `Chaser` (melee rush),
+  `Shooter` (range + cover seek: sample nearby voxels for line-of-sight breaks — cover
+  is queryable because the world is voxels), `Turret` (static, LoS target-nearest),
+  `Companion` (follow owner / attack owner's target). PvE waves/spawner volumes are an
+  editor tool + Lua hook.
+
+### game/building placement — planned (runtime construction beyond single blocks)
+- **Prefab placement:** rooms/pieces authored in the Room Designer save as voxel
+  prefabs; at runtime a build tool ghosts the prefab (client preview), validates
+  placement server-side (space empty, supported, not entombing anyone — the existing
+  checks generalized), then applies as batch VoxelOps. Fortnite-style ramps/walls/floors
+  are just tiny prefabs; barricades and turret mounts likewise.
+- **Costs:** prefab placement consumes inventory materials per its voxel count under
+  the mined-blocks economy; free in creative rules.
+- Editor and runtime building share the template format from dungeon v2 stitching —
+  one prefab pipeline, three consumers (editor stamps, dungeon generator, build tool).
+
+### game/modes — planned (PvP / co-op / PvE: devs pick, like everything else)
+`GameMode` is data + Lua: team assignment (FFA / two-team / co-op-vs-AI), friendly
+fire, respawn rules (timer / waves / elimination), win condition hooks (`onKill`,
+`onObjective`, `checkWin`), loadout policy, and which GameRules toggles apply.
+Engine ships reference modes: **Breach** (attack/defend a room with destruction +
+reinforcement — the Siege-like showcase), **Horde** (co-op PvE waves from spawner
+volumes), **Deathmatch** (FFA), and **Sandbox** (open world: no teams or win
+condition, infinite-economy GameRules preset, free building + exploration across the
+streamed terrain+dungeon world — the persistent-server co-op default, and the mode
+where the Room Designer doubles as a survival-creative tool). Open-world support
+leans on what already exists — seeded infinite streaming, persistent edit overlay in
+saves, dedicated `--server` — plus planned: per-player streaming centers (removes the
+first-player-only TODO), larger view radius option, and day/night-style ambient
+scripting via Lua. Mode is chosen at host time (`--mode breach`), travels in Welcome,
+and is Lua-defined so games ship their own.
+
 ### game/abilities — planned (GAS-inspired, kept small)
 A data-driven ability layer in the spirit of UE's GameplayAbilitySystem, without the
 framework weight. Design commitments (implementation is a roadmap phase):
