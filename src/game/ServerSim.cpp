@@ -1,6 +1,7 @@
 #include "game/ServerSim.h"
 #include "engine/core/Log.h"
 #include "engine/core/ViewMath.h"
+#include "engine/net/DeltaSnapshot.h"
 #include "game/DungeonGen.h"
 #include "game/Pathfinder.h"
 
@@ -796,6 +797,9 @@ void ServerSim::handlePacket(Transport& transport, PeerId peer,
     case MsgType::Command: {
         CommandMsg msg;
         if (!decode(msg, reader)) return;
+        // Snapshot ack is independent of the command tick — advance it even for a
+        // stale/duplicate command so a resent packet never rolls the baseline back.
+        player.ackedSnapshotTick = std::max(player.ackedSnapshotTick, msg.ackSnapshotTick);
         // Strictly-increasing after the first accepted command; hasCmd closes
         // the tick-0 replay window (tick 0 would else re-pass the != 0 guard).
         if (player.hasCmd && msg.cmd.tick <= player.lastCmdTick) return; // stale/replayed
@@ -1177,9 +1181,26 @@ void ServerSim::broadcastSnapshot(Transport& transport) {
         snap.entities.push_back({e.id, static_cast<std::uint8_t>(e.type), e.pos, e.yaw, 0,
                                  0.0f, e.item});
     }
+    // Store this snapshot as a baseline candidate, then evict the oldest so the
+    // ring stays ~1.6 s deep (32 @ 20 Hz). Stored before the per-peer lastCmdTick
+    // mutation below — lastCmdTick is never diffed, so the baseline copy is fine.
+    m_snapshotRing[snap.tick] = snap;
+    while (m_snapshotRing.size() > 32) m_snapshotRing.erase(m_snapshotRing.begin());
+
+    static const SnapshotMsg kEmptyBaseline{}; // tick 0, no records => keyframe
     for (auto& [peer, player] : m_players) {
         snap.lastCmdTick = player->lastCmdTick; // per-recipient ack of their own input
-        transport.send(peer, pack(snap), false);
+        // Baseline = the snapshot this client last acked, if we still hold it;
+        // otherwise the empty keyframe (cold start or ack aged out of the ring).
+        const SnapshotMsg* base = &kEmptyBaseline;
+        if (player->ackedSnapshotTick != 0) {
+            const auto it = m_snapshotRing.find(player->ackedSnapshotTick);
+            if (it != m_snapshotRing.end()) base = &it->second;
+        }
+        ByteWriter w;
+        w.write(static_cast<std::uint8_t>(MsgType::DeltaSnapshot));
+        encodeDelta(snap, *base, w);
+        transport.send(peer, std::move(w).take(), false); // still unreliable
     }
 }
 

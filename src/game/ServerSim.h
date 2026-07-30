@@ -13,6 +13,7 @@
 
 #include <nlohmann/json_fwd.hpp>
 
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -48,6 +49,9 @@ private:
         CharacterController controller;
         PlayerCommand lastCmd{};
         std::uint64_t lastCmdTick = 0;
+        // Newest snapshot tick this client has acked (piggybacked on CommandMsg).
+        // Monotonic. Selects the delta baseline in broadcastSnapshot; 0 => keyframe.
+        std::uint64_t ackedSnapshotTick = 0;
         bool hasCmd = false; // false until the first command; closes tick-0 replay
         bool spawned = false;
         bool helloDone = false; // guards Welcome/loadout against Hello replay
@@ -174,6 +178,11 @@ private:
     // die with the block; pristine blocks are implicit full-hp.
     std::unordered_map<glm::ivec3, float, IVec3Hash> m_voxelDamage;
     std::unordered_map<PeerId, std::unique_ptr<Player>> m_players;
+    // Ring of the last N emitted snapshots (tick -> full state), shared across
+    // clients because there is no interest management yet. Each client's delta
+    // baseline is ring[player->ackedSnapshotTick]. Ordered map so we can evict
+    // the oldest (begin()) cheaply. N = 32 (~1.6 s at 20 Hz).
+    std::map<std::uint64_t, SnapshotMsg> m_snapshotRing;
     BlockPalette m_palette;
     GameRules m_rules;
     ItemRegistry m_items;

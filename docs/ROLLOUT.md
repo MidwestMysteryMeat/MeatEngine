@@ -40,9 +40,16 @@ OSS we lean on (license-verified in docs/ENGINE_REUSE_SURVEY.md) and its verific
 > (one workstream at a time, commit before the next) or give each agent an isolated worktree.
 
 ### Roll 3 — Netcode hardening (PvP path)
-- [ ] **4. Delta-compressed snapshots + ack** — per-client baseline diff (design in
-  docs/NETCODE_DELTA_COMPRESSION.md) on the reliable.io ack buffer. OSS: Cafu (MIT), reliable.io
-  (BSD-3). Gate: 2-process MP test still passes; bandwidth drops; fix the `peekType` bound bug.
+- [x] **4. Delta-compressed snapshots + ack** — DONE. Per-client baseline ring (last 32 emitted
+  snapshots) + per-field changed-bitmask codec (src/engine/net/DeltaSnapshot.{h,cpp}); snapshot ack
+  piggybacked on CommandMsg (client→server), baseline = last ACKED snapshot so unreliable-channel
+  loss is safe, keyframe (baselineTick 0) = cold-start/recovery. Client reconstructs a full
+  SnapshotMsg then calls the unchanged applySnapshot (prediction/rewind/interp/prune untouched).
+  Fixed the `peekType` upper-bound bug (rejected >VoxelOp → Inventory/BatchVoxelOp/DeltaSnapshot
+  un-peekable). Gate met: 2-process MP test passes (joiner welcomed as player 2, renders host's
+  seed-777 world + remote player via delta reconstruction); steady-state ~1099B full → ~33B delta
+  (~97% smaller). OSS: Cafu (MIT), technique-only (typed bitmask, not XOR+RLE). Interest management
+  + lag comp stay in item 5 (separate).
 - [ ] **5. Interest management** (Torque3D scope→priority→delta, MIT) and **6. lag-compensated
   hitscan** (O3DE NetworkTime pattern). Gate: rewind hits register; distant entities culled.
 

@@ -2,6 +2,7 @@
 
 #include "engine/core/Log.h"
 #include "engine/core/TickRate.h"
+#include "engine/net/DeltaSnapshot.h"
 #include "engine/physics/CharacterController.h"
 #include "engine/physics/PhysicsWorld.h"
 #include "engine/voxel/VoxelWorld.h"
@@ -26,7 +27,7 @@ void Client::sendCommand(const PlayerCommand& cmd) {
     if (!m_transport) return;
     m_unacked.push_back(cmd);
     while (m_unacked.size() > kMaxUnacked) m_unacked.pop_front();
-    m_transport->send(1, pack(CommandMsg{cmd}), false);
+    m_transport->send(1, pack(CommandMsg{cmd, m_ackTick}), false); // piggyback snapshot ack
 }
 
 void Client::sendVoxelOp(glm::ivec3 voxel, std::uint16_t block) {
@@ -68,6 +69,31 @@ void Client::pump(VoxelWorld& voxels, PhysicsWorld& physics, CharacterController
             while (!m_unacked.empty() && m_unacked.front().tick <= snap.lastCmdTick)
                 m_unacked.pop_front();
             applySnapshot(snap, physics, player);
+            break;
+        }
+        case MsgType::DeltaSnapshot: {
+            // Peek the baseline tick (non-consuming copy), pick the matching
+            // snapshot out of our ring, reconstruct the FULL snapshot, then hand
+            // it to the unchanged applySnapshot path.
+            const auto baseTick = peekDeltaBaseline(reader);
+            if (!baseTick) break;
+            static const SnapshotMsg kEmpty{};
+            const SnapshotMsg* base = &kEmpty;
+            if (*baseTick != 0) {
+                auto it = m_snapRing.find(*baseTick);
+                if (it == m_snapRing.end()) break; // baseline lost: wait for a keyframe
+                base = &it->second;
+            }
+            SnapshotMsg snap;
+            if (!decodeDelta(snap, *base, reader)) break;
+            if (snap.tick <= m_latestSnapshotTick) break; // unreliable channel: drop stale
+            m_latestSnapshotTick = snap.tick;
+            m_ackTick = snap.tick;                        // piggybacked on the next CommandMsg
+            m_snapRing[snap.tick] = snap;                 // keep last 32 as baselines
+            while (m_snapRing.size() > 32) m_snapRing.erase(m_snapRing.begin());
+            while (!m_unacked.empty() && m_unacked.front().tick <= snap.lastCmdTick)
+                m_unacked.pop_front();
+            applySnapshot(snap, physics, player); // UNCHANGED reconciliation path
             break;
         }
         case MsgType::Inventory: {

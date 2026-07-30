@@ -75,10 +75,11 @@ bool decode(WelcomeMsg& msg, ByteReader& r) {
 
 void encode(const CommandMsg& msg, ByteWriter& w) {
     encode(msg.cmd, w);
+    w.write(msg.ackSnapshotTick);
 }
 
 bool decode(CommandMsg& msg, ByteReader& r) {
-    return decode(msg.cmd, r);
+    return decode(msg.cmd, r) && r.read(msg.ackSnapshotTick);
 }
 
 void encode(const PlayerState& state, ByteWriter& w) {
@@ -176,7 +177,7 @@ std::optional<MsgType> peekType(std::span<const std::byte> packet) {
     }
     const auto raw = static_cast<std::uint8_t>(packet.front());
     if (raw < static_cast<std::uint8_t>(MsgType::Hello) ||
-        raw > static_cast<std::uint8_t>(MsgType::VoxelOp)) {
+        raw > static_cast<std::uint8_t>(MsgType::DeltaSnapshot)) {
         return std::nullopt;
     }
     return static_cast<MsgType>(raw);

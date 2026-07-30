@@ -5,6 +5,7 @@
 #include "game/Inventory.h"
 
 #include <deque>
+#include <map>
 #include <string>
 #include <unordered_map>
 
@@ -67,6 +68,12 @@ private:
     std::deque<PlayerCommand> m_unacked; // commands newer than the server's ack
     std::unordered_map<PeerId, RemoteHistory> m_remotes;
     std::vector<EntityState> m_entities;
+    // Newest snapshot tick we hold; piggybacked to the server as the delta-baseline
+    // ack on every CommandMsg. 0 until the first snapshot lands (server keyframes).
+    std::uint64_t m_ackTick = 0;
+    // Ring of reconstructed snapshots (tick -> full state) usable as delta
+    // baselines. Symmetric with the server's ring; 32 deep (~1.6 s at 20 Hz).
+    std::map<std::uint64_t, SnapshotMsg> m_snapRing;
 };
 
 } // namespace meat

@@ -287,7 +287,16 @@ loopback transport.
 - [ ] Access control: server password, kick/ban by address, onAuthenticate hook
 
 ## Phase 12 — PvP hardening
-- [ ] Lag-compensated hitscan (server rewind), delta-compressed snapshots, interest management
+- [x] Delta-compressed snapshots + ack (MsgType::DeltaSnapshot): per-client baseline ring
+      (last 32 emitted snapshots), per-field changed-bitmask codec over ByteStream
+      (src/engine/net/DeltaSnapshot.{h,cpp}), snapshot ack piggybacked on CommandMsg,
+      baseline = last ACKED snapshot so unreliable-channel loss is safe, keyframe
+      (baselineTick 0) = cold-start/recovery. Client reconstructs a full SnapshotMsg then
+      calls the unchanged applySnapshot (prediction/rewind/interp/prune intact). Fixed the
+      peekType() upper-bound bug (rejected >VoxelOp, so Inventory/BatchVoxelOp/DeltaSnapshot
+      were un-peekable). 2-process MP test passes; steady-state ~1099B full → ~33B delta
+      (~97% smaller). Technique from Cafu (MIT). Interest mgmt + lag comp remain below.
+- [ ] Lag-compensated hitscan (server rewind), interest management
 - [ ] 4–8 player arena on editor-built maps
 
 ## Phase 13 — OSS engine borrowings (docs/ENGINE_REUSE_SURVEY.md)

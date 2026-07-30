@@ -20,7 +20,7 @@
 namespace meat {
 
 enum class MsgType : std::uint8_t {
-    Hello = 1, Welcome, Command, Snapshot, VoxelOp, Inventory, BatchVoxelOp
+    Hello = 1, Welcome, Command, Snapshot, VoxelOp, Inventory, BatchVoxelOp, DeltaSnapshot
 };
 
 struct HelloMsg {
@@ -39,6 +39,10 @@ struct WelcomeMsg {
 
 struct CommandMsg {
     PlayerCommand cmd;
+    // Piggybacked snapshot ack: the newest snapshot tick the client holds and can
+    // use as a delta baseline. 0 = none yet (server sends a keyframe). Rides every
+    // command (60 Hz) so the server's per-client baseline stays fresh for free.
+    std::uint64_t ackSnapshotTick = 0;
 };
 
 struct PlayerState {
