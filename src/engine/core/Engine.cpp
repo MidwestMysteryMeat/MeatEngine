@@ -1,6 +1,7 @@
 #include "engine/core/Engine.h"
 #include "engine/core/Log.h"
 #include "engine/core/ViewMath.h"
+#include "engine/net/HttpTiny.h"
 
 #include <GLFW/glfw3.h>
 #include <glm/common.hpp>
@@ -339,13 +340,165 @@ void Engine::loadEditorExtras() {
               m_seedVolumes.size());
 }
 
-int Engine::run(const EngineConfig& config) {
+bool Engine::runMenu(EngineConfig& config) {
+    LanDiscovery discovery;
+    discovery.start();
+    m_window.setRelativeMouse(false);
+    std::snprintf(m_menuMaster, sizeof(m_menuMaster), "%s", config.master.c_str());
+
+    bool chosen = false;
+    while (!m_window.shouldClose() && !chosen) {
+        m_input.beginFrame();
+        m_window.pollEvents();
+
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        Camera idle; // empty world render = fog-colored backdrop for the menu
+        m_renderer.beginFrame(idle, 0.0f);
+        m_renderer.endFrame();
+
+        const ImGuiViewport* view = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos({view->Size.x * 0.5f, view->Size.y * 0.5f}, ImGuiCond_Always,
+                                {0.5f, 0.5f});
+        ImGui::SetNextWindowSize({560, 0});
+        ImGui::Begin("MeatEngine", nullptr,
+                     ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize);
+
+        if (ImGui::Button("Singleplayer", {160, 0})) {
+            config.mode = EngineConfig::Mode::Game;
+            chosen = true;
+        }
+        ImGui::Separator();
+
+        ImGui::InputText("server name", m_menuName, sizeof(m_menuName));
+        ImGui::SameLine();
+        if (ImGui::Button("Host", {100, 0})) {
+            config.mode = EngineConfig::Mode::Host;
+            config.serverName = m_menuName;
+            chosen = true;
+        }
+        ImGui::Separator();
+
+        ImGui::TextUnformatted("LAN servers");
+        const std::vector<ServerAd> lan = discovery.servers();
+        if (lan.empty()) ImGui::TextDisabled("  (none found — beacons appear within ~1 s)");
+        for (std::size_t i = 0; i < lan.size(); ++i) {
+            const ServerAd& ad = lan[i];
+            ImGui::PushID(static_cast<int>(i));
+            ImGui::Text("%s  %s:%u  %d/%d", ad.name.c_str(), ad.address.c_str(), ad.port,
+                        ad.players, ad.maxPlayers);
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Join")) {
+                config.mode = EngineConfig::Mode::Join;
+                config.address = ad.address;
+                config.port = ad.port;
+                chosen = true;
+            }
+            ImGui::PopID();
+        }
+        ImGui::Separator();
+
+        ImGui::InputText("master", m_menuMaster, sizeof(m_menuMaster));
+        ImGui::SameLine();
+        if (ImGui::Button("Refresh")) { // blocking by design: one click, 3 s cap
+            std::string host = m_menuMaster;
+            std::uint16_t port = 27000;
+            if (const auto colon = host.find(':'); colon != std::string::npos) {
+                port = static_cast<std::uint16_t>(std::atoi(host.c_str() + colon + 1));
+                host.resize(colon);
+            }
+            m_internetServers.clear();
+            if (const auto body = httpGet(host, port, "/servers"))
+                m_internetServers = parseServerList(*body);
+        }
+        for (std::size_t i = 0; i < m_internetServers.size(); ++i) {
+            const ServerAd& ad = m_internetServers[i];
+            ImGui::PushID(1000 + static_cast<int>(i));
+            ImGui::Text("%s  %s:%u  %d/%d", ad.name.c_str(), ad.address.c_str(), ad.port,
+                        ad.players, ad.maxPlayers);
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Join")) {
+                config.mode = EngineConfig::Mode::Join;
+                config.address = ad.address;
+                config.port = ad.port;
+                chosen = true;
+            }
+            ImGui::PopID();
+        }
+        ImGui::Separator();
+
+        ImGui::InputText("ip:port", m_menuAddr, sizeof(m_menuAddr));
+        ImGui::SameLine();
+        if (ImGui::Button("Direct join")) {
+            std::string addr = m_menuAddr;
+            config.port = 26000;
+            if (const auto colon = addr.find(':'); colon != std::string::npos) {
+                config.port = static_cast<std::uint16_t>(std::atoi(addr.c_str() + colon + 1));
+                addr.resize(colon);
+            }
+            config.address = addr;
+            config.mode = EngineConfig::Mode::Join;
+            chosen = true;
+        }
+        ImGui::End();
+
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        m_window.swap();
+    }
+    discovery.stop();
+    if (chosen) {
+        config.master = m_menuMaster;
+        m_window.setRelativeMouse(true);
+    }
+    return chosen;
+}
+
+void Engine::startHosting(const EngineConfig& config) {
+    m_beacon.start(config.port, config.serverName);
+    if (config.master.empty()) return;
+    std::string host = config.master;
+    std::uint16_t port = 27000;
+    if (const auto colon = host.find(':'); colon != std::string::npos) {
+        port = static_cast<std::uint16_t>(std::atoi(host.c_str() + colon + 1));
+        host.resize(colon);
+    }
+    m_stopHeartbeat = false;
+    m_masterHeartbeat = std::thread([this, host, port, config] {
+        while (!m_stopHeartbeat) {
+            const int players = m_server ? m_server->playerCount() : 0;
+            const std::string body =
+                std::format(R"({{"name":"{}","port":{},"players":{},"maxPlayers":8}})",
+                            config.serverName, config.port, players);
+            httpPost(host, port, "/announce", body);
+            for (int i = 0; i < 300 && !m_stopHeartbeat; ++i) // 30 s in stoppable slices
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    });
+}
+
+void Engine::stopHosting() {
+    m_beacon.stop();
+    m_stopHeartbeat = true;
+    if (m_masterHeartbeat.joinable()) m_masterHeartbeat.join();
+}
+
+int Engine::run(const EngineConfig& configIn) {
+    EngineConfig config = configIn;
     if (config.mode == EngineConfig::Mode::Dedicated) return runDedicated(config);
 
-    if (!initClientSystems() || !initNetwork(config)) {
+    if (!initClientSystems()) {
         log::error("engine init failed");
         return 1;
     }
+    if (config.mode == EngineConfig::Mode::Browse && !runMenu(config)) return 0;
+    if (!initNetwork(config)) {
+        log::error("network init failed");
+        return 1;
+    }
+    if (m_server && m_enetHost) startHosting(config);
     loadEditorExtras();
     log::info("MeatEngine up — mode {}, 60 Hz tick, {}³ chunks @ {} m voxels",
               static_cast<int>(config.mode), kChunkSize, kVoxelSize);
@@ -384,7 +537,10 @@ int Engine::run(const EngineConfig& config) {
                 (m_selectedSlot + Inventory::kHotbar - (scroll % Inventory::kHotbar)) %
                 Inventory::kHotbar);
 
-        if (m_server) m_server->pump(*m_serverTransport);
+        if (m_server) {
+            m_server->pump(*m_serverTransport);
+            m_beacon.update(m_server->playerCount(), 8);
+        }
         m_client.pump(m_voxels, m_physics, m_player);
         if (!m_clientWorldReady && m_client.welcomed()) setupClientWorld();
 
@@ -414,6 +570,7 @@ int Engine::run(const EngineConfig& config) {
         m_window.swap();
     }
 
+    stopHosting();
     if (m_server) {
         m_server->saveTo("saves/autosave.json"); // graceful exit = autosave
         saveEditorExtras();
@@ -431,14 +588,19 @@ int Engine::runDedicated(const EngineConfig& config) {
     m_enetHost = std::make_unique<EnetServerTransport>();
     if (!m_enetHost->listen(config.port)) return 1;
     m_server = std::make_unique<ServerSim>();
-    if (!m_server->init(config.seed)) return 1;
-    log::info("dedicated server on port {} (seed {})", config.port, config.seed);
+    const bool booted = config.loadPath.empty() ? m_server->init(config.seed)
+                                                : m_server->initFromSave(config.loadPath);
+    if (!booted) return 1;
+    startHosting(config);
+    log::info("dedicated server '{}' on port {} (seed {})", config.serverName, config.port,
+              config.seed);
 
     using Clock = std::chrono::steady_clock;
     auto next = Clock::now();
     for (;;) { // terminated externally; graceful shutdown comes with the save system
         m_server->pump(*m_enetHost);
         m_server->tick(*m_enetHost);
+        m_beacon.update(m_server->playerCount(), 8);
         next += std::chrono::microseconds(16667);
         std::this_thread::sleep_until(next);
     }

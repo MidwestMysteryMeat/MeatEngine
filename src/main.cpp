@@ -16,6 +16,12 @@ meat::EngineConfig parseArgs(int argc, char** argv) {
         const auto next = [&]() -> const char* { return i + 1 < argc ? argv[++i] : nullptr; };
         if (arg == "--host") {
             config.mode = Mode::Host;
+        } else if (arg == "--play") {
+            config.mode = Mode::Game; // straight to singleplayer, skip the menu
+        } else if (arg == "--name") {
+            if (const char* n = next()) config.serverName = n;
+        } else if (arg == "--master") {
+            if (const char* m = next()) config.master = m;
         } else if (arg == "--join") {
             config.mode = Mode::Join;
             if (const char* addr = next()) {

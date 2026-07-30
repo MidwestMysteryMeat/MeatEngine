@@ -70,6 +70,17 @@ loopback transport.
       replication in Welcome)
 - [ ] Themes/loot rooms; key/lock progression w/ solver acceptance test
 
+## Phase 6.95 — Session discovery ✅ (server lists / LAN / host anywhere)
+- [x] LAN: UDP broadcast beacon (1 Hz, MEAT/v1 wire) + browser-side discovery w/ 5 s TTL
+- [x] Master server: self-hostable tools/master_server.py (announce/list, source-IP
+      authoritative, 60 s TTL) + HttpTiny client + 30 s host heartbeat thread
+- [x] Server-browser main menu (no-args launch): Singleplayer / Host / live LAN list /
+      master list w/ refresh / direct ip:port; CLI flags bypass (--play/--host/--join/
+      --server/--name/--master)
+- [x] Verified: beacon on the wire (raw UDP listener), master round trip (host announce
+      → HTTP /servers lists it), menu stability
+- [ ] Reachability diagnostics + access control (Phase 11.7), UPnP/punch/Steam providers
+
 ## Phase 7 — Models & animation
 - [ ] Assimp FBX/OBJ/GLB static + PNG/JPG materials
 - [ ] Skeletal: canonical Mixamo skeleton, shared clips, one animated NPC; viewmodel idle/fire
@@ -77,6 +88,13 @@ loopback transport.
 ## Phase 8 — Scripting
 - [ ] Lua (sol2) server-side gameplay: entity spawn, voxel edit, player/inventory/weapons,
       events, dungeon params; weapons/pickups/dummy enemy in assets/scripts/
+
+## Phase 8.5 — Editor IDE panels (ARCHITECTURE §editor/ IDE)
+- [ ] Code editor panel (ImGuiColorTextEdit, MIT): Lua editing + save-as-hot-reload
+      through ScriptHost; live-coding without alt-tab
+- [ ] Lua console/REPL panel (host-gated server-side eval)
+- [ ] Asset browser panel: assets/ tree, texture thumbnails, type-routed open
+      (script→editor, prefab→placement ghost), file-watcher refresh
 
 ## Phase 9 — Audio + polish
 - [ ] miniaudio: footsteps, gunshot, UI; README/build docs pass
@@ -136,6 +154,15 @@ loopback transport.
 - [ ] SpawnEntity behaviors: placeable Turret (target-nearest + LoS), Companion (follow/attack)
 - [ ] Lua-defined abilities bound to items (grenade, medkit-as-ability) and to classes
 - [ ] Entity states join snapshots (shared path with player states)
+
+## Phase 11.7 — Transport providers (dev matrix, ARCHITECTURE §net/discovery)
+- [ ] UPnP port mapping via miniupnpc (MIT) at host time
+- [ ] Master-coordinated UDP hole punching (simultaneous-open through ENet)
+- [ ] GameNetworkingSockets provider (BSD-3): encrypted transport + Steam Datagram
+      Relay path for Steam builds — alternate Transport impl, dev-selected
+- [ ] Reachability diagnostics: master probe-back + LAN self-check, host UI verdict
+      ("LAN-only — forward UDP <port>" vs "reachable"); registry outage degrades loudly
+- [ ] Access control: server password, kick/ban by address, onAuthenticate hook
 
 ## Phase 12 — PvP hardening
 - [ ] Lag-compensated hitscan (server rewind), delta-compressed snapshots, interest management

@@ -5,6 +5,7 @@
 #include "engine/core/JobQueue.h"
 #include "engine/core/TickRate.h"
 #include "engine/net/EnetTransport.h"
+#include "engine/net/LanDiscovery.h"
 #include "engine/net/LoopbackTransport.h"
 #include "engine/physics/CharacterController.h"
 #include "engine/physics/PhysicsWorld.h"
@@ -16,19 +17,23 @@
 #include "game/ServerSim.h"
 #include "game/WorldGen.h"
 
+#include <atomic>
 #include <memory>
 #include <string>
+#include <thread>
 #include <unordered_map>
 
 namespace meat {
 
 struct EngineConfig {
-    enum class Mode { Game, Host, Join, Dedicated };
-    Mode mode = Mode::Game;
+    enum class Mode { Browse, Game, Host, Join, Dedicated };
+    Mode mode = Mode::Browse; // no CLI mode → server-browser menu
     std::string address = "127.0.0.1"; // Join target
     std::uint16_t port = 26000;
     std::uint32_t seed = 1337;
-    std::string loadPath; // --load <file>: start the server from a save
+    std::string loadPath;   // --load <file>: start the server from a save
+    std::string serverName = "MeatEngine Server";
+    std::string master;     // --master host[:port] — announce/browse internet list
 };
 
 // Composition root. The simulation authority is always a ServerSim; this class
@@ -41,7 +46,10 @@ public:
 
 private:
     bool initClientSystems();
+    bool runMenu(EngineConfig& config); // Browse mode; false = user quit
     bool initNetwork(const EngineConfig& config);
+    void startHosting(const EngineConfig& config); // beacon + master heartbeat
+    void stopHosting();
     void setupClientWorld();                    // after Welcome: seed-matched mirror
     int runDedicated(const EngineConfig& config);
     void simulateClientTick(const PlayerCommand& frameCmd);
@@ -80,6 +88,14 @@ private:
     std::uint8_t m_selectedSlot = 0; // hotbar index, sent in every command
     bool m_showBackpack = false;     // Tab
     bool m_imguiReady = false;
+
+    LanBeacon m_beacon;                 // hosting: LAN presence
+    std::thread m_masterHeartbeat;      // hosting: --master announce loop
+    std::atomic<bool> m_stopHeartbeat{false};
+    char m_menuName[64] = "MeatEngine Server";
+    char m_menuAddr[64] = "127.0.0.1:26000";
+    char m_menuMaster[128] = "";
+    std::vector<ServerAd> m_internetServers; // last master refresh
 
     std::unique_ptr<IEditor> m_editor; // injected by main.cpp; may be null
     bool m_editorActive = false;

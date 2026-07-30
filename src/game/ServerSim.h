@@ -35,6 +35,7 @@ public:
     std::uint32_t seed() const { return m_seed; }
     std::uint64_t currentTick() const { return m_tick; }
     const GameRules& rules() const { return m_rules; }
+    int playerCount() const { return static_cast<int>(m_players.size()); }
 
 private:
     struct Player {

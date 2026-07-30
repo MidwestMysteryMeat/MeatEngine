@@ -323,6 +323,72 @@ struct GameRules {
 Rules live on the server, travel in `Welcome`, and are dev-set (config/CLI now, Lua
 later). Client UI adapts to the model; server logic branches on the flags.
 
+### net/discovery — session discovery (LAN + internet)
+```cpp
+struct ServerAd { std::string name; std::string address; std::uint16_t port = 0;
+                  int players = 0; int maxPlayers = 0; };
+inline constexpr std::uint16_t kLanBeaconPort = 26010;
+
+class LanBeacon {      // server side: ~1 Hz UDP broadcast to 255.255.255.255:26010
+    bool start(std::uint16_t gamePort, const std::string& name);
+    void update(int players, int maxPlayers); // call per frame; rate-limits internally
+    void stop();
+};
+class LanDiscovery {   // menu side: listens, dedupes by addr:port, expires after 5 s
+    bool start();
+    std::vector<ServerAd> servers() const;
+    void stop();
+};
+// Beacon wire: "MEAT" magic, u8 protocolVersion, u16 gamePort, u8 players,
+// u8 maxPlayers, string name. Malformed packets are dropped silently.
+
+// net/HttpTiny.h — blocking HTTP/1.0 GET/POST (winsock/BSD), used ONLY by
+// menu clicks and the host heartbeat thread; never on the sim path.
+std::optional<std::string> httpGet(const std::string& host, std::uint16_t port,
+                                   const std::string& path, int timeoutMs = 3000);
+std::optional<std::string> httpPost(const std::string& host, std::uint16_t port,
+                                    const std::string& path, const std::string& body,
+                                    int timeoutMs = 3000);
+```
+**Master server** (`tools/master_server.py`, stdlib-only, anyone can run one anywhere):
+`POST /announce {"name","port","players","maxPlayers"}` — the announcer's source IP is
+recorded; entries expire after 60 s. `GET /servers` → JSON array of ServerAd. Hosts
+heartbeat every 30 s from a background thread. The engine takes `--master host[:port]`;
+no default master is baked in — server lists are infrastructure games own.
+**Transport/session matrix — dev choices, all behind the `Transport` interface:**
+| Option | Status | Notes |
+|---|---|---|
+| Loopback (singleplayer) | ✓ shipped | in-process listen server |
+| Listen server (host plays) | ✓ shipped | host self-joins over UDP localhost |
+| Dedicated headless | ✓ shipped | `--server` |
+| LAN discovery | ✓ this phase | UDP broadcast beacon + browser |
+| Plain UDP internet (ENet) | ✓ shipped | port-forward or public IP |
+| Master server list | ✓ this phase | self-hostable `tools/master_server.py` |
+| UPnP port mapping | planned | miniupnpc (MIT), one call at host time |
+| UDP hole punch | planned | master coordinates simultaneous-open; ENet cope |
+| Steam networking | planned | GameNetworkingSockets (BSD-3) as an alternate
+  Transport impl — encrypted, Steam Datagram Relay when shipped on Steam; selected
+  per-build by the game dev, zero changes above the transport layer |
+
+**NAT**: MVP is port forwarding (documented in README); then UPnP, then punch-through,
+then Steam relay — each an additive provider, never a rewrite.
+
+**Reachability diagnostics (planned, hosting UX):** an empty server list with no
+explanation is how self-hosting silently defeats people, so the host gets told
+precisely who can reach them: on host start, (1) LAN beacon self-check, (2) if a
+master is configured, ask it to probe back the announced port and report the verdict
+in the host's UI — distinguishing "LAN players can join, internet can't — forward
+UDP <port>" from "reachable everywhere". A dead master degrades to "LAN + direct
+only", never to silence.
+
+**Access control (planned):** open by default; optional server password (in Hello,
+checked before Welcome); host kick/ban by address (persisted next to saves); and an
+`onAuthenticate(name, token) -> allow/deny` hook (Lua later) so games can drop in a
+real identity system without the engine shipping an auth service.
+**Menu**: launching with no CLI mode opens the browser menu (ImGui): Singleplayer,
+Host (name/port), LAN list (live), Internet list (master query on refresh), direct
+IP:port join. CLI flags bypass the menu for scripting/dedicated use.
+
 ### game/ServerSim + game/Client
 `ServerSim` owns the authoritative sim (VoxelWorld, PhysicsWorld, per-player
 CharacterController) and a `Transport&`. `Client` owns connection state plus its own
@@ -478,6 +544,23 @@ framework weight. Design commitments (implementation is a roadmap phase):
   abilities exist without items too (class kits). Cooldowns replicate in PlayerState.
 - Nothing here invents new net machinery: effects emit existing ops/events, spawns ride
   the entity snapshot path. That is the reason this stays small.
+
+### editor/ — IDE panels (planned: no alt-tabbing out of the engine)
+The Room Designer grows into a small IDE so devs stay in-engine:
+- **Code editor panel**: ImGuiColorTextEdit (MIT, ImGui-native) docked in editor mode —
+  Lua syntax highlighting, open/edit/save any script in the project, and **save =
+  hot-reload** through ScriptHost so gameplay changes apply live in the running world
+  (host-authoritative: script reload is a server op, replicated like everything else).
+  Companion **Lua console/REPL panel** for poking the live sim (server-side eval,
+  gated to the host).
+- **Asset browser panel**: dockable tree of `assets/` (and the game project dir once
+  the SDK lands) — textures with thumbnail previews (they're already TextureHandles),
+  models, Lua scripts, sounds, room prefabs. Double-click routes by type: script →
+  code editor, texture → preview, prefab → placement ghost in the world. File-watcher
+  refresh so external edits appear without restart; drag-to-world placement later.
+Both are ImGui panels inside the existing IEditor update path — no new architecture,
+just panels — and they make the packaging story real: build, script, and tune a game
+without leaving the engine.
 
 ### Save format (save/)
 `saves/<slot>/meta.json`: player transform, health, inventory, equipped, dungeon seed,
