@@ -50,5 +50,11 @@ expect 10–20 minutes once). Linux support is intended; CI pending.
 
 ## License
 
-Code: [MIT](LICENSE). Third-party libraries under their own licenses ([THIRD_PARTY.md](THIRD_PARTY.md)).
-Bundled art/audio is CC-BY/CC0 with per-asset credits in [assets/ATTRIBUTION.md](assets/ATTRIBUTION.md).
+Licensed under the **[Apache License 2.0](LICENSE)** — free to use, modify, fork and build on, commercially or not.
+
+**Credit is required.** Apache-2.0 §4(c)–(d) obliges you to keep the copyright notice and to reproduce [`NOTICE`](NOTICE) in anything you distribute, including binaries and hosted builds. Credit it as `MeatEngine by MysteryMeat` (https://github.com/MidwestMysteryMeat/MeatEngine) in your credits screen, About box, or docs. The project name and the MysteryMeat name are not licensed for endorsement or promotion (§6).
+
+Third-party libraries stay under their own licenses ([THIRD_PARTY.md](THIRD_PARTY.md)).
+Bundled art/audio is CC-BY/CC0 with per-asset credits in [assets/ATTRIBUTION.md](assets/ATTRIBUTION.md) — those credits are required separately from this project's.
+
+Previously MIT; relicensed to Apache-2.0 on 2026-07-30. Snapshots released under MIT stay MIT.

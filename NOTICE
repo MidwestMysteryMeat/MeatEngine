@@ -1,0 +1,34 @@
+MeatEngine
+Copyright 2026 MysteryMeat (github.com/MidwestMysteryMeat)
+
+Licensed under the Apache License, Version 2.0. See LICENSE for the full terms.
+
+CREDIT IS REQUIRED
+------------------
+Apache-2.0 section 4(c) requires you to retain the copyright, patent, trademark
+and attribution notices in any copy or derivative of this work. Section 4(d)
+requires you to reproduce the contents of this NOTICE file in any distribution
+you make, whether in source form, in object/binary form, or as part of a larger
+work such as a game, application or hosted service.
+
+In practice: if you use, modify or build on this project, credit it as
+
+    MeatEngine by MysteryMeat
+    https://github.com/MidwestMysteryMeat/MeatEngine
+
+somewhere the people using your version can actually see it -- an in-game or
+in-app credits screen, an About box, your documentation, or your README. Keeping
+this file in the repository satisfies the source-form requirement on its own;
+shipping a build requires carrying the credit into that build.
+
+You may not use the names "MysteryMeat", "MidwestMysteryMeat" or this project's
+name to endorse or promote your derivative work, or in a way that implies it is
+the original (Apache-2.0 section 6 reserves trademark rights).
+
+THIRD-PARTY COMPONENTS
+----------------------
+Third-party libraries, assets and vendored code included in or fetched by this
+repository remain under their own licenses and are not relicensed by this file
+or by LICENSE. Consult the LICENSE, CREDITS, ATTRIBUTION and THIRD_PARTY files
+alongside those components -- some carry attribution requirements of their own
+that you must satisfy in addition to this one.
