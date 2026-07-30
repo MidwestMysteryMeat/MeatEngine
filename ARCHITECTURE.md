@@ -558,6 +558,22 @@ The Room Designer grows into a small IDE so devs stay in-engine:
   models, Lua scripts, sounds, room prefabs. Double-click routes by type: script →
   code editor, texture → preview, prefab → placement ghost in the world. File-watcher
   refresh so external edits appear without restart; drag-to-world placement later.
+- **Import pipeline in the browser** (drop files in, use them immediately):
+  - **Import** button / OS drag-drop (GLFW drop callback) accepts FBX/OBJ/GLB, PNG/JPG,
+    WAV/OGG. Files are copied into the project's `assets/` tree, validated on import
+    (Assimp parse + scale/skeleton probe for models — the OneLife "probe scale first"
+    law; stb decode for textures; header sanity for audio), and rejected loudly with
+    the reason, never half-imported.
+  - **Previews per type**: model → orbitable viewport thumbnail (tiny SceneCapture-style
+    render into an ImGui image via a MaterialHandle), texture → image widget, audio →
+    play/stop button through miniaudio.
+  - **Registration**: imports append to an asset manifest (path, type, content hash,
+    import settings) that the AssetCache loads by; the attribution gate hooks here —
+    an import can be tagged with source/license and `tools/audit_assets` fails assets
+    missing a row (the CC-BY workflow from assets/ATTRIBUTION.md, enforced at the door).
+  - Mixamo-skeleton conformance check on skeletal imports (canonical-skeleton mapping
+    report: which bones matched, what won't animate) so rig problems surface at import
+    time, not at runtime.
 Both are ImGui panels inside the existing IEditor update path — no new architecture,
 just panels — and they make the packaging story real: build, script, and tune a game
 without leaving the engine.

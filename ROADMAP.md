@@ -95,6 +95,10 @@ loopback transport.
 - [ ] Lua console/REPL panel (host-gated server-side eval)
 - [ ] Asset browser panel: assets/ tree, texture thumbnails, type-routed open
       (script→editor, prefab→placement ghost), file-watcher refresh
+- [ ] Import pipeline: OS drag-drop + Import for FBX/OBJ/GLB/PNG/JPG/WAV/OGG —
+      validate on import (scale/skeleton probe, decode check), copy into project,
+      manifest + content hash, attribution tag enforced by audit; per-type previews
+      (orbit model thumb, image, audio play); Mixamo-conformance report on rigs
 
 ## Phase 9 — Audio + polish
 - [ ] miniaudio: footsteps, gunshot, UI; README/build docs pass
