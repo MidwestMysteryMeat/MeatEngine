@@ -51,6 +51,20 @@ expect 10–20 minutes once). Linux support is intended; CI pending.
 
 Multiplayer: `--host` to serve, `--join <ip>` to connect, `--server` for headless dedicated.
 
+## Making a game
+
+A game is a project folder — config, Lua, and assets — no C++ required:
+
+```powershell
+python tools/new_project.py MyGame --dir F:\Games    # scaffold a runnable game
+./build/MeatEngine.exe --project F:\Games\MyGame --play   # run it
+powershell tools/package.ps1 -Project F:\Games\MyGame     # → dist/MyGame + .zip to ship
+```
+
+`game.json` sets the name, seed, inventory model, and economy/ballistics rules;
+`scripts/*.lua` is server-authoritative gameplay (see `assets/scripts/example.lua`
+for the `game` API). The packaged folder runs standalone via its `Play.bat`.
+
 ## License
 
 Licensed under the **[Apache License 2.0](LICENSE)** — free to use, modify, fork and build on, commercially or not.

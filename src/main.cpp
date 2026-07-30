@@ -2,11 +2,44 @@
 #include "engine/core/Log.h"
 #include "editor/RoomEditor.h"
 
+#include <nlohmann/json.hpp>
+
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <string>
 
 namespace {
+
+// A game project is a folder with game.json (name/seed/rules) + scripts/ +
+// optional assets/. Loading one lets a dev ship a game without touching C++.
+void loadProject(meat::EngineConfig& config, const std::string& dir) {
+    config.projectDir = dir;
+    std::ifstream in(dir + "/game.json");
+    if (!in) {
+        meat::log::warn("project '{}': no game.json — using defaults", dir);
+        return;
+    }
+    nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
+    if (j.is_discarded()) {
+        meat::log::error("project '{}': game.json is invalid JSON", dir);
+        return;
+    }
+    if (j.contains("name")) config.serverName = j["name"].get<std::string>();
+    if (j.contains("seed")) config.seed = j["seed"].get<std::uint32_t>();
+    using Model = meat::GameRules::InventoryModel;
+    if (j.contains("inventoryModel")) {
+        const std::string m = j["inventoryModel"].get<std::string>();
+        config.rules.inventoryModel = m == "grid"      ? Model::GridOnly
+                                      : m == "weapons" ? Model::WeaponSlots
+                                                       : Model::HotbarBackpack;
+    }
+    config.rules.finiteAmmo = j.value("finiteAmmo", config.rules.finiteAmmo);
+    config.rules.minedBlockDrops = j.value("minedBlockDrops", config.rules.minedBlockDrops);
+    config.rules.penetration = j.value("penetration", config.rules.penetration);
+    config.rules.blockDamage = j.value("blockDamage", config.rules.blockDamage);
+    meat::log::info("loaded project '{}' (seed {})", config.serverName, config.seed);
+}
 
 meat::EngineConfig parseArgs(int argc, char** argv) {
     meat::EngineConfig config;
@@ -45,6 +78,8 @@ meat::EngineConfig parseArgs(int argc, char** argv) {
         } else if (arg == "--seed") {
             if (const char* s = next())
                 config.seed = static_cast<std::uint32_t>(std::strtoul(s, nullptr, 10));
+        } else if (arg == "--project") {
+            if (const char* d = next()) loadProject(config, d);
         } else {
             meat::log::warn("unknown argument '{}'", arg);
         }

@@ -116,7 +116,7 @@ void ServerSim::setupScripting() {
         return 0;
     };
     m_scripts.bind(std::move(api));
-    m_scripts.loadDir("assets/scripts");
+    m_scripts.loadDir(m_scriptDir);
 }
 
 void ServerSim::spawnDungeonNpcs() {

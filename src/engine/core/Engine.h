@@ -16,6 +16,7 @@
 #include "engine/render/Renderer.h"
 #include "engine/voxel/VoxelWorld.h"
 #include "game/Client.h"
+#include "game/GameRules.h"
 #include "game/ServerSim.h"
 #include "game/WorldGen.h"
 
@@ -36,7 +37,9 @@ struct EngineConfig {
     std::string loadPath;   // --load <file>: start the server from a save
     std::string serverName = "MeatEngine Server";
     std::string master;     // --master host[:port] — announce/browse internet list
+    GameRules rules;        // from a project's game.json (or defaults)
     std::string autoShot;   // --shot <png>: capture after a few seconds, then quit
+    std::string projectDir; // --project <dir>: load a game (game.json + scripts/)
 };
 
 // Composition root. The simulation authority is always a ServerSim; this class

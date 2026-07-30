@@ -107,8 +107,11 @@ bool Engine::initClientSystems() {
 
 bool Engine::initNetwork(const EngineConfig& config) {
     using Mode = EngineConfig::Mode;
+    // A game project supplies rules + a scripts dir; game.json is parsed in main().
     const auto bootServer = [&](std::unique_ptr<ServerSim>& server) {
-        server = std::make_unique<ServerSim>();
+        server = std::make_unique<ServerSim>(config.rules);
+        if (!config.projectDir.empty())
+            server->setScriptDir(config.projectDir + "/scripts");
         return config.loadPath.empty() ? server->init(config.seed)
                                        : server->initFromSave(config.loadPath);
     };

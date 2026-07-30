@@ -27,6 +27,10 @@ class ServerSim {
 public:
     explicit ServerSim(GameRules rules = {}) : m_rules(rules) {}
 
+    // Where gameplay scripts load from. Default is the engine's built-in assets;
+    // a game project points this at its own scripts dir (see --project).
+    void setScriptDir(std::string dir) { m_scriptDir = std::move(dir); }
+
     bool init(std::uint32_t worldSeed);
     bool initFromSave(const std::string& path); // reads seed, then init + replay
     bool saveTo(const std::string& path) const;
@@ -136,6 +140,7 @@ private:
     ScriptHost m_scripts;
     Transport* m_activeTransport = nullptr; // set each pump/tick for script callbacks
     std::uint64_t m_scriptRng = 0x2545F4914F6CDD1Dull; // seeded in init()
+    std::string m_scriptDir = "assets/scripts";
     std::uint32_t m_nextEntityId = 1;
     // Sparse chip-damage: only voxels that have been shot, remaining hp. Entries
     // die with the block; pristine blocks are implicit full-hp.

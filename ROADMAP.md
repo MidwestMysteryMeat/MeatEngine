@@ -145,10 +145,12 @@ loopback transport.
       damage/inventory/UI from client-side state deltas; pimpl (miniaudio out of headers)
 - [ ] Positional 3D audio (remote gunshots/footsteps by distance), music, README polish
 
-## Phase 10 — Packaging & game-project SDK
-- [ ] Game-as-project model: engine exe + `game/` folder (Lua, assets, config) via `--project <dir>`
-- [ ] `tools/package` — one command: engine build + project → shippable dist/ zip
-- [ ] New-game template (`tools/new_project`) so users import assets, script, and push a game fast
+## Phase 10 — Packaging & game-project SDK ✅
+- [x] Game-as-project model: `--project <dir>` loads game.json (name/seed/GameRules) +
+      scripts/ (per-project Lua) + assets/; composable with --play/--host/--server
+- [x] tools/new_project.py — scaffolds a runnable game (game.json, scripts/main.lua, README)
+- [x] tools/package.ps1 — bundles exe + engine assets + project + Play.bat → dist/ + zip;
+      runs standalone. Verified: scaffold → run → package → 15.9 MB shippable zip that boots
 
 ## Phase 11 — Tools
 - [ ] tools/autorig: Pinocchio core + Mixamo map CLI
