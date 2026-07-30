@@ -15,7 +15,7 @@ loopback transport.
 - [x] Voxel: chunks, face-culled mesher (pure/worker-safe), DDA raycast, streaming (agent-built)
 - [x] Render: GL wrappers, forward Blinn-Phong, PSX pipeline, shaders (agent-built)
 - [x] Physics: Jolt world, chunk colliders, CharacterVirtual controller (agent-built)
-- [ ] Engine integration: fixed 60 Hz tick, all modules wired, walkable flat world
+- [x] Engine integration: fixed 60 Hz tick, all modules wired, walkable flat world
 - [ ] Feel checkpoint #1 — HUMAN PLAYTEST (mouse feel, jump arc, accel)
 
 ## Phase 2 — Netcode foundation (before gameplay, so nothing is built wrong)
