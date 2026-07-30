@@ -330,9 +330,13 @@ void Engine::render(float alpha) {
     if (m_animBooth && m_animActor) {
         const glm::vec3 base(m_animActor->transform[3]);
         const glm::vec3 mid = base + glm::vec3(0.0f, 0.9f, 0.0f); // ~chest height
-        boothCamera.pos = mid + glm::vec3(0.0f, 0.0f, 2.6f);      // 2.6 m in front
-        boothCamera.yaw = 0.0f;   // faces -Z toward the actor
-        boothCamera.pitch = 0.0f; // level
+        // Orbit 45 deg off dead-front to a 3/4 view: a straight side/front profile lets the
+        // arms hang inside the torso silhouette (the VLM then reports "no arms" even at bind);
+        // a 3/4 angle separates both arms + hands from the body so extremities are gradeable.
+        constexpr float kOrbit = 0.785398f; // 45 deg
+        boothCamera.pos = mid + 2.6f * glm::vec3(std::sin(kOrbit), 0.0f, std::cos(kOrbit));
+        boothCamera.yaw = kOrbit;  // look back toward the actor
+        boothCamera.pitch = 0.0f;  // level
         boothCamera.fovY = glm::radians(45.0f); // tighter → the figure fills the frame
     }
     const Camera& camera =

@@ -593,12 +593,16 @@ int appendClipsFromFile(SkeletalModel& model, const std::filesystem::path& animF
     return appended;
 }
 
-// WIP (opt-in via --animretarget): the rest-relative global-delta retarget below is the
-// standard technique, but cross-skeleton WORLD-FRAME ALIGNMENT is not yet solved — a
-// MoCap Online walk still distorts the mixamorig SWAT (the source node space and the
-// mesh/offset space differ by an axis baseline the per-joint own-rest measurement doesn't
-// fully cancel). appendClipsFromFile (identical-bind, e.g. a true Mixamo clip) is the
-// working path; this needs the alignment fix before it renders clean.
+// Cross-skeleton retarget (opt-in via --animretarget). Transfers each source joint's
+// world-orientation motion onto the target by name, measured from the animation's own
+// FRAME-0 pose rather than the source node bind. The node bind is a Mixamo T-pose (arms
+// horizontal) that sits ~90 deg from where a walk actually holds the arms; a rest-relative
+// global delta bakes that T-pose->pose drop onto the target and flings the arms out. Frame 0
+// of the clip is a real in-motion pose that lines up with the target's arms-at-side bind, so
+// a world delta taken FROM frame 0 lands the target near its own bind and tracks the motion
+// cleanly regardless of bind-pose differences. Fingers are left relaxed at bind (variant
+// finger binds mangle when driven). R720 qwen3vl graded the PSX police + Mixamo walk clean
+// (arms/hands/feet intact, no spikes/shards) at the same bar as the bind baseline.
 int retargetClipsFromFile(SkeletalModel& model, const std::filesystem::path& animFile,
                           const ModelImportOptions& opts) {
     (void)opts;
@@ -623,8 +627,7 @@ int retargetClipsFromFile(SkeletalModel& model, const std::filesystem::path& ani
     struct SrcNode {
         std::string name;
         int parent = -1;
-        glm::quat localRestRot{1, 0, 0, 0};
-        glm::quat restGlobalRot{1, 0, 0, 0};
+        glm::quat localRestRot{1, 0, 0, 0}; // node bind local; fallback for un-animated nodes
     };
     std::vector<SrcNode> src;
     std::unordered_map<std::string, int> srcExact, srcNorm;
@@ -637,8 +640,6 @@ int retargetClipsFromFile(SkeletalModel& model, const std::filesystem::path& ani
         sn.name = node->mName.C_Str();
         sn.parent = parent;
         sn.localRestRot = rotationOf(toGlm(node->mTransformation));
-        sn.restGlobalRot = parent >= 0 ? src[parent].restGlobalRot * sn.localRestRot
-                                       : sn.localRestRot;
         src.push_back(sn);
         srcExact.emplace(sn.name, idx);
         srcNorm.emplace(normalizeBoneName(sn.name), idx); // first wins
@@ -693,37 +694,54 @@ int retargetClipsFromFile(SkeletalModel& model, const std::filesystem::path& ani
         std::vector<bool> mapped(nb, false);
         for (std::size_t b = 0; b < nb; ++b) tracks[b].boneIndex = static_cast<int>(b);
 
+        // Source global rotations at ANIMATION FRAME 0 = the retarget reference pose. The
+        // source NODE bind is a Mixamo T-pose (arms horizontal) that sits ~90 deg from where
+        // the walk actually holds the arms; referencing the world-delta to it drops the arms
+        // onto the (already arms-down) target bind and flings them out. Frame 0 of the walk is
+        // an arms-down stride that matches the target's arms-down bind, so a world-delta taken
+        // FROM frame 0 lands the target near its own bind and tracks the swing cleanly.
+        auto srcLocalAt = [&](std::size_t i, float t) {
+            return srcChan[i] ? sampleChannelRot(*srcChan[i], t) : src[i].localRestRot;
+        };
+        std::vector<glm::quat> srcRef(src.size());
+        for (std::size_t i = 0; i < src.size(); ++i) {
+            const glm::quat l0 = srcLocalAt(i, 0.0f);
+            srcRef[i] = src[i].parent >= 0 ? srcRef[src[i].parent] * l0 : l0;
+        }
+
         std::vector<glm::quat> srcGlobal(src.size()), rtWorld(nb);
         for (int f = 0; f < frames; ++f) {
             const float tTicks = static_cast<float>(f) / kFps * srcTps;
             for (std::size_t i = 0; i < src.size(); ++i) {
-                glm::quat local = src[i].localRestRot;
-                if (const aiNodeAnim* ch = srcChan[i]; ch && ch->mNumRotationKeys > 0) {
-                    local = sampleChannelRot(*ch, tTicks);
-                }
-                srcGlobal[i] =
-                    src[i].parent >= 0 ? srcGlobal[src[i].parent] * local : local;
+                const glm::quat l = srcLocalAt(i, tTicks);
+                srcGlobal[i] = src[i].parent >= 0 ? srcGlobal[src[i].parent] * l : l;
             }
             for (std::size_t b = 0; b < nb; ++b) {
                 const int p = model.bones[b].parent;
                 const glm::quat parentW = p >= 0 ? rtWorld[p] : glm::quat(1, 0, 0, 0);
                 const int si = resolveSrc(model.bones[b].name);
+                const bool drive = si >= 0 && srcChan[si] && !isFingerBone(model.bones[b].name);
                 glm::quat rtw;
-                if (si >= 0 && srcChan[si]) {
-                    // World motion the source joint underwent since its own rest, applied
-                    // to the target's own rest global — the fixed rest/axis offset cancels.
-                    const glm::quat dR = srcGlobal[si] * glm::inverse(src[si].restGlobalRot);
+                if (drive) {
+                    // World motion since the reference (frame-0) pose, applied to the target's
+                    // own rest global. Referencing a MATCHING pose (both arms-down) means the
+                    // fixed axis/rest offset between the rigs cancels instead of accumulating.
+                    const glm::quat dR = glm::normalize(srcGlobal[si] * glm::inverse(srcRef[si]));
                     rtw = glm::normalize(dR * tgtGlobalRest[b]);
                     mapped[b] = true;
                 } else {
-                    rtw = parentW * tgtPreRot[b] * tgtLocalRest[b]; // unmapped: hold rest
+                    rtw = glm::normalize(parentW * tgtPreRot[b] * tgtLocalRest[b]); // hold rest
                 }
                 rtWorld[b] = rtw;
+                if (!drive) {
+                    continue; // fingers + unmapped bones stay at bind (no emitted track)
+                }
                 const glm::quat rtLocal = glm::inverse(parentW * tgtPreRot[b]) * rtw;
                 const glm::quat deltaLocal = glm::inverse(tgtLocalRest[b]) * rtLocal;
-                // samplePose does local = localBind * nodeBindLocalInv * compose(key); with
-                // key rotation = nodeBind*deltaLocal and pos/scale gap-filled from nodeBind,
-                // that reduces to localBind * deltaLocal — bind at rest, retargeted in motion.
+                // samplePose does local = localBind * nodeBindLocalInv * compose(key); with key
+                // rotation = tgtNodeBind*deltaLocal and pos/scale gap-filled from nodeBindLocal,
+                // that reduces to localBind * deltaLocal — bind at the reference, retargeted in
+                // motion.
                 tracks[b].rotations.push_back(
                     {static_cast<float>(f), glm::normalize(tgtNodeBind[b] * deltaLocal)});
             }

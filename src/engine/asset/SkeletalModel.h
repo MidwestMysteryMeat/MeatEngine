@@ -102,13 +102,16 @@ std::optional<SkeletalModel> loadSkeletalModel(const std::filesystem::path& path
 int appendClipsFromFile(SkeletalModel& model, const std::filesystem::path& animFile,
                         const ModelImportOptions& opts = {});
 
-// Bake every animation from a FOREIGN-skeleton file (UE5 mannequin, MoCap Online, any
-// rig with a different REST pose) onto the model's skeleton and append as native clips.
-// Unlike appendClipsFromFile (which needs an identical bind pose), this compensates for
-// the rest-pose / bone-axis difference by transferring each joint's world-orientation
-// motion measured against its OWN rest global (the standard ozz/Assimp global-delta
-// retarget), matched by bone name (exact then namespace-normalized). Rotation-only, baked
-// at 30fps. Returns the number of clips appended (0 on failure or no mapped bones).
+// Bake every animation from a FOREIGN-skeleton file (Mixamo T-pose export, UE5 mannequin,
+// MoCap Online, any rig with a different BIND pose) onto the model's skeleton and append as
+// native clips. Unlike appendClipsFromFile (which needs an identical bind pose), this
+// tolerates bind-pose differences by transferring each joint's world-orientation motion
+// measured from the animation's own FRAME-0 pose (an in-motion pose that lines up with the
+// target bind) rather than the source T-pose node bind — so the ~90 deg T-pose->pose arm
+// drop isn't baked onto an already-arms-down target. Matched by bone name (exact then
+// namespace-normalized); fingers left relaxed at bind. Rotation-only, baked at 30fps.
+// VLM-verified clean on the 28-bone PSX police + Mixamo walk. Returns the number of clips
+// appended (0 on failure or no mapped bones).
 int retargetClipsFromFile(SkeletalModel& model, const std::filesystem::path& animFile,
                           const ModelImportOptions& opts = {});
 
