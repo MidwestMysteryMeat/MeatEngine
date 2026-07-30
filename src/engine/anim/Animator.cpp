@@ -113,8 +113,10 @@ Pose samplePose(const SkeletalModel& model, const AnimClip& clip, float timeSeco
         }
         const std::size_t b = static_cast<std::size_t>(track.boneIndex);
         Trs trs;
+        // Gap-fill from nodeBindLocal (the space the clip keys live in) so a missing
+        // sub-channel yields a zero delta below, not a jump into offset space.
         if (track.positions.empty() || track.rotations.empty() || track.scales.empty()) {
-            trs = decompose(model.bones[b].localBind); // fill gaps from bind
+            trs = decompose(model.bones[b].nodeBindLocal);
         }
         if (!track.positions.empty()) {
             trs.pos = sampleVec(track.positions, ticks);
@@ -125,7 +127,16 @@ Pose samplePose(const SkeletalModel& model, const AnimClip& clip, float timeSeco
         if (!track.scales.empty()) {
             trs.scl = sampleVec(track.scales, ticks);
         }
-        locals[b] = compose(trs);
+        // Clip keys are authored in the raw NODE space (nodeBindLocal), but localBind
+        // lives in the offset-authoritative space (inverse(offset) chain) that renders
+        // the bind pose cleanly. Apply the clip as a DELTA from the node bind, composed
+        // onto the clean bind: local = localBind * inverse(nodeBindLocal) * animatedLocal.
+        // At bind, animatedLocal == nodeBindLocal, so the delta is identity and the clean
+        // bind is preserved exactly; a moving key rotates the bone about its node-bind
+        // frame. This reconciles the two spaces the previous loader left mismatched (the
+        // 179-unit node-vs-offset bind-global gap that flung the extremities into spikes).
+        const Bone& bone = model.bones[b];
+        locals[b] = bone.localBind * glm::inverse(bone.nodeBindLocal) * compose(trs);
     }
     return resolve(model, locals);
 }
@@ -139,13 +150,12 @@ Pose bindPose(const SkeletalModel& model) {
 }
 
 Pose idlePose(const SkeletalModel& model, float t) {
-    // HONEST STATE: returns the BIND pose (booth-VLM-verified clean: a recognizable
-    // standing character). Procedural per-bone rotation attempts sheared the mesh
-    // into spikes under a close camera (my earlier "verified" idle was an artifact
-    // of a too-distant capture that couldn't see the spikes). Correct animation =
-    // play a real Mixamo clip with full-TRS keyframes via samplePose; the
-    // per-bone-rotation math is being reworked from reference-engine sources
-    // before it's re-enabled. Until then a clean static character beats a broken one.
+    // Returns the BIND pose (booth-VLM-verified clean). Real clip playback via
+    // samplePose is now shear-free (the localBind * inverse(nodeBindLocal) * key
+    // delta reconciles node vs offset space — R720 qwen3vl confirmed a clean posed
+    // SWAT operator, no spikes). A procedural sway idle can be layered on the same
+    // delta (localBind * smallRotation); kept as static bind until a sway is authored,
+    // since a clean static character beats a broken procedural one.
     (void)t;
     std::vector<glm::mat4> locals(model.bones.size());
     for (std::size_t b = 0; b < locals.size(); ++b) locals[b] = model.bones[b].localBind;

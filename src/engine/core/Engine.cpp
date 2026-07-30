@@ -232,9 +232,12 @@ void Engine::loadAnimTestActor() {
         // by EXACT bind-local matrix multiply (Animator::idlePose — no decompose,
         // so deep chains like arms/fingers don't warp).
         actor->model = std::move(*model);
+        // Play any clip with real keyframes; a multi-second locomotion clip drives
+        // full motion, a short reference pose renders as a clean static pose. Below
+        // this a 0-track file has nothing to sample, so fall back to the bind idle.
         actor->hasRealClip =
             !actor->model.clips.empty() &&
-            actor->model.clips[0].duration / actor->model.clips[0].ticksPerSec >= 0.15f;
+            actor->model.clips[0].duration / actor->model.clips[0].ticksPerSec >= 0.02f;
         m_animActor = std::move(actor);
         log::info("anim actor '{}' up: {} clips, {}, textured={} (up-extent {:.2f} m -> x{:.3f})",
                   path, m_animActor->model.clips.size(),

@@ -77,6 +77,7 @@ void buildSkeleton(const aiNode& node, int parentBone, const glm::mat4& worldSoF
         bone.parent = parentBone;
         bone.pre = world; // stash the true bind global; relativized post-walk
         bone.localBind = glm::mat4(1.0f);
+        bone.nodeBindLocal = toGlm(node.mTransformation); // raw node local (anim delta ref)
         bone.offset = offsetIt != in.offsets.end() ? offsetIt->second : glm::mat4(1.0f);
         childParent = static_cast<int>(out.bones.size());
         out.boneByName.emplace(name, childParent);

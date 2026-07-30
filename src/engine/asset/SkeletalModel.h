@@ -40,6 +40,11 @@ struct Bone {
     glm::mat4 pre{1.0f};       // product of NON-bone node transforms between this
                                // bone and its parent bone (or scene root); static,
                                // survives when a track replaces localBind
+    glm::mat4 nodeBindLocal{1.0f}; // the bone NODE's own raw bind-pose local transform
+                               // (what an animation channel's keys replace). localBind
+                               // lives in the offset-authoritative space, so a clip key
+                               // (node space) is applied as a delta from this:
+                               // local = localBind * inverse(nodeBindLocal) * animatedLocal
 };
 
 struct VecKey {
