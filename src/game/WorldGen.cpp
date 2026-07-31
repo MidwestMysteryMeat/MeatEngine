@@ -2,29 +2,24 @@
 #include "engine/core/Log.h"
 #include "game/DungeonGen.h"
 
+#include <FastNoiseLite.h>
+
 #include <memory>
 
 namespace meat {
 namespace {
 
-// Deterministic integer hash → [0,1). No std::rand, no state: replays and
-// remote peers must reproduce terrain bit-for-bit from (seed, coordinates).
-float hashNoise(int x, int z, std::uint32_t seed) {
-    std::uint32_t h = static_cast<std::uint32_t>(x) * 374761393u +
-                      static_cast<std::uint32_t>(z) * 668265263u + seed * 2246822519u;
-    h = (h ^ (h >> 13)) * 1274126177u;
-    return static_cast<float>((h ^ (h >> 16)) & 0xFFFFu) / 65535.0f;
-}
-
-// Value noise with bilinear interpolation over a coarse lattice.
-float valueNoise(float x, float z, float cellSize, std::uint32_t seed) {
-    const float fx = x / cellSize, fz = z / cellSize;
-    const int x0 = static_cast<int>(std::floor(fx)), z0 = static_cast<int>(std::floor(fz));
-    const float tx = fx - static_cast<float>(x0), tz = fz - static_cast<float>(z0);
-    const float sx = tx * tx * (3.f - 2.f * tx), sz = tz * tz * (3.f - 2.f * tz);
-    const float a = hashNoise(x0, z0, seed), b = hashNoise(x0 + 1, z0, seed);
-    const float c = hashNoise(x0, z0 + 1, seed), d = hashNoise(x0 + 1, z0 + 1, seed);
-    return (a + (b - a) * sx) + ((c + (d - c) * sx) - (a + (b - a) * sx)) * sz;
+// Deterministic terrain noise (OpenSimplex2 + FBm). Seeded, coordinate-pure, so replays and
+// remote peers reproduce terrain bit-for-bit — the same contract the old hash value-noise had,
+// with multi-octave detail instead of one lattice cell. Returns 0..1.
+FastNoiseLite makeTerrainNoise(std::uint32_t seed) {
+    FastNoiseLite n;
+    n.SetSeed(static_cast<int>(seed));
+    n.SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2);
+    n.SetFractalType(FastNoiseLite::FractalType_FBm);
+    n.SetFractalOctaves(4);
+    n.SetFrequency(0.018f); // ~55-voxel base wavelength → gentle rolling hills
+    return n;
 }
 
 } // namespace
@@ -50,7 +45,8 @@ std::function<void(Chunk&, ChunkPos)> makeTerrainGenerator(std::uint32_t seed,
               dungeon->rooms().size(), dungeon->entranceTop().x, dungeon->entranceTop().y,
               dungeon->entranceTop().z);
 
-    return [seed, palette, dungeon](Chunk& chunk, ChunkPos pos) {
+    const FastNoiseLite noise = makeTerrainNoise(seed);
+    return [palette, dungeon, noise](Chunk& chunk, ChunkPos pos) {
         const glm::ivec3 chunkLo{pos.x * kChunkSize, pos.y * kChunkSize, pos.z * kChunkSize};
         const auto carveBoxes =
             dungeon->boxesIntersecting(chunkLo, chunkLo + glm::ivec3(kChunkSize - 1));
@@ -58,8 +54,8 @@ std::function<void(Chunk&, ChunkPos)> makeTerrainGenerator(std::uint32_t seed,
         for (int z = 0; z < kChunkSize; ++z) {
             for (int x = 0; x < kChunkSize; ++x) {
                 const int wx = chunkLo.x + x, wz = chunkLo.z + z;
-                const float h = valueNoise(static_cast<float>(wx), static_cast<float>(wz),
-                                           24.0f, seed);
+                const float h = noise.GetNoise(static_cast<float>(wx), static_cast<float>(wz)) *
+                                    0.5f + 0.5f; // OpenSimplex2 FBm [-1,1] → [0,1]
                 const int surface = 6 + static_cast<int>(h * 6.0f); // world-voxel y of grass
                 for (int y = 0; y < kChunkSize; ++y) {
                     const int wy = chunkLo.y + y;
