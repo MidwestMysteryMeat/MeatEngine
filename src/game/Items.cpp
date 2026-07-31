@@ -17,7 +17,8 @@ DefaultItems registerDefaultItems(ItemRegistry& items, BlockId stone) {
                           .damage = 25.0f,
                           .fireInterval = 0.15f,
                           .penBudget = 20.0f, // punches dirt/grass, stopped by stone
-                          .ammoItem = d.ammo9mm});
+                          .ammoItem = d.ammo9mm,
+                          .magSize = 12}); // SemiAuto: crisp single taps, 12-round mag
     // AP/HP ammo-loadout variants of the pistol: same 9mm frame, different round,
     // so both ammo-multiplier paths are reachable straight from the loadout.
     // AP (armor-piercing): drills more materials (penBudget x1.6) for a softer hit
@@ -30,7 +31,8 @@ DefaultItems registerDefaultItems(ItemRegistry& items, BlockId stone) {
                             .penBudget = 20.0f,
                             .ammoItem = d.ammo9mm,
                             .damageMult = 0.85f,
-                            .penetrationMult = 1.6f});
+                            .penetrationMult = 1.6f,
+                            .magSize = 12});
     d.hpPistol = items.add({.name = "HP pistol",
                             .type = ItemType::Weapon,
                             .damage = 25.0f,
@@ -38,29 +40,35 @@ DefaultItems registerDefaultItems(ItemRegistry& items, BlockId stone) {
                             .penBudget = 20.0f,
                             .ammoItem = d.ammo9mm,
                             .damageMult = 1.4f,
-                            .penetrationMult = 0.0f});
+                            .penetrationMult = 0.0f,
+                            .magSize = 12});
     d.smg = items.add({.name = "smg",
                        .type = ItemType::Weapon,
                        .damage = 14.0f,
                        .fireInterval = 0.075f,
                        .penBudget = 15.0f,
                        .ammoItem = d.ammo9mm,
-                       .fireMode = FireMode::Auto,
-                       .spreadDeg = 2.2f});
+                       .fireMode = FireMode::Auto, // held-down full-auto, fast cadence
+                       .spreadDeg = 2.2f,
+                       .magSize = 30});
     d.shotgun = items.add({.name = "shotgun",
                            .type = ItemType::Weapon,
                            .damage = 11.0f, // per pellet; 8 = brutal up close, fades far
                            .fireInterval = 0.8f,
                            .penBudget = 8.0f,
                            .ammoItem = d.shells,
+                           // SemiAuto + 8 pellets + wide spread = slow pump-feel; one
+                           // shell per trigger pull, no auto-repeat on hold.
                            .pellets = 8,
-                           .spreadDeg = 6.0f});
+                           .spreadDeg = 6.0f,
+                           .magSize = 8});
     d.sniper = items.add({.name = "sniper",
                           .type = ItemType::Weapon,
                           .damage = 95.0f,
                           .fireInterval = 1.1f,
                           .penBudget = 90.0f, // drills through several stone blocks
-                          .ammoItem = d.rifleAmmo});
+                          .ammoItem = d.rifleAmmo,
+                          .magSize = 5}); // SemiAuto bolt-feel: slow, one shot per pull
     // Projectile blasts are now composed: the on-impact EffectList holds an
     // AreaDamage that runEffects routes back through applyBlast, so behaviour is
     // identical to the old inline blast (same radius/damage/falloff) but the path

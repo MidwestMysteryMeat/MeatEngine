@@ -63,6 +63,15 @@ private:
         float fireCooldown = 0.0f;
         float placeCooldown = 0.0f;
         float useCooldown = 0.0f;
+        // Fire-mode trigger discipline (H2): the previous tick's button states let
+        // the combat step detect a PRESS EDGE, so SemiAuto/Burst fire once per pull
+        // and can't auto-repeat on hold.
+        bool prevFire = false;
+        bool prevReload = false;
+        int burstRemaining = 0;        // rounds left in an in-flight burst
+        // Reload (H3): a mag reload runs on a timer, then pulls reserve into the mag.
+        float reloadCooldown = 0.0f;   // seconds left on the active reload
+        ItemId reloadingWeapon = 0;    // weapon whose reload is in progress (0 = none)
         Inventory inventory;
         bool inventoryDirty = false;
         std::optional<glm::vec3> spawnOverride; // from a save file

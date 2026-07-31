@@ -941,6 +941,20 @@ void Engine::drawInventoryUi() {
             ImGui::TextColored({0.6f, 0.8f, 1.0f, 1.0f}, "  blocks:%d  medkits:%d",
                                inv.countOf(4), inv.countOf(3));
         }
+        // Ammo readout for the equipped magazine weapon: loaded mag / reserve (H3).
+        const ItemStack& sel = inv.slot(m_selectedSlot);
+        const ItemDef& selDef = m_items.get(sel.id);
+        if (selDef.type == ItemType::Weapon && selDef.magSize > 0) {
+            ImGui::SameLine();
+            if (rules.finiteAmmo) {
+                const int reserve = selDef.ammoItem != 0 ? inv.countOf(selDef.ammoItem) : 0;
+                ImGui::TextColored({1.0f, 0.85f, 0.3f, 1.0f}, "  ammo %d / %d",
+                                   inv.magOf(sel.id), reserve);
+            } else {
+                ImGui::TextColored({1.0f, 0.85f, 0.3f, 1.0f}, "  ammo %d / inf",
+                                   selDef.magSize);
+            }
+        }
         ImGui::End();
     }
 

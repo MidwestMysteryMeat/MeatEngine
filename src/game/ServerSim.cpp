@@ -6,6 +6,7 @@
 #include "game/DungeonGen.h"
 #include "game/Environment.h"
 #include "game/Pathfinder.h"
+#include "game/WeaponFire.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -25,6 +26,8 @@ constexpr glm::vec3 kSpawnPos{8.0f, 8.0f, 8.0f};
 
 constexpr float kPlaceInterval = 0.20f;
 constexpr float kHitscanRange = 60.0f;
+constexpr float kReloadSeconds = 1.6f;        // time to swap a magazine (H3)
+constexpr float kBurstIntraInterval = 0.06f;  // fast cadence between rounds in a burst (H2)
 constexpr float kCapsuleRadius = 0.35f; // keep in sync with CharacterTuning
 
 // Distance between a ray segment [ro, ro + rd*range] and segment [a, b];
@@ -894,6 +897,7 @@ bool ServerSim::tryPickup(Transport& transport, PeerId peer, Player& player) {
         } else {
             it->count = leftover;
         }
+        player.inventory.initMags(m_items); // a newly-looted weapon starts with a full mag
         sendInventory(transport, peer, player);
         return true; // one pickup per press
     }
@@ -943,6 +947,7 @@ void ServerSim::handlePacket(Transport& transport, PeerId peer,
         if (m_pendingRestore) { // save-file state goes to the first arrival
             player.health = m_pendingRestore->health;
             player.inventory = m_pendingRestore->inventory;
+            player.inventory.initMags(m_items); // saves don't store mags; load full
             player.spawnOverride = m_pendingRestore->pos; // applied at spawn in tick()
             m_pendingRestore.reset();
         } else {
@@ -1057,6 +1062,7 @@ void ServerSim::giveStartingLoadout(Player& player) {
     player.inventory.add(m_defaultItems.medkit, 2, m_items);
     player.inventory.add(m_defaultItems.stim, 2, m_items); // composed Heal + buff consumable
     player.inventory.add(m_defaultItems.stoneBlock, 32, m_items);
+    player.inventory.initMags(m_items); // load a full mag for every magazine weapon
 }
 
 void ServerSim::sendOverlayTo(Transport& transport, PeerId peer) const {
@@ -1088,6 +1094,7 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
     player.fireCooldown -= kFixedDtServer;
     player.placeCooldown -= kFixedDtServer;
     player.useCooldown -= kFixedDtServer;
+    player.reloadCooldown -= kFixedDtServer;
     tickModifiers(player, kFixedDtServer); // decay active ApplyModifier buffs
 
     const glm::vec3 eye =
@@ -1097,18 +1104,59 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
     const ItemStack& held = player.inventory.slot(slotIndex);
     const ItemDef& heldDef = m_items.get(held.id);
 
-    if (player.lastCmd.fire && player.fireCooldown <= 0.0f) {
-        if (heldDef.type == ItemType::Weapon) {
-            const bool hasAmmo = !m_rules.finiteAmmo || heldDef.ammoItem == 0 ||
+    // --- Reload (H3): resolve before firing so a finished reload feeds this tick.
+    const bool firePressed = player.lastCmd.fire && !player.prevFire;
+    const bool reloadPressed = player.lastCmd.reload && !player.prevReload;
+    if (player.reloadingWeapon != 0 && player.reloadCooldown <= 0.0f) {
+        const ItemDef& reloadDef = m_items.get(player.reloadingWeapon);
+        if (reloadWeaponMag(player.inventory, player.reloadingWeapon, reloadDef,
+                            m_rules.finiteAmmo) > 0)
+            player.inventoryDirty = true;
+        player.reloadingWeapon = 0;
+    }
+    if (reloadPressed && player.reloadingWeapon == 0 && heldDef.type == ItemType::Weapon &&
+        heldDef.magSize > 0) {
+        const bool unfull = player.inventory.magOf(held.id) < heldDef.magSize;
+        const bool haveReserve = !m_rules.finiteAmmo || heldDef.ammoItem == 0 ||
+                                 player.inventory.countOf(heldDef.ammoItem) > 0;
+        if (unfull && haveReserve) {
+            player.reloadingWeapon = held.id;
+            player.reloadCooldown = kReloadSeconds;
+        }
+    }
+
+    // --- Fire (H2 fire modes + H3 magazines) ------------------------------
+    if (heldDef.type == ItemType::Weapon) {
+        const bool ready = player.fireCooldown <= 0.0f;
+        // Trigger discipline: SemiAuto/Burst need a press EDGE (holding never
+        // auto-repeats), Auto repeats on hold — all still capped by fireCooldown.
+        const bool wantShot = triggerReleasesShot(heldDef.fireMode, player.lastCmd.fire,
+                                                  firePressed, ready, heldDef.burstCount,
+                                                  player.burstRemaining);
+        if (wantShot) {
+            // Magazine weapons draw reserve at reload time, so per shot they only
+            // need a loaded round; magless weapons keep the reserve/self-consume path.
+            const bool useMag = m_rules.finiteAmmo && heldDef.magSize > 0;
+            const bool magOk = !useMag || player.inventory.magOf(held.id) > 0;
+            const bool hasAmmo = useMag || !m_rules.finiteAmmo || heldDef.ammoItem == 0 ||
                                  player.inventory.countOf(heldDef.ammoItem) > 0;
             // Thrown/placed weapons (grenade/claymore) consume the weapon item
             // itself; hitscan/rpg consume their ammo item.
             const bool selfConsumed = heldDef.delivery != DeliveryKind::Hitscan &&
                                       heldDef.ammoItem == 0;
             const bool hasCharge = !m_rules.finiteAmmo || !selfConsumed || held.count > 0;
-            if (hasAmmo && hasCharge) {
-                player.fireCooldown = heldDef.fireInterval;
-                if (m_rules.finiteAmmo && heldDef.ammoItem != 0) {
+            if (magOk && hasAmmo && hasCharge) {
+                const bool bursting =
+                    heldDef.fireMode == FireMode::Burst && player.burstRemaining > 0;
+                player.fireCooldown = bursting
+                                          ? std::min(heldDef.fireInterval, kBurstIntraInterval)
+                                          : heldDef.fireInterval;
+                if (useMag) {
+                    player.inventory.setMag(
+                        held.id,
+                        static_cast<std::uint16_t>(player.inventory.magOf(held.id) - 1));
+                    player.inventoryDirty = true;
+                } else if (m_rules.finiteAmmo && heldDef.ammoItem != 0) {
                     player.inventory.remove(heldDef.ammoItem, 1);
                     player.inventoryDirty = true;
                 } else if (m_rules.finiteAmmo && selfConsumed) {
@@ -1158,18 +1206,22 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
                     }
                 }
             }
-        } else if (heldDef.type == ItemType::Block) {
-            // Holding a block: LMB is the mining tool (short range, no player damage).
-            player.fireCooldown = kPlaceInterval;
-            if (const auto hit = m_voxels.raycast(eye, dir, 6.0f); hit && hit->block != 0) {
-                applyVoxelOp(transport, {hit->voxel, 0});
-                if (m_rules.minedBlockDrops) {
-                    player.inventory.add(m_defaultItems.stoneBlock, 1, m_items);
-                    player.inventoryDirty = true;
-                }
+        }
+    } else if (heldDef.type == ItemType::Block && player.lastCmd.fire &&
+               player.fireCooldown <= 0.0f) {
+        // Holding a block: LMB is the mining tool (held-repeat, no fire-mode discipline).
+        player.fireCooldown = kPlaceInterval;
+        if (const auto hit = m_voxels.raycast(eye, dir, 6.0f); hit && hit->block != 0) {
+            applyVoxelOp(transport, {hit->voxel, 0});
+            if (m_rules.minedBlockDrops) {
+                player.inventory.add(m_defaultItems.stoneBlock, 1, m_items);
+                player.inventoryDirty = true;
             }
         }
     }
+    // Remember this tick's trigger states so next tick can detect the press edge.
+    player.prevFire = player.lastCmd.fire;
+    player.prevReload = player.lastCmd.reload;
 
     if (player.lastCmd.place && player.placeCooldown <= 0.0f &&
         heldDef.type == ItemType::Block) {

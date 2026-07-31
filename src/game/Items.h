@@ -27,7 +27,7 @@ struct ItemDef {
     float damage = 0.0f;
     float fireInterval = 0.0f;
     float penBudget = 0.0f; // penetration budget spent on materials crossed
-    ItemId ammoItem = 0;    // consumed per shot when GameRules::finiteAmmo
+    ItemId ammoItem = 0;    // reserve ammo: consumed per shot (magless) or per reload (magazine)
     // AP/HP ammo tuning, applied per shot in the hitscan march (fireHitscan/
     // marchBullet): damageMult scales the damage delivered to flesh/blocks, and
     // penetrationMult scales the penetration budget. AP drills more but hits
@@ -39,6 +39,7 @@ struct ItemDef {
     DeliveryKind delivery = DeliveryKind::Hitscan;
     std::uint8_t pellets = 1;    // hitscan: rays per shot (shotgun > 1)
     float spreadDeg = 0.0f;      // hitscan cone half-angle
+    std::uint16_t magSize = 0;   // rounds per magazine; 0 = no magazine (melee/thrown/infinite)
     int burstCount = 3;          // burst mode: rounds per pull
     // Projectile fields
     float projectileSpeed = 0.0f;

@@ -3,6 +3,7 @@
 #include "game/Items.h"
 
 #include <array>
+#include <unordered_map>
 
 namespace meat {
 
@@ -66,20 +67,59 @@ public:
         return static_cast<std::uint16_t>(total > 0xFFFF ? 0xFFFF : total);
     }
 
+    // --- Magazines (H3) ---------------------------------------------------
+    // Rounds currently chambered in a given weapon. Reserve ammo lives in the
+    // slots (countOf(ammoItem)); the mag is a separate per-weapon counter so a
+    // gun can run dry and force a reload while reserve still remains.
+    std::uint16_t magOf(ItemId id) const {
+        const auto it = m_mags.find(id);
+        return it == m_mags.end() ? std::uint16_t{0} : it->second;
+    }
+    bool magTracked(ItemId id) const { return m_mags.find(id) != m_mags.end(); }
+    void setMag(ItemId id, std::uint16_t rounds) { m_mags[id] = rounds; }
+    // Load a full magazine for every weapon stack that takes a mag and isn't
+    // tracked yet — the "first time the weapon is held/given" init.
+    void initMags(const ItemRegistry& items) {
+        for (const auto& s : m_slots) {
+            if (s.id == 0) continue;
+            const ItemDef& def = items.get(s.id);
+            if (def.type == ItemType::Weapon && def.magSize > 0 &&
+                m_mags.find(s.id) == m_mags.end())
+                m_mags[s.id] = def.magSize;
+        }
+    }
+
     void encode(ByteWriter& w) const {
         for (const auto& s : m_slots) {
             w.write(s.id);
             w.write(s.count);
         }
+        // Magazines ride the same message so the client HUD can read loaded rounds.
+        w.write(static_cast<std::uint16_t>(m_mags.size()));
+        for (const auto& [id, rounds] : m_mags) {
+            w.write(id);
+            w.write(rounds);
+        }
     }
     bool decode(ByteReader& r) {
         for (auto& s : m_slots)
             if (!r.read(s.id) || !r.read(s.count)) return false;
+        std::uint16_t n = 0;
+        if (!r.read(n)) return false;
+        if (n > kSlots) return false; // can't track more mags than slots — reject garbage
+        m_mags.clear();
+        for (std::uint16_t i = 0; i < n; ++i) {
+            ItemId id = 0;
+            std::uint16_t rounds = 0;
+            if (!r.read(id) || !r.read(rounds)) return false;
+            m_mags[id] = rounds;
+        }
         return true;
     }
 
 private:
     std::array<ItemStack, kSlots> m_slots{};
+    std::unordered_map<ItemId, std::uint16_t> m_mags{}; // weapon id -> loaded rounds
 };
 
 } // namespace meat
