@@ -47,7 +47,7 @@ bool ServerSim::init(std::uint32_t worldSeed) {
 
     m_palette = registerDefaultBlocks(m_voxels.blockRegistry());
     m_defaultItems = registerDefaultItems(m_items, m_palette.stone);
-    m_voxels.setGenerator(makeTerrainGenerator(m_seed, m_palette));
+    m_voxels.setGenerator(makeTerrainGenerator(m_seed, m_palette, m_rules.terrain));
     m_voxels.setMeshReadyCallback([this](ChunkPos pos, ChunkMeshData data) {
         if (!data.indices.empty()) {
             m_physics.syncChunkCollider(pos, data);

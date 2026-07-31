@@ -145,7 +145,9 @@ bool Engine::initNetwork(const EngineConfig& config) {
 void Engine::setupClientWorld() {
     const BlockPalette palette = registerDefaultBlocks(m_voxels.blockRegistry());
     registerDefaultItems(m_items, palette.stone); // ids mirror the server's registry
-    m_voxels.setGenerator(makeTerrainGenerator(m_client.worldSeed(), palette));
+    // Terrain mode came from the server in Welcome (packed in the rules flags), so the client
+    // builds the identical world locally.
+    m_voxels.setGenerator(makeTerrainGenerator(m_client.worldSeed(), palette, m_client.rules().terrain));
     if (!m_player.init(m_physics, kClientSpawn)) {
         log::error("client character init failed");
         return;

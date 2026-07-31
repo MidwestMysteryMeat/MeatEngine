@@ -12,6 +12,11 @@ struct GameRules {
         WeaponSlots = 2,    // guns on 1-4, blocks/consumables as counters
     };
     InventoryModel inventoryModel = InventoryModel::HotbarBackpack;
+    // World generation mode — a dev-facing option (the engine isn't voxel-only in spirit).
+    // Normal = FastNoiseLite terrain + dungeon; Superflat = flat ground for building; Void = empty
+    // canvas (place everything yourself). Travels to clients packed in the flags byte (bits 5-6).
+    enum class Terrain : std::uint8_t { Normal = 0, Superflat = 1, Void = 2 };
+    Terrain terrain = Terrain::Normal;
     bool finiteAmmo = true;      // guns consume ammo items
     bool minedBlockDrops = true; // broken blocks enter the breaker's inventory
     bool penetration = true;     // bullets spend budget passing through materials
@@ -25,7 +30,8 @@ struct GameRules {
     std::uint8_t flagsByte() const {
         return static_cast<std::uint8_t>((finiteAmmo ? 1 : 0) | (minedBlockDrops ? 2 : 0) |
                                          (penetration ? 4 : 0) | (blockDamage ? 8 : 0) |
-                                         (dropOnDeath ? 16 : 0));
+                                         (dropOnDeath ? 16 : 0) |
+                                         ((static_cast<std::uint8_t>(terrain) & 0x3) << 5));
     }
     void setFlagsByte(std::uint8_t f) {
         finiteAmmo = (f & 1) != 0;
@@ -33,6 +39,7 @@ struct GameRules {
         penetration = (f & 4) != 0;
         blockDamage = (f & 8) != 0;
         dropOnDeath = (f & 16) != 0;
+        terrain = static_cast<Terrain>((f >> 5) & 0x3);
     }
 };
 

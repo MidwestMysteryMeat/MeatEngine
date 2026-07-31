@@ -34,6 +34,13 @@ void loadProject(meat::EngineConfig& config, const std::string& dir) {
                                       : m == "weapons" ? Model::WeaponSlots
                                                        : Model::HotbarBackpack;
     }
+    if (j.contains("terrain")) {
+        using Terrain = meat::GameRules::Terrain;
+        const std::string t = j["terrain"].get<std::string>();
+        config.rules.terrain = t == "superflat" ? Terrain::Superflat
+                               : t == "void"     ? Terrain::Void
+                                                 : Terrain::Normal;
+    }
     config.rules.finiteAmmo = j.value("finiteAmmo", config.rules.finiteAmmo);
     config.rules.minedBlockDrops = j.value("minedBlockDrops", config.rules.minedBlockDrops);
     config.rules.penetration = j.value("penetration", config.rules.penetration);
@@ -95,6 +102,14 @@ meat::EngineConfig parseArgs(int argc, char** argv) {
             if (const char* m = next()) config.animRetarget = m;
         } else if (arg == "--voxelsize") {
             if (const char* v = next()) config.rules.voxelSize = std::strtof(v, nullptr);
+        } else if (arg == "--terrain") {
+            using Terrain = meat::GameRules::Terrain;
+            if (const char* t = next()) {
+                const std::string m = t;
+                config.rules.terrain = m == "superflat" ? Terrain::Superflat
+                                       : m == "void"     ? Terrain::Void
+                                                         : Terrain::Normal;
+            }
         } else {
             meat::log::warn("unknown argument '{}'", arg);
         }

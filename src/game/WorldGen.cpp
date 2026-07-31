@@ -35,8 +35,26 @@ BlockPalette registerDefaultBlocks(BlockRegistry& blocks) {
     return p;
 }
 
-std::function<void(Chunk&, ChunkPos)> makeTerrainGenerator(std::uint32_t seed,
-                                                           BlockPalette palette) {
+std::function<void(Chunk&, ChunkPos)> makeTerrainGenerator(std::uint32_t seed, BlockPalette palette,
+                                                           GameRules::Terrain terrain) {
+    // Void: a blank canvas — the dev places everything (mesh props, hand-built rooms). Empty except
+    // a small grass pad under spawn so the player has something to stand on instead of falling
+    // forever. The cheapest non-standard world; first step toward mesh-based levels.
+    if (terrain == GameRules::Terrain::Void) {
+        return [palette](Chunk& chunk, ChunkPos pos) {
+            const glm::ivec3 lo{pos.x * kChunkSize, pos.y * kChunkSize, pos.z * kChunkSize};
+            constexpr int kPadY = 6, kPadMin = 3, kPadMax = 13; // ~10x10 pad around spawn (8,8)
+            for (int z = 0; z < kChunkSize; ++z)
+                for (int x = 0; x < kChunkSize; ++x) {
+                    const int wx = lo.x + x, wz = lo.z + z, ly = kPadY - lo.y;
+                    if (wx >= kPadMin && wx <= kPadMax && wz >= kPadMin && wz <= kPadMax &&
+                        ly >= 0 && ly < kChunkSize)
+                        chunk.set(x, ly, z, palette.grass);
+                }
+            chunk.clearDirty();
+        };
+    }
+
     // The dungeon is derived from the same seed as the terrain, so every peer
     // carves identical rooms with zero network traffic. shared_ptr because the
     // generator std::function must stay copyable.
@@ -46,7 +64,8 @@ std::function<void(Chunk&, ChunkPos)> makeTerrainGenerator(std::uint32_t seed,
               dungeon->entranceTop().z);
 
     const FastNoiseLite noise = makeTerrainNoise(seed);
-    return [palette, dungeon, noise](Chunk& chunk, ChunkPos pos) {
+    const bool superflat = terrain == GameRules::Terrain::Superflat;
+    return [palette, dungeon, noise, superflat](Chunk& chunk, ChunkPos pos) {
         const glm::ivec3 chunkLo{pos.x * kChunkSize, pos.y * kChunkSize, pos.z * kChunkSize};
         const auto carveBoxes =
             dungeon->boxesIntersecting(chunkLo, chunkLo + glm::ivec3(kChunkSize - 1));
@@ -54,9 +73,10 @@ std::function<void(Chunk&, ChunkPos)> makeTerrainGenerator(std::uint32_t seed,
         for (int z = 0; z < kChunkSize; ++z) {
             for (int x = 0; x < kChunkSize; ++x) {
                 const int wx = chunkLo.x + x, wz = chunkLo.z + z;
+                // Superflat: a constant grass height for building; else FBm rolling terrain.
                 const float h = noise.GetNoise(static_cast<float>(wx), static_cast<float>(wz)) *
                                     0.5f + 0.5f; // OpenSimplex2 FBm [-1,1] → [0,1]
-                const int surface = 6 + static_cast<int>(h * 6.0f); // world-voxel y of grass
+                const int surface = superflat ? 6 : 6 + static_cast<int>(h * 6.0f);
                 for (int y = 0; y < kChunkSize; ++y) {
                     const int wy = chunkLo.y + y;
                     if (wy > surface) break;
