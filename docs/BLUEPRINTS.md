@@ -56,5 +56,10 @@ The editor chrome uses a **UE5 Slate-inspired** dark theme (charcoal panels, blu
 
 ## Open follow-ups
 
-More `game.*` API nodes, multi-graph tabs, debug "watch" pins, subgraphs,
-ImGuiColorTextEdit for the text Lua path.
+- More `game.*` API nodes, multi-graph tabs, debug "watch" pins, subgraphs,
+  ImGuiColorTextEdit for the text Lua path.
+- **Output Log browser (C9)** — UE5-style in-editor log: Info / Warning / Error filters,
+  search, clear, auto-scroll. Must surface ScriptHost errors (`script: … failed`),
+  blueprint compile/reload status, and `game.log` lines so graph authors can catch
+  mistakes without an external console. Tracked in [NEXT_SESSION.md](NEXT_SESSION.md)
+  and [ROLLOUT.md](ROLLOUT.md) as **C9**.

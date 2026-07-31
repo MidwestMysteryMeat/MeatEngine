@@ -96,13 +96,19 @@ light → ship) without the bloat/missing pieces that don't fit a PSX voxel FPS.
   OSS: ImGuiFileDialog.
 - [ ] **C5. Inspectors** — material, entity/prefab, block/atlas, and **environment settings** (drives
   B3). Struct-reflection via Boost.PFR (BSL-1.0) → auto widgets + JSON.
-- [~] **C6. Node scripting / Blueprints + live coding** ⭐ — first slice shipped: imnodes graph in
-  Room Designer (events/actions/data/flow/math) → JSON + sandboxed Lua (`zz_blueprint.lua`) +
-  Save+Compile live reload. Still open: more game API nodes, subgraphs, debug pins,
-  ImGuiColorTextEdit for the text path; C++ live-reload later (cr.h).
+- [~] **C6. Node scripting / Blueprints + live coding** ⭐ — first slices shipped: imnodes graph in
+  Room Designer (events/actions/data/flow/math/object) → JSON + sandboxed Lua (`zz_blueprint.lua`) +
+  Save+Compile live reload; UE-style open node / object highlight. Still open: more game API nodes,
+  subgraphs, debug pins, ImGuiColorTextEdit for the text path; C++ live-reload later (cr.h).
 - [ ] **C7. Packaging / export** — bundle exe + cooked assets + a zip/pk3 archive into a shippable
   build (ties to D2 resource archives + `tools/package.ps1`).
 - [ ] **C8. Profiler panels** — frame/mesh/netcode telemetry. OSS: ImPlot + Tracy (BSD-3).
+- [ ] **C9. Output Log browser (UE5-style)** ⭐ — in-editor **Output Log** panel (like UE5 Window →
+  Developer Tools → Output Log): ring buffer of `meat::log` Info/Warn/Error + ScriptHost/Lua
+  failures + blueprint compile messages; filter by severity; search; clear; auto-scroll; copy.
+  Required so creators catch blueprint compile/runtime errors without digging console windows.
+  Implementation sketch: thread-safe ring in `Log.h` (`log::addSink` / fixed-size deque), ImGui
+  panel in Room Designer, optional hotkey. Pairs tightly with C6.
 
 ## Pillar D — Engine OSS grabs (from the survey)
 - [ ] **D1. Binary greedy meshing** — swap the mesher hot path; graft the v1-branch per-vertex AO
