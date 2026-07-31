@@ -44,6 +44,12 @@ enum class NodeKind : std::uint8_t {
     MathSubtract,
     MathMultiply,
     MathEqual,
+    // C6-b high-value game hooks
+    GetTick,          // pure: game.tick()
+    GetPropCount,     // pure: game.prop_count()
+    GetPlayerHealth,  // pure: game.player_health(peer)
+    ActionDamagePlayer, // action: game.damage_player(peer, amount)
+    ActionAnnounce,   // action: game.announce(msg) — HUD toast all clients
 };
 
 enum class PinKind : std::uint8_t {

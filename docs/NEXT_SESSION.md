@@ -62,7 +62,7 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
 ### Working list (creation suite track — adjusted)
 1. ~~**C9 Output Log**~~ ✅
 2. ~~**C6-a reliability**~~ ✅ — compile/import errors open Output Log; editor boot log line.
-3. **C6-b high-value nodes only** — finish hooks creators need, not infinite catalog.
+3. ~~**C6-b high-value nodes**~~ ✅ — announce, damage player, tick / prop count / health.
 4. ~~**C5 lite / C4 import path**~~ ✅ — Details panel (world + selection + import); import logs.
 5. ~~**A2 sun shadows**~~ ✅ — sun depth map + PCF; editor toggle.
 6. **C6-c subgraphs / multi-graph / watches** — after reliability.

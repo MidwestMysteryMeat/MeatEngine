@@ -1052,8 +1052,9 @@ void Engine::render(float alpha) {
         if (pm.mesh != 0) m_renderer.submitMesh(pm.mesh, prop.transform, pm.material);
     }
 
-    // C6: node-graph/script prop highlights (server ScriptFx → all clients).
+    // C6: node-graph/script prop highlights (server ScriptFx kind 0 → all clients).
     for (const Client::ScriptFx& fx : m_client.scriptFx()) {
+        if (fx.kind != 0) continue;
         const EditorProp* prop = nullptr;
         for (const EditorProp& p : m_editorProps) {
             if (p.id == fx.propId) {
@@ -1232,6 +1233,12 @@ void Engine::render(float alpha) {
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
                          ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBackground);
         ImGui::Text("HP %.0f", m_client.health());
+        // C6-b: script / node-graph announce toasts (ScriptFx kind 1).
+        for (const Client::ScriptFx& fx : m_client.scriptFx()) {
+            if (fx.kind != 1 || fx.text.empty()) continue;
+            ImGui::TextColored(ImVec4(fx.color.r, fx.color.g, fx.color.b, 1.0f), "%s",
+                               fx.text.c_str());
+        }
         ImGui::Text("players %zu", remotes.size() + 1);
         ImGui::Text("pos %.1f %.1f %.1f", m_currPlayerPos.x, m_currPlayerPos.y,
                     m_currPlayerPos.z);

@@ -25,6 +25,13 @@ struct ScriptApi {
     // Returns true and writes x,y,z when prop id exists.
     std::function<bool(int propId, float& x, float& y, float& z)> propPos;
     std::function<int()> propCount;
+    // C6-b: combat / messaging hooks for node graphs.
+    // Damage a connected peer; amount is clamped. Lethal hits respawn at pad.
+    std::function<void(int peerId, float amount)> damagePlayer;
+    // HUD toast on all clients (ScriptFx kind=1) + server log.
+    std::function<void(const std::string&)> announce;
+    // Current health of a peer (0 if unknown / disconnected).
+    std::function<float(int peerId)> playerHealth;
 };
 
 // Embeds Lua (sol2) with a sandboxed standard library. Loads scripts from a

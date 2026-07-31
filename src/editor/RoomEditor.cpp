@@ -1220,13 +1220,14 @@ constexpr const char* kEmitLuaPathLegacy = "scripts/zz_blueprint.lua";
 const NodeKind kPaletteKinds[] = {
     NodeKind::EventOnInit,       NodeKind::EventOnTick,       NodeKind::EventOnPlayerJoin,
     NodeKind::EventOnPlayerDeath, NodeKind::ActionLog,        NodeKind::ActionSetBlock,
-    NodeKind::ActionSpawnPickup, NodeKind::GetPlayerCount,    NodeKind::GetItemId,
-    NodeKind::Randi,             NodeKind::ConstInt,          NodeKind::ConstFloat,
-    NodeKind::ConstString,       NodeKind::Branch,            NodeKind::Sequence,
-    NodeKind::MathAdd,           NodeKind::MathSubtract,      NodeKind::MathMultiply,
-    NodeKind::MathGreater,       NodeKind::MathEqual,         NodeKind::GetWorldObject,
-    NodeKind::GetPropPosition,   NodeKind::HighlightObject,   NodeKind::PrintObject,
-    NodeKind::GetBlock,
+    NodeKind::ActionSpawnPickup, NodeKind::ActionAnnounce,    NodeKind::ActionDamagePlayer,
+    NodeKind::GetPlayerCount,    NodeKind::GetItemId,         NodeKind::GetTick,
+    NodeKind::GetPropCount,      NodeKind::GetPlayerHealth,   NodeKind::Randi,
+    NodeKind::ConstInt,          NodeKind::ConstFloat,        NodeKind::ConstString,
+    NodeKind::Branch,            NodeKind::Sequence,          NodeKind::MathAdd,
+    NodeKind::MathSubtract,      NodeKind::MathMultiply,      NodeKind::MathGreater,
+    NodeKind::MathEqual,         NodeKind::GetWorldObject,    NodeKind::GetPropPosition,
+    NodeKind::HighlightObject,   NodeKind::PrintObject,       NodeKind::GetBlock,
 };
 constexpr int kPaletteCount = static_cast<int>(sizeof(kPaletteKinds) / sizeof(kPaletteKinds[0]));
 
@@ -1516,7 +1517,8 @@ void RoomEditor::drawNodeGraphDetails(EditorContext& ctx) {
 
     // Category-specific property editors (UE Details panel feel).
     if (n->kind == NodeKind::ActionLog || n->kind == NodeKind::ConstString ||
-        n->kind == NodeKind::GetItemId || n->kind == NodeKind::GetWorldObject) {
+        n->kind == NodeKind::GetItemId || n->kind == NodeKind::GetWorldObject ||
+        n->kind == NodeKind::ActionAnnounce) {
         char buf[160];
         std::snprintf(buf, sizeof(buf), "%s", n->strA.c_str());
         if (ImGui::InputText("String", buf, sizeof(buf))) {
@@ -1527,8 +1529,13 @@ void RoomEditor::drawNodeGraphDetails(EditorContext& ctx) {
     if (n->kind == NodeKind::ConstInt || n->kind == NodeKind::GetWorldObject ||
         n->kind == NodeKind::Randi || n->kind == NodeKind::ActionSetBlock ||
         n->kind == NodeKind::ActionSpawnPickup || n->kind == NodeKind::HighlightObject ||
-        n->kind == NodeKind::PrintObject) {
-        if (ImGui::InputInt("Int A / Object Id", &n->intA)) m_nodeGraphDirty = true;
+        n->kind == NodeKind::PrintObject || n->kind == NodeKind::ActionDamagePlayer ||
+        n->kind == NodeKind::GetPlayerHealth) {
+        const char* ilabel = (n->kind == NodeKind::ActionDamagePlayer ||
+                              n->kind == NodeKind::GetPlayerHealth)
+                                 ? "Peer Id"
+                                 : "Int A / Object Id";
+        if (ImGui::InputInt(ilabel, &n->intA)) m_nodeGraphDirty = true;
         if (n->kind == NodeKind::Randi || n->kind == NodeKind::ActionSetBlock)
             if (ImGui::InputInt("Int B", &n->intB)) m_nodeGraphDirty = true;
         if (n->kind == NodeKind::ActionSetBlock) {
@@ -1539,9 +1546,11 @@ void RoomEditor::drawNodeGraphDetails(EditorContext& ctx) {
             if (ImGui::InputInt("Count", &n->intD)) m_nodeGraphDirty = true;
     }
     if (n->kind == NodeKind::ConstFloat || n->kind == NodeKind::ActionSpawnPickup ||
-        n->kind == NodeKind::MathAdd || n->kind == NodeKind::HighlightObject) {
-        const char* flabel =
-            n->kind == NodeKind::HighlightObject ? "Duration (s)" : "Float";
+        n->kind == NodeKind::MathAdd || n->kind == NodeKind::HighlightObject ||
+        n->kind == NodeKind::ActionDamagePlayer) {
+        const char* flabel = n->kind == NodeKind::HighlightObject ? "Duration (s)"
+                             : n->kind == NodeKind::ActionDamagePlayer ? "Damage"
+                                                                       : "Float";
         if (ImGui::InputFloat(flabel, &n->floatA, 0.1f, 1.0f, "%.2f")) m_nodeGraphDirty = true;
     }
 

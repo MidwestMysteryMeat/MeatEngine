@@ -46,7 +46,7 @@ Scoring: **creator value** × **engine leverage** × **dependency readiness** �
 
 | # | ID | Item | Why | Size | Deps |
 |---|-----|------|-----|------|------|
-| 4 | **C6-b** | **More `game.*` nodes (combat/world hooks)** | Already partially done (ScriptFx, prop_pos, GetBlock…). Finish high-value: damage, spawn NPC light, announce. Not subgraphs yet. | M | C9 |
+| 4 | **C6-b** | **More `game.*` nodes (combat/world hooks)** ✅ | Announce + damage player + tick/prop count/health. Spawn light later. | M | C9 |
 | 5 | **C5** | **Inspectors (prop/env/material lite)** | UE Details-panel depth for selected prop/env/rules. Outliner already exists; needs richer fields. | M | C3 done |
 | 6 | **C4** | **Import polish + path UX** | Paste-path import exists; file dialog (ImGuiFileDialog MIT) + clearer reject reasons. | S–M | C1 |
 | 7 | **B3b-e** | **Editor gravity volumes** | Place habitat boxes in editor; save + Welcome/replay. Unlocks Space level design without code. | M | GravityField done |
@@ -170,7 +170,7 @@ Use this as the working list until the next research pass:
 1. ⭐ **C9 — Output Log browser**  
 2. **C6-a — node-graph compile/runtime → log**  
 3. **Docs debt — mark shipped items in ROLLOUT**  
-4. **C6-b — High-value game API nodes only**  
+4. ~~**C6-b — High-value game API nodes only**~~ ✅  
 5. **C5 lite — Prop/env inspectors**  
 6. **C4 — Import file dialog**  
 7. ~~**A2 — Sun shadow map**~~ ✅  

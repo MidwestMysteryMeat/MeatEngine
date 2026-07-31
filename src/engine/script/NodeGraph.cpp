@@ -126,6 +126,23 @@ const GraphPinDesc kMathEqual[] = {
     {"b", PinKind::Float, true},
     {"eq", PinKind::Bool, false},
 };
+const GraphPinDesc kGetTick[] = {{"tick", PinKind::Float, false}};
+const GraphPinDesc kGetPropCount[] = {{"count", PinKind::Int, false}};
+const GraphPinDesc kGetPlayerHealth[] = {
+    {"peer", PinKind::Int, true},
+    {"health", PinKind::Float, false},
+};
+const GraphPinDesc kActionDamagePlayer[] = {
+    {"exec", PinKind::Exec, true},
+    {"then", PinKind::Exec, false},
+    {"peer", PinKind::Int, true},
+    {"amount", PinKind::Float, true},
+};
+const GraphPinDesc kActionAnnounce[] = {
+    {"exec", PinKind::Exec, true},
+    {"then", PinKind::Exec, false},
+    {"msg", PinKind::String, true},
+};
 
 struct LayoutRef {
     const GraphPinDesc* pins;
@@ -169,6 +186,11 @@ LayoutRef layoutOf(NodeKind k) {
     case NodeKind::MathSubtract: return {kMathSub, 3};
     case NodeKind::MathMultiply: return {kMathMul, 3};
     case NodeKind::MathEqual: return {kMathEqual, 3};
+    case NodeKind::GetTick: return {kGetTick, 1};
+    case NodeKind::GetPropCount: return {kGetPropCount, 1};
+    case NodeKind::GetPlayerHealth: return {kGetPlayerHealth, 2};
+    case NodeKind::ActionDamagePlayer: return {kActionDamagePlayer, 4};
+    case NodeKind::ActionAnnounce: return {kActionAnnounce, 3};
     }
     return {kActionLog, 3};
 }
@@ -218,6 +240,11 @@ std::string kindToString(NodeKind k) {
     case NodeKind::MathSubtract: return "MathSubtract";
     case NodeKind::MathMultiply: return "MathMultiply";
     case NodeKind::MathEqual: return "MathEqual";
+    case NodeKind::GetTick: return "GetTick";
+    case NodeKind::GetPropCount: return "GetPropCount";
+    case NodeKind::GetPlayerHealth: return "GetPlayerHealth";
+    case NodeKind::ActionDamagePlayer: return "ActionDamagePlayer";
+    case NodeKind::ActionAnnounce: return "ActionAnnounce";
     }
     return "ActionLog";
 }
@@ -248,6 +275,11 @@ NodeKind kindFromString(const std::string& s) {
     if (s == "MathSubtract") return NodeKind::MathSubtract;
     if (s == "MathMultiply") return NodeKind::MathMultiply;
     if (s == "MathEqual") return NodeKind::MathEqual;
+    if (s == "GetTick") return NodeKind::GetTick;
+    if (s == "GetPropCount") return NodeKind::GetPropCount;
+    if (s == "GetPlayerHealth") return NodeKind::GetPlayerHealth;
+    if (s == "ActionDamagePlayer") return NodeKind::ActionDamagePlayer;
+    if (s == "ActionAnnounce") return NodeKind::ActionAnnounce;
     return NodeKind::ActionLog;
 }
 
@@ -364,6 +396,17 @@ std::string emitDataExpr(EmitCtx& ctx, int nodeId, int outPin) {
         r = "((" + a + ") == (" + b + "))";
         break;
     }
+    case NodeKind::GetTick:
+        r = "game.tick()";
+        break;
+    case NodeKind::GetPropCount:
+        r = "game.prop_count()";
+        break;
+    case NodeKind::GetPlayerHealth: {
+        const std::string peer = emitInputExpr(ctx, n, 0, std::to_string(n.intA));
+        r = "game.player_health(" + peer + ")";
+        break;
+    }
     default:
         r = "0";
         break;
@@ -460,6 +503,21 @@ void emitExecChain(std::ostringstream& out, EmitCtx& ctx, int nodeId, int indent
         }
         break;
     }
+    case NodeKind::ActionDamagePlayer: {
+        const std::string peer = emitInputExpr(ctx, n, 2, std::to_string(n.intA));
+        const std::string amt =
+            emitInputExpr(ctx, n, 3, std::to_string(n.floatA > 0.0f ? n.floatA : 25.0f));
+        out << pad << "game.damage_player(" << peer << ", " << amt << ")\n";
+        nextExec(1);
+        break;
+    }
+    case NodeKind::ActionAnnounce: {
+        const std::string msg =
+            emitInputExpr(ctx, n, 2, escapeLuaString(n.strA.empty() ? "announcement" : n.strA));
+        out << pad << "game.announce(tostring(" << msg << "))\n";
+        nextExec(1);
+        break;
+    }
     default:
         // Pure / event nodes shouldn't be on an exec chain as targets except events' then.
         nextExec(0);
@@ -522,6 +580,11 @@ const char* nodeKindName(NodeKind kind) {
     case NodeKind::MathSubtract: return "Subtract";
     case NodeKind::MathMultiply: return "Multiply";
     case NodeKind::MathEqual: return "Equal";
+    case NodeKind::GetTick: return "Get Tick";
+    case NodeKind::GetPropCount: return "Get Prop Count";
+    case NodeKind::GetPlayerHealth: return "Get Player Health";
+    case NodeKind::ActionDamagePlayer: return "Damage Player";
+    case NodeKind::ActionAnnounce: return "Announce";
     }
     return "Node";
 }
@@ -533,7 +596,9 @@ const char* nodeKindCategory(NodeKind kind) {
     case NodeKind::ActionSetBlock:
     case NodeKind::ActionSpawnPickup:
     case NodeKind::HighlightObject:
-    case NodeKind::PrintObject: return "Action";
+    case NodeKind::PrintObject:
+    case NodeKind::ActionDamagePlayer:
+    case NodeKind::ActionAnnounce: return "Action";
     case NodeKind::Branch:
     case NodeKind::Sequence: return "Flow";
     case NodeKind::MathAdd:
@@ -609,6 +674,12 @@ int NodeGraph::addNode(NodeKind kind, float x, float y) {
         n.intB = 8;
         n.intC = 4;
     }
+    if (kind == NodeKind::ActionDamagePlayer) {
+        n.intA = 0; // peer
+        n.floatA = 25.0f;
+    }
+    if (kind == NodeKind::ActionAnnounce) n.strA = "Hello world";
+    if (kind == NodeKind::GetPlayerHealth) n.intA = 0;
     nodes.push_back(n);
     return n.id;
 }

@@ -163,8 +163,8 @@ Human feel-playtests (mouse feel, combat cadence, editor ergonomics), and real L
 > Note: C1–C3, B1/B3/B4, A1/A3, C6 (first slices), H1/H2/H3/H4 (first slices), E1 are largely **shipped**;
 > older “C3 first” ordering below is historical.
 
-**Now:** ~~C9 / C6 reliability / C5 / A2~~ ✅ → **C6-b high-value nodes** → **B3b editor gravity volumes** →
+**Now:** ~~C9 / C6 reliability / C5 / A2 / C6-b~~ ✅ → **B3b editor gravity volumes** →
 **C6-c subgraphs/watches** → **B5 game.json** / **B2 MeshLevel** → **C7 packaging** → **F / D** as scale demands.
 
-Rationale: tool loop (log, details, sun shadows) landed; next is **creator graph depth** and **Space
-authoring** (gravity volumes), then **generality** (mesh levels) and **scale** (net/ECS).
+Rationale: tool loop + high-value graph hooks landed; next is **Space authoring** (gravity volumes)
+and **graph power** (subgraphs), then **generality** (mesh levels) and **scale** (net/ECS).

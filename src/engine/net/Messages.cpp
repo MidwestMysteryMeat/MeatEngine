@@ -235,11 +235,21 @@ void encode(const ScriptFxMsg& msg, ByteWriter& w) {
     w.write(msg.r);
     w.write(msg.g);
     w.write(msg.b);
+    // Trailing string: empty for highlight; announce text for kind 1.
+    w.write(std::string_view{msg.text});
 }
 
 bool decode(ScriptFxMsg& msg, ByteReader& r) {
-    return r.read(msg.kind) && r.read(msg.id) && r.read(msg.duration) && r.read(msg.r) &&
-           r.read(msg.g) && r.read(msg.b);
+    if (!r.read(msg.kind) || !r.read(msg.id) || !r.read(msg.duration) || !r.read(msg.r) ||
+        !r.read(msg.g) || !r.read(msg.b))
+        return false;
+    // Older packets without text still decode as highlight if remaining==0 —
+    // empty string is fine for kind 0.
+    if (r.remaining() == 0) {
+        msg.text.clear();
+        return true;
+    }
+    return r.read(msg.text);
 }
 
 std::optional<MsgType> peekType(std::span<const std::byte> packet) {

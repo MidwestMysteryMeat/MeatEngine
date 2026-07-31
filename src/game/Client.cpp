@@ -159,12 +159,22 @@ void Client::pump(VoxelWorld& voxels, PhysicsWorld& physics, CharacterController
             if (!decode(msg, reader)) break;
             if (msg.kind == 0 && msg.id != 0) {
                 ScriptFx fx;
+                fx.kind = 0;
                 fx.propId = msg.id;
                 fx.remaining = std::max(0.1f, msg.duration);
                 fx.color = glm::vec3(msg.r, msg.g, msg.b);
                 // Replace existing highlight for the same prop.
-                std::erase_if(m_scriptFx, [&](const ScriptFx& f) { return f.propId == fx.propId; });
+                std::erase_if(m_scriptFx, [&](const ScriptFx& f) {
+                    return f.kind == 0 && f.propId == fx.propId;
+                });
                 m_scriptFx.push_back(fx);
+            } else if (msg.kind == 1 && !msg.text.empty()) {
+                ScriptFx fx;
+                fx.kind = 1;
+                fx.remaining = std::clamp(msg.duration, 0.5f, 12.0f);
+                fx.color = glm::vec3(msg.r, msg.g, msg.b);
+                fx.text = msg.text.size() > 200 ? msg.text.substr(0, 200) : msg.text;
+                m_scriptFx.push_back(std::move(fx));
             }
             break;
         }

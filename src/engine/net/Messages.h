@@ -123,12 +123,14 @@ struct MovePropMsg {
     glm::mat4 transform{1.0f};
 };
 
-// Server→client: node-graph / script visual FX. kind 0 = prop highlight (id = prop id).
+// Server→client: node-graph / script visual FX.
+// kind 0 = prop highlight (id = prop id); kind 1 = HUD announce (text).
 struct ScriptFxMsg {
-    std::uint8_t kind = 0; // 0 highlight prop
+    std::uint8_t kind = 0; // 0 highlight prop, 1 announce toast
     std::uint32_t id = 0;
     float duration = 2.0f;
     float r = 0.15f, g = 0.65f, b = 1.0f;
+    std::string text; // kind 1: announce message (u16-prefixed on the wire)
 };
 
 // Snapshots larger than this are rejected on decode (and clamped on encode) so

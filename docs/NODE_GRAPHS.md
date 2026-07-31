@@ -30,14 +30,18 @@ The editor chrome uses a **dark Slate-inspired** theme (charcoal panels, blue se
 | Category | Nodes |
 |----------|--------|
 | Event | Event BeginPlay, Event Tick, Player Join/Death |
-| Action | Print String, Set Block, Spawn Pickup, Highlight/Print Object |
-| Data | Player Count, Item Id, Random Integer, Integer/Float/String, Get Block |
+| Action | Print String, Set Block, Spawn Pickup, Highlight/Print Object, **Announce**, **Damage Player** |
+| Data | Player Count, Item Id, Random Integer, Integer/Float/String, Get Block, **Get Tick**, **Get Prop Count**, **Get Player Health** |
 | Object | Get World Object, Get Prop Position (runtime `game.prop_pos`) |
 | Flow | Branch, Sequence |
 | Math | Add, Subtract, Multiply, Greater, Equal |
 
 **Runtime highlight:** `Highlight Object` emits `game.highlight_prop(id, seconds)` → server
-`ScriptFxMsg` → all clients show cyan prop markers (not editor-only).
+`ScriptFxMsg` kind 0 → all clients show cyan prop markers (not editor-only).
+
+**Announce:** `game.announce(msg)` → `ScriptFxMsg` kind 1 → yellow HUD toast on all clients + Output Log.
+
+**Damage Player:** `game.damage_player(peer, amount)` — lethal hits respawn + fire `on_player_death`.
 
 ## Design notes
 
@@ -62,7 +66,7 @@ The editor chrome uses a **dark Slate-inspired** theme (charcoal panels, blue se
 
 ## Open follow-ups
 
-- More `game.*` API nodes, multi-graph tabs, debug "watch" pins, subgraphs,
-  ImGuiColorTextEdit for the text Lua path.
+- ~~**C6-b high-value API nodes**~~ ✅ — announce, damage player, tick/prop count/health.
+- Multi-graph tabs, debug "watch" pins, subgraphs (C6-c), ImGuiColorTextEdit for Lua path.
 - ~~**Output Log browser (C9)**~~ ✅ — open **Output Log** in Room Designer (severity filters,
   search, clear). Node Graph compile posts success/fail there.

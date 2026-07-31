@@ -331,6 +331,56 @@ void ServerSim::setupScripting() {
         return false;
     };
     api.propCount = [this] { return static_cast<int>(m_props.size()); };
+    // C6-b: damage / announce / health for node graphs.
+    api.damagePlayer = [this](int peerId, float amount) {
+        if (amount <= 0.0f) return;
+        const auto peer = static_cast<PeerId>(peerId);
+        auto it = m_players.find(peer);
+        if (it == m_players.end() || !it->second || !it->second->spawned) return;
+        Player& pl = *it->second;
+        const float dealt = std::min(amount, 500.0f);
+        pl.health -= dealt;
+        log::info("[lua] damage_player {} for {:.1f} (hp now {:.0f})", peerId, dealt, pl.health);
+        if (pl.health > 0.0f) return;
+        log::info("[lua] player {} killed by script", peerId);
+        dropPlayerLoot(pl, pl.controller.position());
+        pl.controller.setState(defaultSpawnPos(), glm::vec3(0));
+        pl.health = 100.0f;
+        if (pl.pilotingShip != 0) {
+            if (Ship* ps = findShip(pl.pilotingShip)) {
+                if (pl.shipRole == 1) ps->pilot = 0;
+                if (pl.shipRole == 2) ps->passenger = 0;
+                if (ps->pilot == 0 && ps->passenger == 0) ensureShipBody(*ps);
+            }
+            pl.pilotingShip = 0;
+            pl.shipRole = 0;
+        }
+        m_scripts.onPlayerDeath(static_cast<std::uint32_t>(peer));
+    };
+    api.announce = [this](const std::string& s) {
+        if (s.empty()) return;
+        const std::string msg = s.size() > 200 ? s.substr(0, 200) : s;
+        log::info("[lua] announce: {}", msg);
+        ScriptFxMsg fx;
+        fx.kind = 1;
+        fx.id = 0;
+        fx.duration = 4.0f;
+        fx.r = 1.0f;
+        fx.g = 0.9f;
+        fx.b = 0.35f;
+        fx.text = msg;
+        if (m_activeTransport) {
+            for (const auto& [peer, pl] : m_players) {
+                if (pl) m_activeTransport->send(peer, pack(fx), true);
+            }
+        }
+    };
+    api.playerHealth = [this](int peerId) -> float {
+        const auto peer = static_cast<PeerId>(peerId);
+        auto it = m_players.find(peer);
+        if (it == m_players.end() || !it->second) return 0.0f;
+        return it->second->health;
+    };
     m_scripts.bind(std::move(api));
     m_scripts.loadDir(m_scriptDir);
 }

@@ -105,6 +105,16 @@ void ScriptHost::bind(ScriptApi api) {
         });
     if (a.propCount)
         game.set_function("prop_count", [&a] { return a.propCount(); });
+    if (a.damagePlayer)
+        game.set_function("damage_player",
+                          [&a](int peer, double amount) {
+                              a.damagePlayer(peer, static_cast<float>(amount));
+                          });
+    if (a.announce)
+        game.set_function("announce", [&a](const std::string& s) { a.announce(s); });
+    if (a.playerHealth)
+        game.set_function("player_health",
+                          [&a](int peer) { return static_cast<double>(a.playerHealth(peer)); });
 }
 
 bool ScriptHost::loadDir(const std::string& dir) {

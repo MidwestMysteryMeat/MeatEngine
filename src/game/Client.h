@@ -72,11 +72,13 @@ public:
     float ownYaw() const { return m_ownYaw; }
     float ownPitch() const { return m_ownPitch; }
 
-    // C6 script FX (prop highlights from node graphs). Tick down remaining; Engine draws.
+    // C6 script FX (prop highlights + announce toasts from node graphs).
     struct ScriptFx {
+        std::uint8_t kind = 0; // 0 highlight, 1 announce
         std::uint32_t propId = 0;
         float remaining = 0.0f;
         glm::vec3 color{0.15f, 0.65f, 1.0f};
+        std::string text;
     };
     void tickScriptFx(float dt);
     const std::vector<ScriptFx>& scriptFx() const { return m_scriptFx; }
