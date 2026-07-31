@@ -72,11 +72,15 @@ private:
         float fireCooldown = 0.0f;
         float placeCooldown = 0.0f;
         float useCooldown = 0.0f;
+        // H4: ship entity id while piloting (0 = on foot). Character controller is
+        // frozen; thrusters drive the ship instead.
+        std::uint32_t pilotingShip = 0;
         // Fire-mode trigger discipline (H2): the previous tick's button states let
         // the combat step detect a PRESS EDGE, so SemiAuto/Burst fire once per pull
         // and can't auto-repeat on hold.
         bool prevFire = false;
         bool prevReload = false;
+        bool prevUse = false;
         int burstRemaining = 0;        // rounds left in an in-flight burst
         // Reload (H3): a mag reload runs on a timer, then pulls reserve into the mag.
         float reloadCooldown = 0.0f;   // seconds left on the active reload
@@ -166,6 +170,16 @@ private:
         float repathTimer = 0.0f;
         float animSpeed = 0.0f;       // see Npc::animSpeed
     };
+    // H4 skeleton: thruster vehicle. No Jolt body yet — kinematic integrateShip.
+    struct Ship {
+        std::uint32_t id = 0;
+        glm::vec3 pos{0};
+        glm::vec3 vel{0};
+        float yaw = 0.0f;
+        float pitch = 0.0f;
+        PeerId pilot = 0; // 0 = empty seat
+        float health = 500.0f;
+    };
 
     void handlePacket(Transport& transport, PeerId peer, std::span<const std::byte> data);
     void broadcastSnapshot(Transport& transport);
@@ -197,6 +211,9 @@ private:
 
     void spawnDungeonLoot();
     void spawnDungeonNpcs();
+    void spawnDemoShip(); // H4: one ship near the spawn pad
+    void updateShips();
+    bool tryBoardOrLeaveShip(Player& player); // true if handled (Use consumed)
     void updateNpcs(Transport& transport);
     void updateTurrets(Transport& transport);
     void updateCompanions(Transport& transport);
@@ -254,6 +271,7 @@ private:
     std::vector<Npc> m_npcs;
     std::vector<Turret> m_turrets;
     std::vector<Companion> m_companions;
+    std::vector<Ship> m_ships;
     ScriptHost m_scripts;
     Transport* m_activeTransport = nullptr; // set each pump/tick for script callbacks
     std::uint64_t m_scriptRng = 0x2545F4914F6CDD1Dull; // seeded in init()

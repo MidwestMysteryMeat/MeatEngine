@@ -54,6 +54,8 @@ public:
     float health() const { return m_ownHealth; }
     const GameRules& rules() const { return m_rules; }
     const Inventory& inventory() const { return m_inventory; } // UI mirror; server owns truth
+    // H4: ship entity id while piloting (0 = on foot). From the last own PlayerState.
+    std::uint32_t vehicleId() const { return m_vehicleId; }
 
     // Remote players sampled 100 ms behind the newest snapshot, interpolated
     // between the bracketing snapshot states — smooth despite 20 Hz updates.
@@ -62,6 +64,11 @@ public:
     // World entities, newest snapshot state (pickups are static; movers get
     // interpolation when projectiles/NPCs land).
     const std::vector<EntityState>& entities() const { return m_entities; }
+
+    // Latest own snapshot pose (for pilot camera when prediction is thin).
+    glm::vec3 ownPos() const { return m_ownPos; }
+    float ownYaw() const { return m_ownYaw; }
+    float ownPitch() const { return m_ownPitch; }
 
 private:
     void applySnapshot(const SnapshotMsg& snap, PhysicsWorld& physics,
@@ -77,6 +84,10 @@ private:
     std::uint32_t m_seed = 0;
     bool m_welcomed = false;
     float m_ownHealth = 100.0f;
+    std::uint32_t m_vehicleId = 0;
+    glm::vec3 m_ownPos{0};
+    float m_ownYaw = 0.0f;
+    float m_ownPitch = 0.0f;
     GameRules m_rules;
     Inventory m_inventory;
     std::uint64_t m_latestSnapshotTick = 0;

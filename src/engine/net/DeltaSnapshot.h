@@ -23,7 +23,8 @@ inline constexpr std::uint8_t Yaw    = 1u << 2;
 inline constexpr std::uint8_t Pitch  = 1u << 3;
 inline constexpr std::uint8_t Flags  = 1u << 4; // onGround | crouched<<1
 inline constexpr std::uint8_t Health = 1u << 5;
-inline constexpr std::uint8_t All = Pos | Vel | Yaw | Pitch | Flags | Health;
+inline constexpr std::uint8_t Vehicle = 1u << 6; // H4 ship entity id (0 = on foot)
+inline constexpr std::uint8_t All = Pos | Vel | Yaw | Pitch | Flags | Health | Vehicle;
 } // namespace playerfield
 
 namespace entityfield {

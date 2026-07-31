@@ -6,6 +6,8 @@
 #include "engine/physics/CharacterController.h"
 #include "engine/physics/PhysicsWorld.h"
 #include "engine/voxel/VoxelWorld.h"
+#include "game/EntityTypes.h"
+#include "game/ShipControl.h"
 
 #include <glm/gtc/constants.hpp>
 
@@ -178,12 +180,38 @@ void Client::applySnapshot(const SnapshotMsg& snap, PhysicsWorld& physics,
     m_entities = snap.entities;
     if (!own) return;
     m_ownHealth = own->health;
+    m_vehicleId = own->vehicleId;
+    m_ownPos = own->pos;
+    m_ownYaw = own->yaw;
+    m_ownPitch = own->pitch;
 
     // Rewind-and-replay: adopt the authoritative state, then re-apply every
     // command the server hasn't seen yet. When prediction was right this lands
     // exactly where we already were, so no correction is visible.
     player.setState(own->pos, own->vel);
-    for (const PlayerCommand& cmd : m_unacked) player.update(cmd, kFixedDt, physics);
+    if (m_vehicleId != 0) {
+        // H4: predict thrusters with the same integrateShip the server runs.
+        ShipPose pose{own->pos, own->vel, own->yaw, own->pitch};
+        // Prefer ship entity pitch when present (packed in data).
+        for (const EntityState& e : m_entities) {
+            if (e.id == m_vehicleId &&
+                e.archetype == static_cast<std::uint8_t>(EntityArchetype::Ship)) {
+                pose.pitch = unpackShipPitch(e.data);
+                pose.yaw = e.yaw;
+                pose.pos = e.pos;
+                break;
+            }
+        }
+        for (const PlayerCommand& cmd : m_unacked) {
+            integrateShip(pose, cmd, kFixedDt, glm::vec3(0.0f, -1.5f, 0.0f));
+        }
+        player.setState(pose.pos, pose.vel);
+        m_ownPos = pose.pos;
+        m_ownYaw = pose.yaw;
+        m_ownPitch = pose.pitch;
+    } else {
+        for (const PlayerCommand& cmd : m_unacked) player.update(cmd, kFixedDt, physics);
+    }
 }
 
 std::vector<PlayerState> Client::remoteViewStates() const {

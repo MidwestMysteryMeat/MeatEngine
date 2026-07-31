@@ -18,6 +18,7 @@ enum class EntityArchetype : std::uint8_t {
     Turret = 6,     // placed auto-defense
     Companion = 7,  // mobile ally: follows its owner, engages hostile NPCs
     NpcZombie = 8,  // slow melee shambler; tanky, hits hard
+    Ship = 9,       // H4: piloted vehicle (thruster body; board/leave with Use)
     // Scheduled NPCs land with their phases.
 };
 

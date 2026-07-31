@@ -6,6 +6,7 @@
 #include "game/DungeonGen.h"
 #include "game/Environment.h"
 #include "game/Pathfinder.h"
+#include "game/ShipControl.h"
 #include "game/WeaponFire.h"
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -113,8 +114,13 @@ void ServerSim::reseedWorld(std::uint32_t seed, GameRules::Terrain terrain,
         player->ackedSnapshotTick = 0; // force a keyframe after the world swap
     }
 
+    m_ships.clear();
+    for (auto& [peer, player] : m_players) {
+        if (player) player->pilotingShip = 0;
+    }
     spawnDungeonLoot();
     spawnDungeonNpcs();
+    spawnDemoShip();
     m_scripts.onInit(m_seed);
     log::info("server: New Map — seed {} terrain {} env {}", m_seed, static_cast<int>(terrain),
               static_cast<int>(environment));
@@ -146,6 +152,7 @@ bool ServerSim::init(std::uint32_t worldSeed) {
     });
     spawnDungeonLoot();
     spawnDungeonNpcs();
+    spawnDemoShip();
     setupScripting();
     m_scripts.onInit(m_seed);
     return true;
@@ -304,6 +311,96 @@ void ServerSim::spawnDungeonNpcs() {
         ++i;
     }
     log::info("server: spawned {} dungeon NPCs", m_npcs.size());
+}
+
+void ServerSim::spawnDemoShip() {
+    // H4: one empty ship near the spawn pad so board/pilot is immediately testable
+    // (Space template default content; fine for any env as a skeleton).
+    Ship ship;
+    ship.id = m_nextEntityId++;
+    ship.pos = defaultSpawnPos() + glm::vec3(6.0f, 1.5f, 0.0f);
+    ship.yaw = 0.0f;
+    ship.pitch = 0.0f;
+    m_ships.push_back(ship);
+    log::info("server: demo ship {} at ({:.1f},{:.1f},{:.1f}) — Use (E) to board", ship.id,
+              ship.pos.x, ship.pos.y, ship.pos.z);
+}
+
+void ServerSim::updateShips() {
+    for (Ship& ship : m_ships) {
+        if (ship.pilot == 0) {
+            // Empty hull still feels a light field pull (drifts in orbital SOI).
+            const glm::vec3 g = m_gravity.sample(ship.pos);
+            ship.vel += g * 0.15f * kFixedDtServer;
+            ship.vel *= std::pow(kShipLinearDamp, kFixedDtServer * 60.0f);
+            ship.pos += ship.vel * kFixedDtServer;
+            continue;
+        }
+        auto it = m_players.find(ship.pilot);
+        if (it == m_players.end() || !it->second || it->second->pilotingShip != ship.id) {
+            ship.pilot = 0; // pilot left / disconnected
+            continue;
+        }
+        Player& pilot = *it->second;
+        ShipPose pose{ship.pos, ship.vel, ship.yaw, ship.pitch};
+        integrateShip(pose, pilot.lastCmd, kFixedDtServer, m_gravity.sample(ship.pos));
+        ship.pos = pose.pos;
+        ship.vel = pose.vel;
+        ship.yaw = pose.yaw;
+        ship.pitch = pose.pitch;
+        // Keep the capsule glued to the seat so stream center / saves / leave work.
+        pilot.controller.setState(ship.pos, ship.vel);
+    }
+}
+
+bool ServerSim::tryBoardOrLeaveShip(Player& player) {
+    if (player.pilotingShip != 0) {
+        // EVA: leave seat, offset to the ship's right so we don't re-trigger board.
+        Ship* ship = nullptr;
+        for (Ship& s : m_ships)
+            if (s.id == player.pilotingShip) {
+                ship = &s;
+                break;
+            }
+        if (ship) {
+            const float cy = std::cos(ship->yaw), sy = std::sin(ship->yaw);
+            const glm::vec3 right(cy, 0.0f, -sy);
+            const glm::vec3 leave = ship->pos + right * kShipLeaveOffset + glm::vec3(0, 0.2f, 0);
+            ship->pilot = 0;
+            player.pilotingShip = 0;
+            player.controller.setState(leave, glm::vec3(0));
+            log::info("server: player left ship {}", ship->id);
+        } else {
+            player.pilotingShip = 0;
+        }
+        return true;
+    }
+
+    const glm::vec3 feet = player.controller.position();
+    Ship* nearest = nullptr;
+    float best = kShipBoardRange;
+    for (Ship& s : m_ships) {
+        if (s.pilot != 0) continue;
+        const float d = glm::length(s.pos - feet);
+        if (d < best) {
+            best = d;
+            nearest = &s;
+        }
+    }
+    if (!nearest) return false;
+    PeerId peer = 0;
+    for (const auto& [p, pl] : m_players) {
+        if (pl.get() == &player) {
+            peer = p;
+            break;
+        }
+    }
+    if (peer == 0) return false;
+    nearest->pilot = peer;
+    player.pilotingShip = nearest->id;
+    player.controller.setState(nearest->pos, nearest->vel);
+    log::info("server: player {} boarded ship {}", peer, nearest->id);
+    return true;
 }
 
 // Spawn one ItemPickup world entity (shared by dungeon/NPC/death loot). Rides the
@@ -1017,10 +1114,19 @@ void ServerSim::pump(Transport& transport) {
             log::info("server: peer {} connected", e.peer);
             m_players.emplace(e.peer, std::make_unique<Player>());
             break;
-        case NetEvent::Type::Disconnected:
+        case NetEvent::Type::Disconnected: {
             log::info("server: peer {} disconnected", e.peer);
+            // Free any ship seat this peer held so it doesn't stay locked.
+            if (auto it = m_players.find(e.peer); it != m_players.end() && it->second) {
+                const std::uint32_t sid = it->second->pilotingShip;
+                if (sid != 0) {
+                    for (Ship& s : m_ships)
+                        if (s.id == sid) s.pilot = 0;
+                }
+            }
             m_players.erase(e.peer);
             break;
+        }
         case NetEvent::Type::Packet:
             handlePacket(transport, e.peer, e.data);
             break;
@@ -1133,17 +1239,21 @@ void ServerSim::tick(Transport& transport) {
                 continue;
             player->spawned = true;
         }
-        // B3b: sample the field at the feet before integrating so habitat/orbital SOI apply.
-        player->controller.setGravity(m_gravity.sample(player->controller.position()));
-        player->controller.update(player->lastCmd, kFixedDtServer, m_physics);
-        if (player->controller.position().y < -30.0f) // fell out (colliders pending)
-            player->controller.setState(defaultSpawnPos(), glm::vec3(0));
+        if (player->pilotingShip == 0) {
+            // B3b: sample the field at the feet before integrating so habitat/orbital SOI apply.
+            player->controller.setGravity(m_gravity.sample(player->controller.position()));
+            player->controller.update(player->lastCmd, kFixedDtServer, m_physics);
+            if (player->controller.position().y < -30.0f) // fell out (colliders pending)
+                player->controller.setState(defaultSpawnPos(), glm::vec3(0));
+        }
+        // Pilots: thrusters run in updateShips after this loop; combat still runs (gunner seat).
         processCombat(transport, peer, *player);
         if (first) { // TODO: multi-center streaming once co-op players roam apart
             streamCenter = player->controller.position();
             first = false;
         }
     }
+    updateShips(); // H4: thrusters + seat glue (after player cmds applied)
     m_physics.step(kFixedDtServer);
     updateProjectiles(transport);
     updateNpcs(transport);
@@ -1375,23 +1485,28 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
         }
     }
 
-    if (player.lastCmd.use && player.useCooldown <= 0.0f) {
+    // H4: Use edge boards/leaves a ship before loot/consumable so EVA is reliable.
+    const bool usePressed = player.lastCmd.use && !player.prevUse;
+    if (usePressed && player.useCooldown <= 0.0f) {
         player.useCooldown = 0.5f;
-        const bool grabbed = tryPickup(transport, peer, player); // loot wins over consuming
-        if (!grabbed && heldDef.type == ItemType::Consumable && !heldDef.effects.empty()) {
-            // Don't waste a pure-heal item at full health; a buff (or any non-heal
-            // effect) is always worth applying, so a stim works even topped off.
-            bool healOnly = true;
-            for (const Effect& e : heldDef.effects)
-                if (e.kind != EffectKind::Heal) healOnly = false;
-            if (!healOnly || player.health < 100.0f) {
-                runEffects(transport, heldDef.effects, peer,
-                           player.controller.position(), &player, nullptr);
-                player.inventory.remove(held.id, 1);
-                player.inventoryDirty = true;
+        if (!tryBoardOrLeaveShip(player)) {
+            const bool grabbed = tryPickup(transport, peer, player); // loot wins over consuming
+            if (!grabbed && heldDef.type == ItemType::Consumable && !heldDef.effects.empty()) {
+                // Don't waste a pure-heal item at full health; a buff (or any non-heal
+                // effect) is always worth applying, so a stim works even topped off.
+                bool healOnly = true;
+                for (const Effect& e : heldDef.effects)
+                    if (e.kind != EffectKind::Heal) healOnly = false;
+                if (!healOnly || player.health < 100.0f) {
+                    runEffects(transport, heldDef.effects, peer,
+                               player.controller.position(), &player, nullptr);
+                    player.inventory.remove(held.id, 1);
+                    player.inventoryDirty = true;
+                }
             }
         }
     }
+    player.prevUse = player.lastCmd.use;
 
     if (player.inventoryDirty) {
         sendInventory(transport, peer, player);
@@ -1531,10 +1646,24 @@ void ServerSim::broadcastSnapshot(Transport& transport) {
     snap.tick = m_tick;
     for (auto& [peer, player] : m_players) {
         if (!player->spawned) continue;
-        snap.players.push_back({peer, player->controller.position(),
-                                player->controller.velocity(), player->lastCmd.yaw,
-                                player->lastCmd.pitch, player->controller.onGround(),
-                                player->controller.crouched(), player->health});
+        PlayerState ps;
+        ps.playerId = peer;
+        ps.pos = player->controller.position();
+        ps.vel = player->controller.velocity();
+        ps.yaw = player->lastCmd.yaw;
+        ps.pitch = player->lastCmd.pitch;
+        ps.onGround = player->controller.onGround();
+        ps.crouched = player->controller.crouched();
+        ps.health = player->health;
+        ps.vehicleId = player->pilotingShip;
+        snap.players.push_back(ps);
+    }
+    for (const Ship& s : m_ships) {
+        if (snap.entities.size() >= kMaxSnapshotEntities) break;
+        // anim = 255 when piloted so clients can tint/emphasize an occupied hull.
+        const auto anim = static_cast<std::uint8_t>(s.pilot != 0 ? 255 : 0);
+        snap.entities.push_back({s.id, static_cast<std::uint8_t>(EntityArchetype::Ship), s.pos,
+                                 s.yaw, anim, s.health, packShipPitch(s.pitch)});
     }
     // Threats first: if the entity cap ever bites, invisible-but-lethal NPCs and
     // rockets are far worse than an unrendered ammo box.

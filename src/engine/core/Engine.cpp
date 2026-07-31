@@ -4,7 +4,9 @@
 #include "engine/anim/Animator.h"
 #include "engine/asset/ModelLoader.h"
 #include "engine/net/HttpTiny.h"
+#include "game/EntityTypes.h"
 #include "game/Environment.h"
+#include "game/ShipControl.h"
 
 #include <GLFW/glfw3.h>
 #include <stb_image.h> // stbi_info: cheap header-probe validation for texture imports
@@ -597,13 +599,17 @@ void Engine::simulateClientTick(const PlayerCommand& frameCmd) {
     }
 
     // B3b: sample the same field shape the server uses (env-derived defaults).
-    m_player.setGravity(m_gravity.sample(m_player.position()));
-    m_player.update(cmd, kFixedDt, m_physics);
+    if (m_client.vehicleId() == 0) {
+        m_player.setGravity(m_gravity.sample(m_player.position()));
+        m_player.update(cmd, kFixedDt, m_physics);
+    }
+    // When piloting, ship prediction is applied in Client::applySnapshot; local
+    // ticks still send commands so the server integrates thrusters.
 
-    // Footsteps: paced by horizontal speed while grounded.
+    // Footsteps: paced by horizontal speed while grounded (on foot only).
     const glm::vec3 vel = m_player.velocity();
     const float speed = glm::length(glm::vec2(vel.x, vel.z));
-    if (m_player.onGround() && speed > 1.0f) {
+    if (m_client.vehicleId() == 0 && m_player.onGround() && speed > 1.0f) {
         m_footstepTimer -= kFixedDt;
         if (m_footstepTimer <= 0.0f) {
             m_footstepTimer = cmd.sprint ? 0.30f : 0.45f;
@@ -632,13 +638,38 @@ void Engine::render(float alpha) {
     playerCamera.pitch = m_lastCmd.pitch;
     {
         const glm::vec3 body = glm::mix(m_prevPlayerPos, m_currPlayerPos, alpha);
-        const glm::vec3 eye = body + glm::vec3(0.0f, m_player.eyeHeight(), 0.0f);
+        const bool piloting = m_client.vehicleId() != 0;
+        // H4 pilot seat: camera attaches to ship pose (first = cockpit, third = chase).
+        glm::vec3 shipPos = body;
+        float shipYaw = playerCamera.yaw;
+        float shipPitch = playerCamera.pitch;
+        if (piloting) {
+            shipPos = body;
+            shipYaw = m_lastCmd.yaw;
+            shipPitch = m_lastCmd.pitch;
+            for (const EntityState& e : m_client.entities()) {
+                if (e.id == m_client.vehicleId() &&
+                    e.archetype == static_cast<std::uint8_t>(EntityArchetype::Ship)) {
+                    shipPos = e.pos;
+                    shipYaw = e.yaw;
+                    shipPitch = unpackShipPitch(e.data);
+                    // Prefer live look for aiming while piloting.
+                    shipYaw = m_lastCmd.yaw;
+                    shipPitch = m_lastCmd.pitch;
+                    break;
+                }
+            }
+            playerCamera.yaw = shipYaw;
+            playerCamera.pitch = shipPitch;
+        }
+        const glm::vec3 eye =
+            piloting ? (shipPos + glm::vec3(0.0f, 0.55f, 0.0f))
+                     : (body + glm::vec3(0.0f, m_player.eyeHeight(), 0.0f));
         if (m_perspective == GameRules::Perspective::Third) {
-            // Over-shoulder TPS: camera sits behind/above/right of the eye and
-            // pulls in if a static (terrain/prop) collider blocks the line of sight.
-            constexpr float kBehind = 2.8f;
-            constexpr float kAbove = 0.45f;
-            constexpr float kShoulder = 0.55f;
+            // Over-shoulder (on foot) or chase cam (ship) with collision pullback.
+            const float kBehind = piloting ? 8.0f : 2.8f;
+            const float kAbove = piloting ? 2.2f : 0.45f;
+            const float kShoulder = piloting ? 0.0f : 0.55f;
             constexpr float kPullEps = 0.12f;
             const glm::vec3 fwd = playerCamera.forward();
             const glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
@@ -861,6 +892,13 @@ void Engine::render(float alpha) {
                            m_zombieWalkClip >= 0 ? m_zombieWalkClip : m_npcWalkClip,
                            e.anim / 255.0f, m_zombieMaterial);
             break;
+        case 9: { // Ship (H4): box hull + thruster light; occupied = brighter cyan
+            m_renderer.submitChunk(m_remotePlayerMesh, e.pos);
+            const glm::vec3 glow =
+                e.anim > 0 ? glm::vec3(0.2f, 0.85f, 1.0f) : glm::vec3(0.15f, 0.4f, 0.7f);
+            m_renderer.submitPointLight(e.pos + glm::vec3(0, 0.4f, 0), glow, e.anim > 0 ? 10.0f : 5.0f);
+            break;
+        }
         default:
             break;
         }
@@ -1045,6 +1083,11 @@ void Engine::render(float alpha) {
         ImGui::Text("players %zu", remotes.size() + 1);
         ImGui::Text("pos %.1f %.1f %.1f", m_currPlayerPos.x, m_currPlayerPos.y,
                     m_currPlayerPos.z);
+        if (m_client.vehicleId() != 0)
+            ImGui::Text("SHIP %u  (E leave | F7 hemi | cam first/third via --perspective)",
+                        m_client.vehicleId());
+        else
+            ImGui::TextDisabled("near ship: E board");
         ImGui::Text("%.0f fps", ImGui::GetIO().Framerate);
         ImGui::End();
         drawInventoryUi();

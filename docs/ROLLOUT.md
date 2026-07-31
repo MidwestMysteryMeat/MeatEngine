@@ -144,22 +144,11 @@ underwater explorer needn't ship guns. Composes with world templates (B) + envir
   `perspective` / over-shoulder cam). Racer + **Space ship (H4)** + module opt-in still open.
 - [x] **H2. Weapon fire modes** ⭐ — Semi / Auto / Burst with trigger-edge discipline + shotgun pellets.
 - [x] **H3. Ammo + magazines** — mag/reserve/reload + HUD; gated by `finiteAmmo`.
-- [ ] **H4. Space ship template** ⭐ *(planned — product note)* — space-themed game mode where the
-  default playable is a **controllable ship**, not an on-foot FPS. Composes with environment
-  `Space` (B3) and requires gravity fields (B3b). Slice plan:
-  1. **Vehicle entity** — server-authoritative ship body (Jolt rigid body or character-like
-     thruster controller): 6DOF thrust/torque, optional linear/angular damping for “gamey” feel.
-  2. **Perspective swap while piloting** — first-person cockpit *and* third-person chase/orbit
-     around the ship (reuse H1 perspective plumbing; camera attaches to ship transform, not the
-     capsule). Toggle is a pilot control, not a project-wide fixed choice.
-  3. **Board / leave ship (EVA)** — enter seat → possession of ship controls; exit → spawn/restore
-     on-foot player capsule (0-g or local ship gravity). Inventory/weapons stay on the body so
-     EVA combat remains possible.
-  4. **Gravity-aware motion** — ship + EVA both sample gravity volumes / orbital bodies (B3b);
-     ship interiors can host artificial “down” while the hull floats in void.
-  5. **Content defaults** — Void or sparse Space terrain + Space env fog/ambient; combat module
-     optional (guns on foot / ship hardpoints later). `game.json "template": "space"` (or
-     `"spaceship"`).
+- [~] **H4. Space ship template** ⭐ — skeleton shipped: `EntityArchetype::Ship`, demo hull near
+  spawn, **Use (E)** board/leave, thruster integrate (`game/ShipControl.h`), snapshot
+  `vehicleId` + ship entity, pilot camera cockpit/chase via H1 perspective, client thruster
+  prediction. Still open: Jolt hull collision, real mesh, in-game perspective toggle while
+  piloting, hardpoints, `template: space` project defaults, multi-seat / AI ships.
 
 ## Not automatable
 Human feel-playtests (mouse feel, combat cadence, editor ergonomics), and real Linux-hardware CI.
