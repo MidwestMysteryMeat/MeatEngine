@@ -195,6 +195,11 @@ private:
     std::uint8_t m_selectedSlot = 0; // hotbar index, sent in every command
     bool m_showBackpack = false;     // Tab
     bool m_imguiReady = false;
+    // H1 Racer: client-side lap timer (finish line = pad Z plane, |X| corridor).
+    float m_racerLapTime = 0.0f;
+    float m_racerBestLap = 0.0f;
+    int m_racerLaps = 0;
+    bool m_racerBehindLine = true;
 
     LanBeacon m_beacon;                 // hosting: LAN presence
     std::thread m_masterHeartbeat;      // hosting: --master announce loop

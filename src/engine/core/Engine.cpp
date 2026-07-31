@@ -698,6 +698,24 @@ void Engine::simulateClientTick(const PlayerCommand& frameCmd) {
     } else {
         m_footstepTimer = 0.0f;
     }
+
+    // Racer lap timer: finish line is the pad's Z plane; corridor |x - pad.x| < 14.
+    if (m_client.rules().gameTemplate == GameRules::Template::Racer &&
+        m_client.vehicleId() != 0 && m_client.vehicleRole() == 1) {
+        m_racerLapTime += kFixedDt;
+        const glm::vec3 pad = clientSpawnPos();
+        const glm::vec3 p = m_player.position();
+        const bool behind = p.z < pad.z;
+        if (m_racerBehindLine && !behind && std::abs(p.x - pad.x) < 14.0f) {
+            if (m_racerLaps > 0) {
+                if (m_racerBestLap <= 0.0f || m_racerLapTime < m_racerBestLap)
+                    m_racerBestLap = m_racerLapTime;
+            }
+            ++m_racerLaps;
+            m_racerLapTime = 0.0f;
+        }
+        m_racerBehindLine = behind;
+    }
     m_physics.step(kFixedDt);
     if (m_player.position().y < kFallResetY)
         m_player.setState(clientSpawnPos(), glm::vec3(0)); // fell out (colliders pending)
@@ -1224,7 +1242,13 @@ void Engine::render(float alpha) {
                 const glm::vec3 v = m_player.velocity();
                 const float kph = glm::length(glm::vec2(v.x, v.z)) * 3.6f;
                 ImGui::Text("CAR %u  DRIVER  %.0f km/h", m_client.vehicleId(), kph);
+                if (m_racerBestLap > 0.0f)
+                    ImGui::Text("LAP %d  time %.1fs  best %.1fs", m_racerLaps, m_racerLapTime,
+                                m_racerBestLap);
+                else
+                    ImGui::Text("LAP %d  time %.1fs  best --", m_racerLaps, m_racerLapTime);
                 ImGui::TextDisabled("E leave | WASD drive | Space hop | Ctrl brake");
+                ImGui::TextDisabled("finish: cross pad Z within |X|<14 (loop the pace car)");
             } else if (m_client.vehicleRole() == 1) {
                 ImGui::Text("SHIP %u  PILOT  cannon (auto hardpoints)", m_client.vehicleId());
                 ImGui::TextDisabled("E leave | V cam | LMB fire | WASD+Space/Ctrl thrust");
