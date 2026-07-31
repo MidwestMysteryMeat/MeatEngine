@@ -60,11 +60,19 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
 - **D1 binary greedy mesher** (+AO from its v1 branch) — biggest/riskiest, verify mesh + perf.
 - **D4 EnTT** — migrate the registry incrementally behind its API.
 
-## Near-term ordered backlog (creation suite / blueprints track)
-1. **C6 continue** — more blueprint `game.*` nodes + ScriptFx (networked highlight) if mid-flight.
-2. **C9 Output Log** ⭐ — UE5 Output Log panel (errors/warnings/messages browser); see above.
-3. C6 subgraphs / multi-graph / watch pins.
-4. A2 sun shadows / B2 mesh levels as capacity allows.
+## Near-term ordered backlog
+
+**Full research ranking:** [ENGINE_PRIORITY_PLAN.md](ENGINE_PRIORITY_PLAN.md) (highest → lowest need).
+
+### Working list (creation suite track — adjusted)
+1. ⭐ **C9 Output Log** — UE5 Output Log panel (errors/warnings/messages). **Promote above more C6 features.**
+2. **C6-a reliability** — compile/reload errors → log; ScriptFx + many API nodes already shipped (`3c9920d`).
+3. **C6-b high-value nodes only** — finish hooks creators need, not infinite catalog.
+4. **C5 lite / C4** — prop-env inspectors + import dialog (suite ergonomics).
+5. ⭐ **A2 sun shadows** — biggest remaining visual lift.
+6. **C6-c subgraphs / multi-graph / watches** — *after* log + reliability (demoted).
+7. **B2 MeshLevel / B3b editor volumes / B5 game.json** — as capacity allows.
+8. H4/H1 polish, C7 packaging, F/D pillars — later (see full plan).
 
 ## Cleanup / debt from last sprint
 - **ARCHITECTURE.md is stale** — still frames delta-compression, navmesh, torch-light, ozz as
