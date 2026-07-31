@@ -4,7 +4,9 @@
 namespace meat {
 
 // Engine users pick these; nothing downstream hardcodes a choice. Rules live on
-// the server and travel to clients in Welcome.
+// the server and travel to clients in Welcome (inventory model, flags/terrain,
+// voxelSize, environment). Perspective is a local presentation choice and is
+// NOT packed into Welcome — each client may pick first/third independently.
 struct GameRules {
     enum class InventoryModel : std::uint8_t {
         HotbarBackpack = 0, // 1-9 hotbar + Tab grid (default)
@@ -20,20 +22,23 @@ struct GameRules {
     // World ENVIRONMENT preset — composes with terrain to define the *feel* of a world by
     // driving gravity + fog + ambient light together (see game/Environment.h for the values).
     // Surface = the default earthy world; Underwater = buoyant + thick blue fog; Space = floaty +
-    // black void, no fog. Applied from config before world gen, same as voxelSize. NOT yet packed
-    // into flagsByte (no free bits) — networked-join clients still default to Surface; sending it
-    // in Welcome is a documented follow-up. For --play/--editor/--project the server and client
-    // share one config, so it is already consistent there.
+    // black void, no fog. Packed into Welcome (not flagsByte — no free bits) so a networked
+    // joiner gets the host's gravity/fog/ambient instead of defaulting to Surface.
     enum class Environment : std::uint8_t { Surface = 0, Underwater = 1, Space = 2 };
     Environment environment = Environment::Surface;
+    // Camera presentation (H1 first slice: FPS↔TPS). First = eye-height FPS cam + crosshair;
+    // Third = over-shoulder cam with collision pullback, no crosshair. Set via game.json
+    // "perspective" or "template" (fps→First, tps→Third) / --perspective / --template.
+    enum class Perspective : std::uint8_t { First = 0, Third = 1 };
+    Perspective perspective = Perspective::First;
     bool finiteAmmo = true;      // guns consume ammo items
     bool minedBlockDrops = true; // broken blocks enter the breaker's inventory
     bool penetration = true;     // bullets spend budget passing through materials
     bool blockDamage = true;     // blocks chip (hp) instead of breaking on first hit
     bool dropOnDeath = true;     // a killed player scatters part of their bag as world pickups
-    // Metres per voxel — world-defining, applied to meat::kVoxelSize at startup. Devs pick
-    // anything from fine (< 0.5) to chunkier-than-Minecraft (> 1). Must match across a
-    // session (server + all clients see the same world), so it is set before world gen.
+    // Metres per voxel — world-defining, applied to meat::kVoxelSize at startup (and again
+    // from Welcome on a join client so host scale wins). Devs pick anything from fine
+    // (< 0.5) to chunkier-than-Minecraft (> 1). Must match across a session.
     float voxelSize = 0.5f; // == meat::kDefaultVoxelSize (avoid the heavy Chunk.h include here)
 
     std::uint8_t flagsByte() const {

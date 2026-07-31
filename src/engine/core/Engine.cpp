@@ -33,7 +33,11 @@
 namespace meat {
 namespace {
 constexpr float kFallResetY = -30.0f; // below any terrain: teleport back to spawn
-constexpr glm::vec3 kClientSpawn{8.0f, 8.0f, 8.0f};
+// Same voxel cell as historical (8,8,8)@0.5 m — scales with kVoxelSize so a
+// large-block host never spawns the client under the surface pad.
+inline glm::vec3 clientSpawnPos() {
+    return glm::vec3(16.0f, 16.0f, 16.0f) * kVoxelSize;
+}
 constexpr float kFireInterval = 0.15f; // cosmetic mirror; the server enforces its own
 
 // Box proxy meshes (feet/base at local origin) rendered through the chunk
@@ -164,11 +168,11 @@ void Engine::setupClientWorld() {
     // Terrain mode came from the server in Welcome (packed in the rules flags), so the client
     // builds the identical world locally.
     m_voxels.setGenerator(makeTerrainGenerator(m_client.worldSeed(), palette, m_client.rules().terrain));
-    if (!m_player.init(m_physics, kClientSpawn)) {
+    if (!m_player.init(m_physics, clientSpawnPos())) {
         log::error("client character init failed");
         return;
     }
-    m_prevPlayerPos = m_currPlayerPos = kClientSpawn;
+    m_prevPlayerPos = m_currPlayerPos = clientSpawnPos();
     m_clientWorldReady = true;
     loadWorldProps();
     loadAnimTestActor();
@@ -184,7 +188,7 @@ void Engine::loadWorldProps() {
         ModelImportOptions opts;
         glm::vec3 place;
     };
-    const glm::vec3 near = kClientSpawn + glm::vec3(3.0f, 0.0f, 0.0f);
+    const glm::vec3 near = clientSpawnPos() + glm::vec3(3.0f, 0.0f, 0.0f);
     const Candidate candidates[] = {
         {"assets/models/prop_crate.obj", {.scale = 1.0f, .center = true}, near},
         {"assets/models/test_male.fbx", {.scale = 0.01f, .center = true}, near + glm::vec3(2, 0, 0)},
@@ -202,14 +206,27 @@ void Engine::loadWorldProps() {
     log::info("loaded {} world props", m_props.size());
 }
 
-// Drain the server's prop reports (PropAddedMsg from a live place / join replay,
-// RemovePropMsg) into the rendered+collidable synced list. Idempotent on id so a
-// join-replay followed by a later broadcast can't double-add.
+// Drain the server's prop reports (PropAddedMsg from a live place / join replay /
+// move, RemovePropMsg) into the rendered+collidable synced list. An already-known
+// id on PropAdded means the transform changed (gizmo move) — rebuild the collider.
 void Engine::syncWorldProps() {
     for (const PropAddedMsg& msg : m_client.takeNewProps()) {
-        const bool exists = std::any_of(m_editorProps.begin(), m_editorProps.end(),
-                                        [&](const EditorProp& p) { return p.id == msg.id; });
-        if (exists) continue;
+        auto existing = std::find_if(m_editorProps.begin(), m_editorProps.end(),
+                                     [&](const EditorProp& p) { return p.id == msg.id; });
+        const EditorPropMesh& pm = editorPropMesh(msg.asset);
+        glm::vec3 center, half;
+        transformedAabb(msg.transform, pm.boundsMin, pm.boundsMax, center, half);
+        if (existing != m_editorProps.end()) {
+            existing->transform = msg.transform;
+            existing->assetPath = msg.asset;
+            if (const auto bit = m_propBodies.find(msg.id); bit != m_propBodies.end()) {
+                m_physics.removeStaticBox(bit->second);
+                bit->second = m_physics.addStaticBox(center, half);
+            } else {
+                m_propBodies[msg.id] = m_physics.addStaticBox(center, half);
+            }
+            continue;
+        }
         EditorProp prop;
         prop.id = msg.id;
         prop.assetPath = msg.asset;
@@ -217,9 +234,6 @@ void Engine::syncWorldProps() {
         m_editorProps.push_back(prop);
         // Client-mirror box collider (same bounds+transform math as the server) so
         // local prediction stops at the prop where the authoritative sim does.
-        const EditorPropMesh& pm = editorPropMesh(msg.asset);
-        glm::vec3 center, half;
-        transformedAabb(msg.transform, pm.boundsMin, pm.boundsMax, center, half);
         m_propBodies[msg.id] = m_physics.addStaticBox(center, half);
         const glm::vec3 at = glm::vec3(msg.transform[3]);
         log::info("client: world prop {} '{}' synced at ({:.1f},{:.1f},{:.1f}) (+collider)", msg.id,
@@ -307,7 +321,7 @@ void Engine::loadAnimTestActor() {
         const float norm = 1.8f / std::max(0.01f, upExtent);
         // Stand it on the terrain surface a few m ahead, so the whole body frames
         // in the spawn camera rather than floating at spawn height (y 8).
-        const glm::vec3 place{kClientSpawn.x, 5.0f, kClientSpawn.z - 4.0f};
+        const glm::vec3 place{clientSpawnPos().x, 5.0f, clientSpawnPos().z - 4.0f};
         // rootInverse now lives in the skinning matrices (Animator), so the model
         // transform is just display placement.
         actor->transform = glm::translate(glm::mat4(1.0f), place) *
@@ -544,7 +558,7 @@ void Engine::simulateClientTick(const PlayerCommand& frameCmd) {
     }
     m_physics.step(kFixedDt);
     if (m_player.position().y < kFallResetY)
-        m_player.setState(kClientSpawn, glm::vec3(0)); // fell out (colliders pending)
+        m_player.setState(clientSpawnPos(), glm::vec3(0)); // fell out (colliders pending)
     m_prevPlayerPos = m_currPlayerPos;
     m_currPlayerPos = m_player.position();
 }
@@ -558,10 +572,40 @@ void Engine::render(float alpha) {
     }
 
     Camera playerCamera;
-    playerCamera.pos = glm::mix(m_prevPlayerPos, m_currPlayerPos, alpha) +
-                       glm::vec3(0.0f, m_player.eyeHeight(), 0.0f);
     playerCamera.yaw = m_lastCmd.yaw; // freshest mouse sample, not the tick's
     playerCamera.pitch = m_lastCmd.pitch;
+    {
+        const glm::vec3 body = glm::mix(m_prevPlayerPos, m_currPlayerPos, alpha);
+        const glm::vec3 eye = body + glm::vec3(0.0f, m_player.eyeHeight(), 0.0f);
+        if (m_perspective == GameRules::Perspective::Third) {
+            // Over-shoulder TPS: camera sits behind/above/right of the eye and
+            // pulls in if a static (terrain/prop) collider blocks the line of sight.
+            constexpr float kBehind = 2.8f;
+            constexpr float kAbove = 0.45f;
+            constexpr float kShoulder = 0.55f;
+            constexpr float kPullEps = 0.12f;
+            const glm::vec3 fwd = playerCamera.forward();
+            const glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
+            glm::vec3 right = glm::cross(fwd, worldUp);
+            const float rLen = glm::length(right);
+            right = rLen > 1e-4f ? right / rLen : glm::vec3(1.0f, 0.0f, 0.0f);
+            const glm::vec3 desired = eye - fwd * kBehind + worldUp * kAbove + right * kShoulder;
+            const glm::vec3 toCam = desired - eye;
+            const float dist = glm::length(toCam);
+            glm::vec3 camPos = desired;
+            if (dist > 1e-4f) {
+                const glm::vec3 dir = toCam / dist;
+                const auto hit = m_physics.raycast(eye, dir, dist);
+                if (hit.hit) {
+                    const float pulled = std::max(0.0f, glm::length(hit.pos - eye) - kPullEps);
+                    camPos = eye + dir * pulled;
+                }
+            }
+            playerCamera.pos = camPos;
+        } else {
+            playerCamera.pos = eye;
+        }
+    }
 
     // Animation booth: a fixed, close, deterministic framing of the anim actor so
     // VLM grading is consistent (the SIE-booth idea) instead of hostage to where
@@ -798,6 +842,12 @@ void Engine::render(float alpha) {
         ctx.requestPlaceProp = [this](std::string asset, glm::mat4 transform) {
             m_client.sendPlaceProp(asset, transform);
         };
+        ctx.requestMoveProp = [this](std::uint32_t id, glm::mat4 transform) {
+            if (id != 0) m_client.sendMoveProp(id, transform);
+        };
+        ctx.requestRemoveProp = [this](std::uint32_t id) {
+            if (id != 0) m_client.sendRemoveProp(id);
+        };
         ctx.listFiles = [](const std::string& dir) {
             std::vector<std::string> out;
             std::error_code ec;
@@ -886,7 +936,8 @@ void Engine::render(float alpha) {
             m_renderer.submitPointLight(camera.pos + camera.forward() * 0.4f,
                                         glm::vec3(1.0f, 0.72f, 0.35f) * (m_muzzleFlash / 0.08f),
                                         8.0f);
-        m_renderer.drawCrosshair();
+        // Crosshair is an FPS aim cue; third-person uses the over-shoulder view instead.
+        if (m_perspective == GameRules::Perspective::First) m_renderer.drawCrosshair();
     }
     m_renderer.endFrame();
 
@@ -1196,10 +1247,10 @@ int Engine::run(const EngineConfig& configIn) {
         return 1;
     }
     // World Environment preset (gravity + fog + ambient). For --play/--editor/--project the client
-    // shares config.rules with the in-process server, so both apply identical gravity. A networked
-    // client that joins a remote server still defaults to Surface until the preset travels in Welcome
-    // (documented follow-up).
+    // shares config.rules with the in-process server. A networked join re-applies from Welcome
+    // (host-authoritative voxelSize + environment) before setupClientWorld.
     applyEnvironment(config.rules);
+    m_perspective = config.rules.perspective;
     m_animBooth = config.animBooth;
     m_animModel = config.animModel;
     m_animClip = config.animClip;
@@ -1262,7 +1313,19 @@ int Engine::run(const EngineConfig& configIn) {
         }
         m_client.pump(m_voxels, m_physics, m_player);
         if (m_clientWorldReady) syncWorldProps(); // server prop adds/removes → render + colliders
-        if (!m_clientWorldReady && m_client.welcomed()) setupClientWorld();
+        if (!m_clientWorldReady && m_client.welcomed()) {
+            // Host wins on world scale + environment (Welcome). Apply before any
+            // generator/mesh/character runs so the mirror matches the server.
+            const GameRules& hostRules = m_client.rules();
+            const float vs = hostRules.voxelSize;
+            if (vs != kVoxelSize) {
+                kVoxelSize = vs;
+                log::info("client: host voxelSize = {:.3f} m/voxel (chunk edge {:.1f} m)",
+                          kVoxelSize, chunkWorldSize());
+            }
+            applyEnvironment(hostRules);
+            setupClientWorld();
+        }
 
         if (m_clientWorldReady) { // audio cues from authoritative state deltas
             const float hp = m_client.health();

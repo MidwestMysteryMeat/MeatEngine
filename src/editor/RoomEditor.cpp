@@ -163,11 +163,14 @@ void RoomEditor::update(EditorContext& ctx, float dt) {
     if (ctx.input.pressed(GLFW_KEY_ESCAPE)) m_anchor.reset();
 
     // Delete removes the selected prop (matching the Outliner's Delete button).
+    // Server-authoritative: request remove; PropRemoved echo updates ctx.props.
     if (m_selKind == Selection::Prop && ctx.input.pressed(GLFW_KEY_DELETE) && m_selIndex >= 0 &&
         m_selIndex < static_cast<int>(ctx.props.size())) {
-        ctx.props.erase(ctx.props.begin() + m_selIndex);
+        const EditorProp& prop = ctx.props[static_cast<std::size_t>(m_selIndex)];
+        if (prop.id != 0 && ctx.requestRemoveProp) ctx.requestRemoveProp(prop.id);
         m_selKind = Selection::None;
         m_selIndex = -1;
+        m_propGizmoDirty = false;
     }
 }
 
@@ -435,9 +438,11 @@ void RoomEditor::drawOutliner(EditorContext& ctx) {
         ImGui::SameLine();
         ImGui::RadioButton("scale", &m_propGizmoOp, 2);
         if (ImGui::Button("Delete")) {
-            ctx.props.erase(ctx.props.begin() + m_selIndex);
+            // Server-authoritative: request remove; echo drops it from ctx.props.
+            if (prop.id != 0 && ctx.requestRemoveProp) ctx.requestRemoveProp(prop.id);
             m_selKind = Selection::None;
             m_selIndex = -1;
+            m_propGizmoDirty = false;
         }
     }
     ImGui::End();
@@ -460,16 +465,20 @@ void RoomEditor::drawGizmo(EditorContext& ctx, const glm::mat4& view, const glm:
                m_selIndex < static_cast<int>(ctx.props.size())) {
         // Props carry a full TRS: move/rotate/scale, manipulated in place. Scale
         // reads more predictably in local space; move/rotate use world axes.
-        // NOTE: gizmo edits mutate only the LOCAL render copy — the server prop and
-        // its collider are not updated. Gizmo-move-after-place sync is out of scope
-        // for the prop-sync pass (placement + collision + sync + save is the goal).
+        // Commit to the server on gizmo release so the collider + peers update.
         EditorProp& prop = ctx.props[static_cast<std::size_t>(m_selIndex)];
         const ImGuizmo::OPERATION op = m_propGizmoOp == 1   ? ImGuizmo::ROTATE
                                        : m_propGizmoOp == 2 ? ImGuizmo::SCALE
                                                             : ImGuizmo::TRANSLATE;
         const ImGuizmo::MODE mode = op == ImGuizmo::SCALE ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
-        ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(proj), op, mode,
-                             glm::value_ptr(prop.transform));
+        if (ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(proj), op, mode,
+                                 glm::value_ptr(prop.transform))) {
+            m_propGizmoDirty = true;
+        }
+        if (m_propGizmoDirty && !ImGuizmo::IsUsing() && prop.id != 0 && ctx.requestMoveProp) {
+            ctx.requestMoveProp(prop.id, prop.transform);
+            m_propGizmoDirty = false;
+        }
     }
 }
 

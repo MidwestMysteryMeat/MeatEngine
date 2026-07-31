@@ -13,25 +13,23 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
 
 ## Sprint goals (in order)
 
-1. **Game templates — perspective option (H1, first slice)** ⭐ — the FPS↔TPS split. Add a
-   camera `perspective: first | third` to the config (`game.json "template"` presets it: `fps`→first,
-   `tps`→third) and a third-person over-shoulder camera in `Engine::render` (offset behind/above the
-   player + collision-aware pullback). Gate the FPS HUD/crosshair on it. First concrete proof that the
-   engine isn't first-person-only. *Files:* GameRules (template enum), Engine (camera), main.cpp.
+1. ~~**Game templates — perspective option (H1, first slice)**~~ ✅ — `GameRules::Perspective`
+   (`first`/`third`), `game.json "template"` (`fps`/`tps`) + `"perspective"`, CLI `--template` /
+   `--perspective`. Third-person over-shoulder cam with physics raycast pullback; crosshair gated
+   to first-person only.
 2. **A3 — hemisphere ambient (toggle)** — surface the voxel AO world-wide by adding a sky/ground
    hemisphere ambient term that is NOT gated by the block-light floor. Make it an **environment/game
    setting** (don't force it — the dark PSX-night look stays available). Pairs with A1. *Files:*
    chunk.frag ambient, Renderer/Environment.
-3. **Prop authoring polish** — the two documented deferrals from prop-sync: (a) **gizmo-move-after-
-   place sync** (send a MoveProp intent when the gizmo edits a synced prop) and (b) **Delete sync**
-   (`RemovePropMsg` is already wired end-to-end — just emit it from the outliner Delete). Makes the
-   placement loop fully authoritative. *Files:* Messages (MoveProp), ServerSim, Engine, RoomEditor.
+3. ~~**Prop authoring polish**~~ ✅ — `MovePropMsg` on gizmo release; outliner / Del key send
+   `RemovePropMsg`; server rebuilds colliders / deletes and broadcasts; client treats re-`PropAdded`
+   as transform update.
 4. **New Map dialog (B4)** — an editor dialog to pick template + environment + seed and (re)create the
    world, tying templates/environments into a UE5-style flow instead of CLI flags. *Files:* RoomEditor,
    an engine hook to rebuild the world.
-5. **Networked world-config sync** — pack `terrain` + `environment` (and revisit `voxelSize`) into
-   `Welcome` so a networked joiner gets the host's world/gravity/fog instead of defaulting to
-   Surface/Normal (the documented same-config limitation). *Files:* Messages (Welcome), Client, ServerSim.
+5. ~~**Networked world-config sync**~~ ✅ — `Welcome` carries `voxelSize` + `environment` (terrain was
+   already in flags). Join clients apply host scale before world gen; spawn height scales with
+   `kVoxelSize` (voxel cell 16,16,16).
 
 ## Stretch / bigger pieces (pull in as the sprint allows)
 - **C6 — node scripting / blueprints + live coding** (imnodes → Lua; the no-code layer + edit-live).

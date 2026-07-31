@@ -48,6 +48,20 @@ void loadProject(meat::EngineConfig& config, const std::string& dir) {
                                    : e == "space"     ? Environment::Space
                                                       : Environment::Surface;
     }
+    // Game template (H1): presets camera perspective. fps→first, tps→third.
+    // Explicit "perspective" overrides the template when both are present.
+    if (j.contains("template")) {
+        using Perspective = meat::GameRules::Perspective;
+        const std::string t = j["template"].get<std::string>();
+        config.rules.perspective = (t == "tps" || t == "third") ? Perspective::Third
+                                                                : Perspective::First;
+    }
+    if (j.contains("perspective")) {
+        using Perspective = meat::GameRules::Perspective;
+        const std::string p = j["perspective"].get<std::string>();
+        config.rules.perspective = (p == "third" || p == "tps") ? Perspective::Third
+                                                                : Perspective::First;
+    }
     config.rules.finiteAmmo = j.value("finiteAmmo", config.rules.finiteAmmo);
     config.rules.minedBlockDrops = j.value("minedBlockDrops", config.rules.minedBlockDrops);
     config.rules.penetration = j.value("penetration", config.rules.penetration);
@@ -124,6 +138,20 @@ meat::EngineConfig parseArgs(int argc, char** argv) {
                 config.rules.environment = m == "underwater" ? Environment::Underwater
                                            : m == "space"     ? Environment::Space
                                                               : Environment::Surface;
+            }
+        } else if (arg == "--template") {
+            using Perspective = meat::GameRules::Perspective;
+            if (const char* t = next()) {
+                const std::string m = t;
+                config.rules.perspective = (m == "tps" || m == "third") ? Perspective::Third
+                                                                        : Perspective::First;
+            }
+        } else if (arg == "--perspective") {
+            using Perspective = meat::GameRules::Perspective;
+            if (const char* p = next()) {
+                const std::string m = p;
+                config.rules.perspective = (m == "third" || m == "tps") ? Perspective::Third
+                                                                        : Perspective::First;
             }
         } else {
             meat::log::warn("unknown argument '{}'", arg);

@@ -12,6 +12,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -22,7 +23,12 @@ namespace meat {
 namespace {
 constexpr float kFixedDtServer = 1.0f / 60.0f;
 constexpr int kSnapshotEvery = 3; // 60 Hz sim → 20 Hz snapshots
-constexpr glm::vec3 kSpawnPos{8.0f, 8.0f, 8.0f};
+// Spawn in world metres at voxel cell (16,16,16) — historical (8,8,8) at the
+// default 0.5 m/voxel. Scaling with kVoxelSize keeps the player above the
+// surface (voxel y ≈ 6–12) when the host picks a larger block size.
+inline glm::vec3 defaultSpawnPos() {
+    return glm::vec3(16.0f, 16.0f, 16.0f) * kVoxelSize;
+}
 
 constexpr float kPlaceInterval = 0.20f;
 constexpr float kHitscanRange = 60.0f;
@@ -116,8 +122,39 @@ bool ServerSim::addProp(Transport* transport, const std::string& asset,
     return true;
 }
 
+bool ServerSim::moveProp(Transport* transport, std::uint32_t id, const glm::mat4& transform) {
+    auto it = std::find_if(m_props.begin(), m_props.end(),
+                           [id](const WorldProp& p) { return p.id == id; });
+    if (it == m_props.end()) return false;
+    glm::vec3 lo, hi;
+    if (!propBounds(it->asset, lo, hi)) return false;
+    if (it->body != PhysicsWorld::kInvalidBody) m_physics.removeStaticBox(it->body);
+    it->transform = transform;
+    glm::vec3 center, half;
+    transformedAabb(transform, lo, hi, center, half);
+    it->body = m_physics.addStaticBox(center, half);
+    if (transport) broadcastPropAdded(*transport, *it);
+    return true;
+}
+
+bool ServerSim::removeProp(Transport* transport, std::uint32_t id) {
+    auto it = std::find_if(m_props.begin(), m_props.end(),
+                           [id](const WorldProp& p) { return p.id == id; });
+    if (it == m_props.end()) return false;
+    if (it->body != PhysicsWorld::kInvalidBody) m_physics.removeStaticBox(it->body);
+    m_props.erase(it);
+    if (transport) broadcastPropRemoved(*transport, id);
+    log::info("server: prop {} removed", id);
+    return true;
+}
+
 void ServerSim::broadcastPropAdded(Transport& transport, const WorldProp& prop) const {
     const PropAddedMsg msg{prop.id, prop.asset, prop.transform};
+    for (const auto& [peer, unused] : m_players) transport.send(peer, pack(msg), true);
+}
+
+void ServerSim::broadcastPropRemoved(Transport& transport, std::uint32_t id) const {
+    const RemovePropMsg msg{id};
     for (const auto& [peer, unused] : m_players) transport.send(peer, pack(msg), true);
 }
 
@@ -326,7 +363,7 @@ void ServerSim::updateNpcs(Transport& transport) {
                 if (bestPlayer->health <= 0.0f) {
                     log::info("server: player {} was mauled", bestPeer);
                     dropPlayerLoot(*bestPlayer, bestPlayer->controller.position());
-                    bestPlayer->controller.setState(kSpawnPos, glm::vec3(0));
+                    bestPlayer->controller.setState(defaultSpawnPos(), glm::vec3(0));
                     bestPlayer->health = 100.0f;
                 }
             }
@@ -339,7 +376,7 @@ void ServerSim::updateNpcs(Transport& transport) {
                 if (bestPlayer->health <= 0.0f) {
                     log::info("server: player {} was shot down", bestPeer);
                     dropPlayerLoot(*bestPlayer, bestPlayer->controller.position());
-                    bestPlayer->controller.setState(kSpawnPos, glm::vec3(0));
+                    bestPlayer->controller.setState(defaultSpawnPos(), glm::vec3(0));
                     bestPlayer->health = 100.0f;
                 }
             }
@@ -619,7 +656,7 @@ void ServerSim::marchBullet(Transport& transport, PeerId peer, Player& player,
             if (victim->health <= 0.0f) {
                 log::info("server: player {} fragged player {}", peer, victimPeer);
                 dropPlayerLoot(*victim, victim->controller.position()); // scatter before respawn
-                victim->controller.setState(kSpawnPos, glm::vec3(0));
+                victim->controller.setState(defaultSpawnPos(), glm::vec3(0));
                 victim->health = 100.0f;
             }
             return; // flesh stops bullets (AP ammo types may change this later)
@@ -691,7 +728,7 @@ void ServerSim::applyBlast(Transport& transport, PeerId source, glm::vec3 center
         if (player->health <= 0.0f) {
             log::info("server: player {} blew up player {}", source, peer);
             dropPlayerLoot(*player, player->controller.position()); // scatter before respawn
-            player->controller.setState(kSpawnPos, glm::vec3(0));
+            player->controller.setState(defaultSpawnPos(), glm::vec3(0));
             player->health = 100.0f;
         }
     }
@@ -771,7 +808,7 @@ void ServerSim::applyEffect(Transport& transport, const Effect& effect, PeerId s
             targetPlayer->health -= dmg;
             if (targetPlayer->health <= 0.0f) {
                 dropPlayerLoot(*targetPlayer, targetPlayer->controller.position());
-                targetPlayer->controller.setState(kSpawnPos, glm::vec3(0));
+                targetPlayer->controller.setState(defaultSpawnPos(), glm::vec3(0));
                 targetPlayer->health = 100.0f;
             }
         }
@@ -942,7 +979,9 @@ void ServerSim::handlePacket(Transport& transport, PeerId peer,
         player.helloDone = true;
         WelcomeMsg welcome{peer, m_seed, m_tick,
                            static_cast<std::uint8_t>(m_rules.inventoryModel),
-                           m_rules.flagsByte()};
+                           m_rules.flagsByte(),
+                           m_rules.voxelSize,
+                           static_cast<std::uint8_t>(m_rules.environment)};
         transport.send(peer, pack(welcome), true);
         if (m_pendingRestore) { // save-file state goes to the first arrival
             player.health = m_pendingRestore->health;
@@ -997,6 +1036,20 @@ void ServerSim::handlePacket(Transport& transport, PeerId peer,
         addProp(&transport, msg.asset, msg.transform, 0);
         break;
     }
+    case MsgType::MoveProp: {
+        MovePropMsg msg;
+        if (!decode(msg, reader)) return;
+        if (msg.id == 0) return;
+        moveProp(&transport, msg.id, msg.transform);
+        break;
+    }
+    case MsgType::RemoveProp: {
+        RemovePropMsg msg;
+        if (!decode(msg, reader)) return;
+        if (msg.id == 0) return;
+        removeProp(&transport, msg.id);
+        break;
+    }
     default:
         break;
     }
@@ -1006,18 +1059,18 @@ void ServerSim::tick(Transport& transport) {
     m_activeTransport = &transport;
     m_jobs.drainMainThread(); // collider syncs from finished mesh jobs
 
-    glm::vec3 streamCenter = kSpawnPos;
+    glm::vec3 streamCenter = defaultSpawnPos();
     bool first = true;
     for (auto& [peer, player] : m_players) {
         if (!player->spawned) {
-            if (!player->controller.init(m_physics, player->spawnOverride.value_or(kSpawnPos)))
+            if (!player->controller.init(m_physics, player->spawnOverride.value_or(defaultSpawnPos())))
                 continue;
             player->controller.setGravity(envSettings(m_rules.environment).gravity);
             player->spawned = true;
         }
         player->controller.update(player->lastCmd, kFixedDtServer, m_physics);
         if (player->controller.position().y < -30.0f) // fell out (colliders pending)
-            player->controller.setState(kSpawnPos, glm::vec3(0));
+            player->controller.setState(defaultSpawnPos(), glm::vec3(0));
         processCombat(transport, peer, *player);
         if (first) { // TODO: multi-center streaming once co-op players roam apart
             streamCenter = player->controller.position();

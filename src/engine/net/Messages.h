@@ -21,7 +21,7 @@ namespace meat {
 
 enum class MsgType : std::uint8_t {
     Hello = 1, Welcome, Command, Snapshot, VoxelOp, Inventory, BatchVoxelOp, DeltaSnapshot,
-    PlaceProp, PropAdded, RemoveProp
+    PlaceProp, PropAdded, RemoveProp, MoveProp
 };
 
 struct HelloMsg {
@@ -33,9 +33,14 @@ struct WelcomeMsg {
     std::uint32_t worldSeed = 0;
     std::uint64_t serverTick = 0;
     // Game rules as opaque bytes — engine/net stays game-agnostic; the game
-    // layer (GameRules) owns the meaning.
+    // layer (GameRules) owns the meaning. rulesFlags packs inventory economy
+    // bits + terrain (see GameRules::flagsByte). voxelSize + environment ride
+    // as their own fields so a join client can rebuild the host's world scale
+    // and gravity/fog without free flag bits.
     std::uint8_t rulesModel = 0;
     std::uint8_t rulesFlags = 0;
+    float voxelSize = 0.5f;
+    std::uint8_t environment = 0; // GameRules::Environment as u8
 };
 
 struct CommandMsg {
@@ -98,10 +103,18 @@ struct PropAddedMsg {
     glm::mat4 transform{1.0f};
 };
 
-// Server→client: a world prop was removed (reserved for future editor deletion
-// sync; encode/decode wired so the range and handlers are complete).
+// Bidirectional prop removal: client→server is editor intent (outliner Delete);
+// server→client is the authoritative echo (and join-side teardown). Same payload.
 struct RemovePropMsg {
     std::uint32_t id = 0;
+};
+
+// Client→server: editor gizmo moved/rotated/scaled a synced prop. Server updates
+// the collider + save state and rebroadcasts PropAdded with the new transform so
+// every peer (including the editor) converges. Id must already exist.
+struct MovePropMsg {
+    std::uint32_t id = 0;
+    glm::mat4 transform{1.0f};
 };
 
 // Snapshots larger than this are rejected on decode (and clamped on encode) so
@@ -134,6 +147,8 @@ void encode(const PropAddedMsg& msg, ByteWriter& w);
 bool decode(PropAddedMsg& msg, ByteReader& r);
 void encode(const RemovePropMsg& msg, ByteWriter& w);
 bool decode(RemovePropMsg& msg, ByteReader& r);
+void encode(const MovePropMsg& msg, ByteWriter& w);
+bool decode(MovePropMsg& msg, ByteReader& r);
 
 constexpr MsgType msgTypeOf(const HelloMsg&) { return MsgType::Hello; }
 constexpr MsgType msgTypeOf(const WelcomeMsg&) { return MsgType::Welcome; }
@@ -143,6 +158,7 @@ constexpr MsgType msgTypeOf(const VoxelOpMsg&) { return MsgType::VoxelOp; }
 constexpr MsgType msgTypeOf(const PlacePropMsg&) { return MsgType::PlaceProp; }
 constexpr MsgType msgTypeOf(const PropAddedMsg&) { return MsgType::PropAdded; }
 constexpr MsgType msgTypeOf(const RemovePropMsg&) { return MsgType::RemoveProp; }
+constexpr MsgType msgTypeOf(const MovePropMsg&) { return MsgType::MoveProp; }
 
 // nullopt if the packet is empty or the type byte is not a known MsgType.
 std::optional<MsgType> peekType(std::span<const std::byte> packet);

@@ -168,7 +168,11 @@ private:
     // is added (a prop without a collider is never created).
     bool addProp(Transport* transport, const std::string& asset, const glm::mat4& transform,
                  std::uint32_t id);
+    // Editor gizmo / delete intents. False if the id is unknown (stale client).
+    bool moveProp(Transport* transport, std::uint32_t id, const glm::mat4& transform);
+    bool removeProp(Transport* transport, std::uint32_t id);
     void broadcastPropAdded(Transport& transport, const WorldProp& prop) const;
+    void broadcastPropRemoved(Transport& transport, std::uint32_t id) const;
     // Model bounds (post-center), cached by asset path. False if the model fails.
     bool propBounds(const std::string& asset, glm::vec3& outMin, glm::vec3& outMax) const;
     void processCombat(Transport& transport, PeerId peer, Player& player);

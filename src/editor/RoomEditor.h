@@ -95,6 +95,7 @@ private:
     Selection m_selKind = Selection::None;
     int m_selIndex = -1;
     int m_propGizmoOp = 0; // selected prop's ImGuizmo op: 0 move, 1 rotate, 2 scale
+    bool m_propGizmoDirty = false; // true while a gizmo drag has uncommitted transform
 
     int m_previewLights = 0; // per-frame budget so previews can't eat the light UBO
     std::string m_status;

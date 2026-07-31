@@ -81,11 +81,14 @@ void encode(const WelcomeMsg& msg, ByteWriter& w) {
     w.write(msg.serverTick);
     w.write(msg.rulesModel);
     w.write(msg.rulesFlags);
+    w.write(msg.voxelSize);
+    w.write(msg.environment);
 }
 
 bool decode(WelcomeMsg& msg, ByteReader& r) {
     return r.read(msg.playerId) && r.read(msg.worldSeed) && r.read(msg.serverTick) &&
-           r.read(msg.rulesModel) && r.read(msg.rulesFlags);
+           r.read(msg.rulesModel) && r.read(msg.rulesFlags) && r.read(msg.voxelSize) &&
+           r.read(msg.environment);
 }
 
 void encode(const CommandMsg& msg, ByteWriter& w) {
@@ -213,15 +216,24 @@ bool decode(RemovePropMsg& msg, ByteReader& r) {
     return r.read(msg.id);
 }
 
+void encode(const MovePropMsg& msg, ByteWriter& w) {
+    w.write(msg.id);
+    writeMat4(w, msg.transform);
+}
+
+bool decode(MovePropMsg& msg, ByteReader& r) {
+    return r.read(msg.id) && readMat4(r, msg.transform);
+}
+
 std::optional<MsgType> peekType(std::span<const std::byte> packet) {
     if (packet.empty()) {
         return std::nullopt;
     }
     const auto raw = static_cast<std::uint8_t>(packet.front());
-    // RemoveProp is the last enumerator — new message types must extend this bound
+    // MoveProp is the last enumerator — new message types must extend this bound
     // or unpack()/peekType reject them as unknown.
     if (raw < static_cast<std::uint8_t>(MsgType::Hello) ||
-        raw > static_cast<std::uint8_t>(MsgType::RemoveProp)) {
+        raw > static_cast<std::uint8_t>(MsgType::MoveProp)) {
         return std::nullopt;
     }
     return static_cast<MsgType>(raw);

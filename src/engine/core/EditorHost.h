@@ -56,6 +56,10 @@ struct EditorContext {
     // Engine sends PlacePropMsg; the prop returns via PropAddedMsg and lands in
     // `props` with a real id + collider. Replaces the old local push_back.
     std::function<void(std::string asset, glm::mat4 transform)> requestPlaceProp;
+    // Gizmo / outliner intents for an already-synced prop (id != 0). Engine sends
+    // MovePropMsg / RemovePropMsg; server rebuilds collider or deletes and echoes.
+    std::function<void(std::uint32_t id, glm::mat4 transform)> requestMoveProp;
+    std::function<void(std::uint32_t id)> requestRemoveProp;
     // Asset/code panels: enumerate files under a project-relative dir, read/write
     // text, and hot-reload scripts into the running server (host/single-player).
     std::function<std::vector<std::string>(const std::string& dir)> listFiles;

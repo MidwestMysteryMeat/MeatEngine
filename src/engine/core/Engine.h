@@ -68,6 +68,7 @@ private:
     void setupClientWorld();                    // after Welcome: seed-matched mirror
     void applyEnvironment(const GameRules& rules); // world preset → gravity + fog + ambient
     int runDedicated(const EngineConfig& config);
+    GameRules::Perspective m_perspective = GameRules::Perspective::First;
     void simulateClientTick(const PlayerCommand& frameCmd);
     void render(float alpha);
     void drawInventoryUi();

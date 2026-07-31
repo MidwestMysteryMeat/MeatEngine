@@ -39,6 +39,14 @@ void Client::sendPlaceProp(const std::string& asset, const glm::mat4& transform)
     if (m_transport) m_transport->send(1, pack(PlacePropMsg{asset, transform}), true);
 }
 
+void Client::sendMoveProp(std::uint32_t id, const glm::mat4& transform) {
+    if (m_transport) m_transport->send(1, pack(MovePropMsg{id, transform}), true);
+}
+
+void Client::sendRemoveProp(std::uint32_t id) {
+    if (m_transport) m_transport->send(1, pack(RemovePropMsg{id}), true);
+}
+
 std::vector<PropAddedMsg> Client::takeNewProps() { return std::exchange(m_newProps, {}); }
 
 std::vector<std::uint32_t> Client::takeRemovedProps() { return std::exchange(m_removedProps, {}); }
@@ -65,8 +73,16 @@ void Client::pump(VoxelWorld& voxels, PhysicsWorld& physics, CharacterController
             m_seed = msg.worldSeed;
             m_rules.inventoryModel = static_cast<GameRules::InventoryModel>(msg.rulesModel);
             m_rules.setFlagsByte(msg.rulesFlags);
+            // Host-authoritative world scale + environment (terrain already in flags).
+            // Clamped to the same band applyVoxelSize uses so a hostile Welcome can't
+            // blow meshing cost or invert coordinates.
+            const float vs = msg.voxelSize < 0.1f ? 0.1f : msg.voxelSize > 8.0f ? 8.0f : msg.voxelSize;
+            m_rules.voxelSize = vs;
+            m_rules.environment = static_cast<GameRules::Environment>(msg.environment > 2 ? 0 : msg.environment);
             m_welcomed = true;
-            log::info("client: welcomed as player {} (seed {})", msg.playerId, msg.worldSeed);
+            log::info("client: welcomed as player {} (seed {}, voxelSize {:.3f} m, env {})",
+                      msg.playerId, msg.worldSeed, m_rules.voxelSize,
+                      static_cast<int>(m_rules.environment));
             break;
         }
         case MsgType::Snapshot: {

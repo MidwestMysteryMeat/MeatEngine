@@ -35,9 +35,15 @@ public:
     // Prop placement intent (editor). Server assigns an id, adds a collider, and
     // echoes PropAddedMsg to everyone (surfaced via takeNewProps below).
     void sendPlaceProp(const std::string& asset, const glm::mat4& transform);
+    // Prop transform update (editor gizmo). Server validates the id, rebuilds the
+    // collider, and rebroadcasts PropAdded with the new transform.
+    void sendMoveProp(std::uint32_t id, const glm::mat4& transform);
+    // Prop deletion intent (editor outliner Delete). Server removes + broadcasts.
+    void sendRemoveProp(std::uint32_t id);
 
     // Drain props the server reported since the last call. The Engine applies
     // them (render mesh + client-mirror collider); the Client stays protocol-only.
+    // PropAdded with an already-known id means "transform updated" (move).
     std::vector<PropAddedMsg> takeNewProps();
     std::vector<std::uint32_t> takeRemovedProps();
 
