@@ -38,7 +38,7 @@ Scoring: **creator value** × **engine leverage** × **dependency readiness** �
 
 | # | ID | Item | Why highest | Size | Deps |
 |---|-----|------|-------------|------|------|
-| 1 | **C9** | **Output Log browser (UE5-style)** ⭐ | Node graphs/Lua fail silently into stdout/stderr today. Without an in-editor log, C6 is half-finished for real use. Mirrors UE Output Log (severity, search, clear). | S–M | Log sink only |
+| 1 | **C9** | **Output Log browser (UE5-style)** ⭐ | ✅ **Shipped** (`Log.cpp` ring + Room Designer panel). | S–M | — |
 | 2 | **C6-a** | **Node-graph reliability + compile feedback** | Compile/reload must dump to C9; surface Lua parse errors on Compile; optional “open generated lua”. Makes C6 trustworthy. | S | C9 ideal |
 | 3 | **Debt-doc** | **Reconcile ROLLOUT / NEXT_SESSION / ARCHITECTURE** | Wrong checkboxes cause wrong prioritization forever. Mark shipped C2/C3/B4/A1/C6; rewrite “Recommended near-term”. | S | none |
 
