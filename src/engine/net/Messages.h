@@ -60,9 +60,11 @@ struct PlayerState {
     bool onGround = false;
     bool crouched = false;
     float health = 100.0f;
-    // H4: entity id of the ship this player is piloting (0 = on foot). Client
+    // H4: entity id of the ship this player is aboard (0 = on foot). Client
     // uses this to attach the camera and skip capsule prediction.
     std::uint32_t vehicleId = 0;
+    // 0 = foot, 1 = pilot (controls thrusters + ship cannon), 2 = passenger.
+    std::uint8_t vehicleRole = 0;
 };
 
 // Non-player world entities (pickups, projectiles, NPCs, turrets). archetype and

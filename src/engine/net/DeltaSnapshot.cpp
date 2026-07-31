@@ -47,6 +47,7 @@ std::uint8_t diffPlayer(const PlayerState& c, const PlayerState& b) {
     if (c.onGround != b.onGround || c.crouched != b.crouched) m |= playerfield::Flags;
     if (c.health != b.health) m |= playerfield::Health;
     if (c.vehicleId != b.vehicleId) m |= playerfield::Vehicle;
+    if (c.vehicleRole != b.vehicleRole) m |= playerfield::VehicleRole;
     return m;
 }
 
@@ -58,6 +59,7 @@ void writePlayerFields(ByteWriter& w, const PlayerState& s, std::uint8_t m) {
     if (m & playerfield::Flags)  w.write(playerFlags(s));
     if (m & playerfield::Health) w.write(s.health);
     if (m & playerfield::Vehicle) w.write(s.vehicleId);
+    if (m & playerfield::VehicleRole) w.write(s.vehicleRole);
 }
 
 bool readPlayerFields(ByteReader& r, PlayerState& s, std::uint8_t m) {
@@ -73,6 +75,7 @@ bool readPlayerFields(ByteReader& r, PlayerState& s, std::uint8_t m) {
     }
     if ((m & playerfield::Health) && !r.read(s.health)) return false;
     if ((m & playerfield::Vehicle) && !r.read(s.vehicleId)) return false;
+    if ((m & playerfield::VehicleRole) && !r.read(s.vehicleRole)) return false;
     return true;
 }
 

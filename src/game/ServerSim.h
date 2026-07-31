@@ -74,9 +74,10 @@ private:
         float fireCooldown = 0.0f;
         float placeCooldown = 0.0f;
         float useCooldown = 0.0f;
-        // H4: ship entity id while piloting (0 = on foot). Character controller is
-        // frozen; thrusters drive the ship instead.
+        // H4: ship entity id while aboard (0 = on foot).
         std::uint32_t pilotingShip = 0;
+        // 0 = foot, 1 = pilot (thrusters + ship cannon), 2 = passenger (ride only).
+        std::uint8_t shipRole = 0;
         // H4: alternate twin hardpoints while piloting (0 = left, 1 = right).
         int shipHardpoint = 0;
         // Fire-mode trigger discipline (H2): the previous tick's button states let
@@ -183,12 +184,14 @@ private:
         glm::vec3 vel{0};
         float yaw = 0.0f;
         float pitch = 0.0f;
-        PeerId pilot = 0; // 0 = empty seat (AI ships always 0)
+        PeerId pilot = 0;     // 0 = empty pilot seat (AI ships always 0)
+        PeerId passenger = 0; // 0 = empty co-pilot seat
         bool ai = false;
         float health = 500.0f;
         int hullVariant = 0; // ShipHulls catalog index
         glm::vec3 halfExtents{kShipHalfExtents};
-        glm::vec3 seatOffset{kShipSeatOffset}; // local seat relative to hull center
+        glm::vec3 seatOffset{kShipSeatOffset}; // pilot seat local
+        glm::vec3 passengerOffset{0.6f, 0.15f, 0.1f}; // co-pilot / gunner seat
         // AI patrol: orbit center + radius/phase; fireCooldown for hostile shots.
         glm::vec3 patrolCenter{0};
         float patrolRadius = 30.0f;
@@ -238,7 +241,8 @@ private:
     void updateShips(Transport& transport);
     void damageShip(Transport& transport, Ship& ship, float damage, PeerId source);
     bool tryBoardOrLeaveShip(Player& player); // true if handled (Use consumed)
-    // Aim origin for combat: eye on foot, twin hardpoints when piloting.
+    void ejectFromShip(Player& player, Ship& ship, float sideSign); // sideSign: +1 right leave
+    // Aim origin for combat: eye on foot / passenger, twin hardpoints when pilot.
     glm::vec3 combatMuzzle(const Player& player) const;
     const Ship* findShip(std::uint32_t id) const;
     Ship* findShip(std::uint32_t id);

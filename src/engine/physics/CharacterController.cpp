@@ -44,6 +44,7 @@ struct CharacterController::Impl {
     bool jumpHeld = false; // jump edge-trigger state across updates
     float eyeHeight = CharacterTuning{}.eyeStand;
     bool warnedUninit = false;
+    glm::vec3 up{0.0f, 1.0f, 0.0f}; // B3b local-up (matches CharacterVirtual mUp)
 };
 
 CharacterController::CharacterController() : m_impl(std::make_unique<Impl>()) {}
@@ -102,60 +103,59 @@ void CharacterController::update(const PlayerCommand& cmd, float fixedDt, Physic
             im.crouched = cmd.crouch;
     }
 
-    // Input → desired horizontal velocity. -Z is forward at yaw 0 (Y-up,
-    // right-handed): forward = (-sin yaw, 0, -cos yaw), right = (cos yaw, 0, -sin yaw).
+    // Local-up frame: movement is on the plane perpendicular to `up`, so planetoids
+    // (B3b) and habitats work without rewriting the capsule each tick.
+    const glm::vec3 up = im.up;
+    glm::vec3 worldForward(-std::sin(cmd.yaw), 0.0f, -std::cos(cmd.yaw));
+    // Project look-forward onto the ground plane of `up`.
+    worldForward = worldForward - up * glm::dot(worldForward, up);
+    if (glm::dot(worldForward, worldForward) < 1e-6f)
+        worldForward = glm::vec3(0.0f, 0.0f, -1.0f) - up * glm::dot(glm::vec3(0, 0, -1), up);
+    worldForward = glm::normalize(worldForward);
+    glm::vec3 worldRight = glm::cross(worldForward, up);
+    if (glm::dot(worldRight, worldRight) < 1e-6f) worldRight = glm::vec3(1, 0, 0);
+    else worldRight = glm::normalize(worldRight);
+
     glm::vec2 move = cmd.move;
     const float moveLen = glm::length(move);
-    if (moveLen > 1.0f)
-        move /= moveLen;
-    const float sinYaw = std::sin(cmd.yaw);
-    const float cosYaw = std::cos(cmd.yaw);
-    const glm::vec2 forward(-sinYaw, -cosYaw); // (x, z)
-    const glm::vec2 right(cosYaw, -sinYaw);
+    if (moveLen > 1.0f) move /= moveLen;
     const float speed = im.crouched ? t.crouchSpeed : (cmd.sprint ? t.sprintSpeed : t.walkSpeed);
-    const glm::vec2 want = (right * move.x + forward * move.y) * speed;
+    const glm::vec3 want = (worldRight * move.x + worldForward * move.y) * speed;
 
     const JPH::Vec3 curVel = im.character->GetLinearVelocity();
-    glm::vec2 horiz(curVel.GetX(), curVel.GetZ());
-    // Movement/jump use strictly OnGround; OnSteepGround is treated as air so
-    // gravity keeps sliding the character off slopes past maxSlopeDeg.
+    glm::vec3 vel(curVel.GetX(), curVel.GetY(), curVel.GetZ());
+    const float velAlongUp = glm::dot(vel, up);
+    glm::vec3 horiz = vel - up * velAlongUp;
+
     const bool grounded =
         im.character->GetGroundState() == JPH::CharacterVirtual::EGroundState::OnGround;
 
-    // Ground accel model: horizontal velocity chases the target at
-    // groundAccelScale * targetSpeed per second — full walk speed in ~0.1 s,
-    // snappy without being an instant teleport. Airborne it keeps momentum:
-    // steer at airControl fraction only while there is input, never brake.
     if (grounded || moveLen > 0.0f) {
         const float accelRate = t.groundAccelScale * speed * (grounded ? 1.0f : t.airControl);
-        const glm::vec2 delta = want - horiz;
+        const glm::vec3 delta = want - horiz;
         const float deltaLen = glm::length(delta);
         const float maxStep = accelRate * fixedDt;
         horiz = deltaLen <= maxStep ? want : horiz + delta * (maxStep / deltaLen);
     }
 
-    // B3b: full gravity vector. CharacterVirtual still uses world +Y as "up"
-    // (capsule / walk stairs); non-Y components only affect airborne acceleration
-    // so orbital SOI pulls you sideways without reorienting the FPS capsule yet.
     const glm::vec3 g = t.gravityVec;
-    float vy = curVel.GetY();
-    if (grounded && vy <= 0.1f) { // not already moving up (fresh jump keeps its velocity)
-        vy = 0.0f;
-        if (cmd.jump && !im.jumpHeld)
-            vy = t.jumpSpeed;
+    float vUp = velAlongUp;
+    if (grounded && vUp <= 0.1f) {
+        vUp = 0.0f;
+        if (cmd.jump && !im.jumpHeld) vUp = t.jumpSpeed;
     } else {
-        horiz.x += g.x * fixedDt;
-        horiz.y += g.z * fixedDt;
-        vy += g.y * fixedDt;
+        // Gravity fully in 3D; project residual onto up for the jump axis.
+        vel = horiz + up * vUp + g * fixedDt;
+        vUp = glm::dot(vel, up);
+        horiz = vel - up * vUp;
     }
     im.jumpHeld = cmd.jump;
 
-    im.character->SetLinearVelocity(JPH::Vec3(horiz.x, vy, horiz.y));
+    vel = horiz + up * vUp;
+    im.character->SetLinearVelocity(JPH::Vec3(vel.x, vel.y, vel.z));
 
     JPH::CharacterVirtual::ExtendedUpdateSettings updateSettings;
-    updateSettings.mWalkStairsStepUp = JPH::Vec3(0.0f, t.stepUp, 0.0f);
-    // mStickToFloorStepDown keeps its Jolt default (0,-0.5,0): a little deeper
-    // than stepUp so walking down stairs/slopes never enters a fall.
+    updateSettings.mWalkStairsStepUp = JPH::Vec3(up.x, up.y, up.z) * t.stepUp;
     im.character->ExtendedUpdate(fixedDt, JPH::Vec3(g.x, g.y, g.z), updateSettings,
                                  system.GetDefaultBroadPhaseLayerFilter(objlayer::kMoving),
                                  system.GetDefaultLayerFilter(objlayer::kMoving), {}, {},
@@ -174,6 +174,19 @@ void CharacterController::setGravity(glm::vec3 gravity) {
     m_impl->tuning.gravityVec = gravity;
     m_impl->tuning.gravity = gravity.y; // keep scalar in sync for any Y-only readers
 }
+
+void CharacterController::setUp(glm::vec3 up) {
+    const float len = glm::length(up);
+    if (len < 1e-4f) return;
+    m_impl->up = up / len;
+    if (m_impl->character) {
+        // Jolt CharacterVirtual::SetUp reorients ground detection for planetoids / habitats.
+        // Supporting volume is fixed at construction (settings.mSupportingVolume).
+        m_impl->character->SetUp(JPH::Vec3(m_impl->up.x, m_impl->up.y, m_impl->up.z));
+    }
+}
+
+glm::vec3 CharacterController::up() const { return m_impl->up; }
 
 glm::vec3 CharacterController::position() const {
     if (!m_impl->character)

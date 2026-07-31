@@ -670,12 +670,20 @@ void Engine::simulateClientTick(const PlayerCommand& frameCmd) {
     }
 
     // B3b: sample the same field shape the server uses (env-derived defaults).
+    // Local-up matches server: -normalize(g) when |g| is meaningful.
     if (m_client.vehicleId() == 0) {
-        m_player.setGravity(m_gravity.sample(m_player.position()));
+        const glm::vec3 g = m_gravity.sample(m_player.position());
+        m_player.setGravity(g);
+        const float gLen = glm::length(g);
+        if (gLen > 0.5f)
+            m_player.setUp(-g / gLen);
+        else
+            m_player.setUp(glm::vec3(0.0f, 1.0f, 0.0f));
         m_player.update(cmd, kFixedDt, m_physics);
     }
     // When piloting, ship prediction is applied in Client::applySnapshot; local
-    // ticks still send commands so the server integrates thrusters.
+    // ticks still send commands so the server integrates thrusters. Passengers
+    // do not thruster-predict (vehicleRole == 2).
 
     // Footsteps: paced by horizontal speed while grounded (on foot only).
     const glm::vec3 vel = m_player.velocity();
@@ -709,12 +717,13 @@ void Engine::render(float alpha) {
     playerCamera.pitch = m_lastCmd.pitch;
     {
         const glm::vec3 body = glm::mix(m_prevPlayerPos, m_currPlayerPos, alpha);
-        const bool piloting = m_client.vehicleId() != 0;
-        // H4 pilot seat: camera attaches to ship pose (first = cockpit, third = chase).
+        const bool aboard = m_client.vehicleId() != 0;
+        const bool isPilot = m_client.vehicleRole() == 1;
+        // H4: pilot camera on cockpit seat; passenger uses glued body pose; foot uses local-up eye.
         glm::vec3 shipPos = body;
         float shipYaw = playerCamera.yaw;
         float shipPitch = playerCamera.pitch;
-        if (piloting) {
+        if (aboard) {
             shipPos = body;
             shipYaw = m_lastCmd.yaw;
             shipPitch = m_lastCmd.pitch;
@@ -724,7 +733,7 @@ void Engine::render(float alpha) {
                     shipPos = e.pos;
                     shipYaw = e.yaw;
                     shipPitch = unpackShipPitch(e.data);
-                    // Prefer live look for aiming while piloting.
+                    // Prefer live look for aiming while aboard.
                     shipYaw = m_lastCmd.yaw;
                     shipPitch = m_lastCmd.pitch;
                     break;
@@ -733,15 +742,19 @@ void Engine::render(float alpha) {
             playerCamera.yaw = shipYaw;
             playerCamera.pitch = shipPitch;
         }
+        const glm::vec3 up = m_player.up();
         const glm::vec3 eye =
-            piloting ? (shipPos + shipOrientation(shipYaw, shipPitch) * kShipSeatOffset +
-                        glm::vec3(0.0f, 0.35f, 0.0f))
-                     : (body + glm::vec3(0.0f, m_player.eyeHeight(), 0.0f));
+            aboard && isPilot
+                ? (shipPos + shipOrientation(shipYaw, shipPitch) * kShipSeatOffset +
+                   glm::vec3(0.0f, 0.35f, 0.0f))
+                : aboard
+                      ? (body + up * 0.55f) // passenger: seat body + short eye rise
+                      : (body + up * m_player.eyeHeight());
         if (m_perspective == GameRules::Perspective::Third) {
             // Over-shoulder (on foot) or chase cam (ship) with collision pullback.
-            const float kBehind = piloting ? 10.0f : 2.8f;
-            const float kAbove = piloting ? 2.8f : 0.45f;
-            const float kShoulder = piloting ? 0.0f : 0.55f;
+            const float kBehind = aboard ? 10.0f : 2.8f;
+            const float kAbove = aboard ? 2.8f : 0.45f;
+            const float kShoulder = aboard ? 0.0f : 0.55f;
             constexpr float kPullEps = 0.12f;
             const glm::vec3 fwd = playerCamera.forward();
             const glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
@@ -1177,11 +1190,16 @@ void Engine::render(float alpha) {
         ImGui::Text("pos %.1f %.1f %.1f", m_currPlayerPos.x, m_currPlayerPos.y,
                     m_currPlayerPos.z);
         if (m_client.vehicleId() != 0) {
-            ImGui::Text("SHIP %u  cannon (auto hardpoints)", m_client.vehicleId());
-            ImGui::TextDisabled("E leave | V cam | LMB fire | WASD+Space/Ctrl thrust");
+            if (m_client.vehicleRole() == 1) {
+                ImGui::Text("SHIP %u  PILOT  cannon (auto hardpoints)", m_client.vehicleId());
+                ImGui::TextDisabled("E leave | V cam | LMB fire | WASD+Space/Ctrl thrust");
+            } else {
+                ImGui::Text("SHIP %u  PASSENGER  (ride / gun)", m_client.vehicleId());
+                ImGui::TextDisabled("E leave | V cam | LMB fire inventory | pilot flies");
+            }
             ImGui::TextDisabled("amber traffic ships are hostile AI — shoot to salvage");
         } else {
-            ImGui::TextDisabled("near ship: E board  |  amber = AI traffic");
+            ImGui::TextDisabled("near ship: E board (2 seats)  |  amber = AI traffic");
         }
         // CC-BY requires naming authors when their art is shown (see assets/ATTRIBUTION.md).
         ImGui::TextDisabled("ships: JamyzGenius / JazOone3D / ABJVNK  (CC-BY 4.0)");

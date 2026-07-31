@@ -110,12 +110,14 @@ void encode(const PlayerState& state, ByteWriter& w) {
     w.write(state.crouched);
     w.write(state.health);
     w.write(state.vehicleId);
+    w.write(state.vehicleRole);
 }
 
 bool decode(PlayerState& state, ByteReader& r) {
     return r.read(state.playerId) && r.read(state.pos) && r.read(state.vel) &&
            r.read(state.yaw) && r.read(state.pitch) && r.read(state.onGround) &&
-           r.read(state.crouched) && r.read(state.health) && r.read(state.vehicleId);
+           r.read(state.crouched) && r.read(state.health) && r.read(state.vehicleId) &&
+           r.read(state.vehicleRole);
 }
 
 void encode(const EntityState& e, ByteWriter& w) {

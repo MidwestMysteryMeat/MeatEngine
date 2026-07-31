@@ -54,8 +54,10 @@ public:
     float health() const { return m_ownHealth; }
     const GameRules& rules() const { return m_rules; }
     const Inventory& inventory() const { return m_inventory; } // UI mirror; server owns truth
-    // H4: ship entity id while piloting (0 = on foot). From the last own PlayerState.
+    // H4: ship entity id while aboard (0 = on foot). From the last own PlayerState.
     std::uint32_t vehicleId() const { return m_vehicleId; }
+    // 0 = foot, 1 = pilot (thrusters), 2 = passenger (ride only — no thruster predict).
+    std::uint8_t vehicleRole() const { return m_vehicleRole; }
 
     // Remote players sampled 100 ms behind the newest snapshot, interpolated
     // between the bracketing snapshot states — smooth despite 20 Hz updates.
@@ -85,6 +87,7 @@ private:
     bool m_welcomed = false;
     float m_ownHealth = 100.0f;
     std::uint32_t m_vehicleId = 0;
+    std::uint8_t m_vehicleRole = 0;
     glm::vec3 m_ownPos{0};
     float m_ownYaw = 0.0f;
     float m_ownPitch = 0.0f;

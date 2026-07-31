@@ -49,6 +49,10 @@ public:
     // init(); client prediction must apply the same sample the server used.
     void setGravity(float gravityY);
     void setGravity(glm::vec3 gravity);
+    // B3b / H4: unit "up" for the capsule (default +Y). When gravity is strongly
+    // non-vertical (orbital SOI), pass -normalize(g) so feet plant on planetoids.
+    void setUp(glm::vec3 up);
+    glm::vec3 up() const;
 
     glm::vec3 position() const; // feet (capsule bottom), meters
     glm::vec3 velocity() const; // m/s
@@ -56,7 +60,7 @@ public:
     void setState(glm::vec3 feetPos, glm::vec3 vel);
     bool onGround() const;      // ground state supported
     bool crouched() const;
-    float eyeHeight() const; // meters above position(), smoothed for the camera
+    float eyeHeight() const; // meters along up() from position(), smoothed for the camera
 
 private:
     struct Impl;

@@ -121,7 +121,9 @@ void ServerSim::reseedWorld(std::uint32_t seed, GameRules::Terrain terrain,
     for (Ship& s : m_ships) clearShipBody(s);
     m_ships.clear();
     for (auto& [peer, player] : m_players) {
-        if (player) player->pilotingShip = 0;
+        if (!player) continue;
+        player->pilotingShip = 0;
+        player->shipRole = 0;
     }
     spawnDungeonLoot();
     spawnDungeonNpcs();
@@ -438,13 +440,38 @@ ServerSim::Ship* ServerSim::findShip(std::uint32_t id) {
 }
 
 glm::vec3 ServerSim::combatMuzzle(const Player& player) const {
-    if (player.pilotingShip != 0) {
+    // Only the pilot uses twin hardpoints; passengers shoot from the eye (gunner seat).
+    if (player.pilotingShip != 0 && player.shipRole == 1) {
         if (const Ship* ship = findShip(player.pilotingShip)) {
             const float side = (player.shipHardpoint & 1) == 0 ? -1.0f : 1.0f;
             return shipHardpointWorld(ship->pos, ship->yaw, ship->pitch, ship->halfExtents, side);
         }
     }
-    return player.controller.position() + glm::vec3(0.0f, player.controller.eyeHeight(), 0.0f);
+    return player.controller.position() + player.controller.up() * player.controller.eyeHeight();
+}
+
+void ServerSim::ejectFromShip(Player& player, Ship& ship, float sideSign) {
+    const glm::quat q = shipOrientation(ship.yaw, ship.pitch);
+    const glm::vec3 right = q * glm::vec3(1.0f, 0.0f, 0.0f);
+    const float leaveDist = std::max(kShipLeaveOffset, ship.halfExtents.x + 1.5f);
+    const glm::vec3 leave =
+        ship.pos + right * (leaveDist * sideSign) + glm::vec3(0.0f, 0.5f, 0.0f);
+    if (player.shipRole == 1) ship.pilot = 0;
+    else if (player.shipRole == 2) ship.passenger = 0;
+    player.pilotingShip = 0;
+    player.shipRole = 0;
+    // Promote passenger to pilot when the pilot leaves.
+    if (ship.pilot == 0 && ship.passenger != 0 && !ship.ai) {
+        if (auto it = m_players.find(ship.passenger); it != m_players.end() && it->second) {
+            it->second->shipRole = 1;
+            ship.pilot = ship.passenger;
+            ship.passenger = 0;
+            log::info("server: passenger promoted to pilot on ship {}", ship.id);
+        }
+    }
+    if (ship.pilot == 0 && ship.passenger == 0) ensureShipBody(ship);
+    else clearShipBody(ship);
+    player.controller.setState(leave, glm::vec3(0));
 }
 
 void ServerSim::damageShip(Transport& transport, Ship& ship, float damage, PeerId source) {
@@ -452,17 +479,20 @@ void ServerSim::damageShip(Transport& transport, Ship& ship, float damage, PeerI
     ship.health -= damage;
     if (ship.health > 0.0f) return;
     log::info("server: ship {} destroyed by peer {}", ship.id, source);
-    // Eject pilot if any.
-    if (ship.pilot != 0) {
-        if (auto it = m_players.find(ship.pilot); it != m_players.end() && it->second) {
+    auto ejectPeer = [&](PeerId p, float side) {
+        if (p == 0) return;
+        if (auto it = m_players.find(p); it != m_players.end() && it->second) {
             it->second->pilotingShip = 0;
-            it->second->controller.setState(ship.pos + glm::vec3(0, 2, 0), glm::vec3(0));
+            it->second->shipRole = 0;
+            it->second->controller.setState(ship.pos + glm::vec3(side, 2, 0), glm::vec3(0));
             it->second->health = std::max(10.0f, it->second->health - 30.0f);
         }
-        ship.pilot = 0;
-    }
+    };
+    ejectPeer(ship.pilot, 1.5f);
+    ejectPeer(ship.passenger, -1.5f);
+    ship.pilot = 0;
+    ship.passenger = 0;
     clearShipBody(ship);
-    // Small loot scatter.
     spawnPickup(m_defaultItems.rockets, 2, ship.pos + glm::vec3(0, 1, 0));
     spawnPickup(m_defaultItems.medkit, 1, ship.pos + glm::vec3(0.5f, 1, 0));
     (void)transport;
@@ -492,7 +522,7 @@ void ServerSim::updateShips(Transport& transport) {
             ship.yaw = pose.yaw;
             ship.pitch = pose.pitch;
 
-            // Hostile: shoot nearest living player in range (simple aim, no lead).
+            // Hostile: shoot nearest living player with simple lead aim.
             if (ship.fireCooldown <= 0.0f) {
                 PeerId bestPeer = 0;
                 Player* best = nullptr;
@@ -512,17 +542,22 @@ void ServerSim::updateShips(Transport& transport) {
                     const float side = (ship.hardpoint & 1) == 0 ? -1.0f : 1.0f;
                     const glm::vec3 muzzle =
                         shipHardpointWorld(ship.pos, ship.yaw, ship.pitch, ship.halfExtents, side);
-                    const glm::vec3 aim = best->controller.position() +
-                                         glm::vec3(0.0f, best->controller.eyeHeight() * 0.5f, 0.0f);
+                    // Lead: hitscan is instant, but thruster pilots slide between fire ticks.
+                    // Lead scales with range (far targets get more prediction time).
+                    const glm::vec3 tgtFeet = best->controller.position();
+                    const float rangeLead = std::clamp(bestD * 0.012f, 0.10f, 0.45f);
+                    const glm::vec3 aim =
+                        tgtFeet + best->controller.velocity() * rangeLead +
+                        best->controller.up() * (best->controller.eyeHeight() * 0.55f);
                     const glm::vec3 to = aim - muzzle;
                     const float dist = glm::length(to);
                     if (dist > 0.5f) {
                         const glm::vec3 dir = to / dist;
-                        // Hitscan vs player capsule only (no voxel march — open space).
                         const glm::vec3 feet = best->controller.position();
                         const float height = best->controller.crouched() ? 0.95f : 1.8f;
-                        const glm::vec3 a = feet + glm::vec3(0, kCapsuleRadius, 0);
-                        const glm::vec3 b = feet + glm::vec3(0, height - kCapsuleRadius, 0);
+                        const glm::vec3 a = feet + best->controller.up() * kCapsuleRadius;
+                        const glm::vec3 b =
+                            feet + best->controller.up() * (height - kCapsuleRadius);
                         float tRay = 0;
                         if (raySegmentDistance(muzzle, dir, dist + 2.0f, a, b, tRay) <=
                             kCapsuleRadius) {
@@ -534,10 +569,13 @@ void ServerSim::updateShips(Transport& transport) {
                                 best->health = 100.0f;
                                 if (best->pilotingShip != 0) {
                                     if (Ship* ps = findShip(best->pilotingShip)) {
-                                        ps->pilot = 0;
-                                        ensureShipBody(*ps);
+                                        if (best->shipRole == 1) ps->pilot = 0;
+                                        if (best->shipRole == 2) ps->passenger = 0;
+                                        if (ps->pilot == 0 && ps->passenger == 0)
+                                            ensureShipBody(*ps);
                                     }
                                     best->pilotingShip = 0;
+                                    best->shipRole = 0;
                                 }
                             }
                         }
@@ -547,33 +585,57 @@ void ServerSim::updateShips(Transport& transport) {
             continue;
         }
 
-        if (ship.pilot == 0) {
-            // Empty hull still feels a light field pull (drifts in orbital SOI).
+        // Validate pilot / passenger peer refs.
+        if (ship.pilot != 0) {
+            auto it = m_players.find(ship.pilot);
+            if (it == m_players.end() || !it->second || it->second->pilotingShip != ship.id ||
+                it->second->shipRole != 1) {
+                ship.pilot = 0;
+            }
+        }
+        if (ship.passenger != 0) {
+            auto it = m_players.find(ship.passenger);
+            if (it == m_players.end() || !it->second || it->second->pilotingShip != ship.id ||
+                it->second->shipRole != 2) {
+                ship.passenger = 0;
+            }
+        }
+
+        if (ship.pilot == 0 && ship.passenger == 0) {
             const glm::vec3 g = m_gravity.sample(ship.pos);
             ship.vel += g * 0.15f * kFixedDtServer;
             ship.vel *= std::pow(kShipLinearDamp, kFixedDtServer * 60.0f);
             ship.pos += ship.vel * kFixedDtServer;
-            ensureShipBody(ship); // parkable hull for EVA foot traffic
-            continue;
-        }
-        auto it = m_players.find(ship.pilot);
-        if (it == m_players.end() || !it->second || it->second->pilotingShip != ship.id) {
-            ship.pilot = 0; // pilot left / disconnected
             ensureShipBody(ship);
             continue;
         }
-        clearShipBody(ship); // no self-collision with the seat capsule
-        Player& pilot = *it->second;
-        ShipPose pose{ship.pos, ship.vel, ship.yaw, ship.pitch};
-        integrateShip(pose, pilot.lastCmd, kFixedDtServer, m_gravity.sample(ship.pos));
-        ship.pos = pose.pos;
-        ship.vel = pose.vel;
-        ship.yaw = pose.yaw;
-        ship.pitch = pose.pitch;
-        // Seat in local ship space so cockpit tracks pitch/yaw.
-        const glm::vec3 seat =
-            ship.pos + shipOrientation(ship.yaw, ship.pitch) * ship.seatOffset;
-        pilot.controller.setState(seat, ship.vel);
+
+        clearShipBody(ship);
+        if (ship.pilot != 0) {
+            Player& pilot = *m_players[ship.pilot];
+            ShipPose pose{ship.pos, ship.vel, ship.yaw, ship.pitch};
+            integrateShip(pose, pilot.lastCmd, kFixedDtServer, m_gravity.sample(ship.pos));
+            ship.pos = pose.pos;
+            ship.vel = pose.vel;
+            ship.yaw = pose.yaw;
+            ship.pitch = pose.pitch;
+            const glm::vec3 seat =
+                ship.pos + shipOrientation(ship.yaw, ship.pitch) * ship.seatOffset;
+            pilot.controller.setState(seat, ship.vel);
+        } else if (ship.passenger != 0) {
+            // No pilot: passenger still rides; no thruster input until promoted.
+            const glm::vec3 g = m_gravity.sample(ship.pos);
+            ship.vel += g * 0.1f * kFixedDtServer;
+            ship.vel *= std::pow(kShipLinearDamp, kFixedDtServer * 60.0f);
+            ship.pos += ship.vel * kFixedDtServer;
+        }
+        if (ship.passenger != 0) {
+            if (auto it = m_players.find(ship.passenger); it != m_players.end() && it->second) {
+                const glm::vec3 seat =
+                    ship.pos + shipOrientation(ship.yaw, ship.pitch) * ship.passengerOffset;
+                it->second->controller.setState(seat, ship.vel);
+            }
+        }
     }
 
     // Remove destroyed ships after the tick (stable erase).
@@ -583,26 +645,14 @@ void ServerSim::updateShips(Transport& transport) {
 
 bool ServerSim::tryBoardOrLeaveShip(Player& player) {
     if (player.pilotingShip != 0) {
-        // EVA: leave seat, offset to the ship's right so we don't re-trigger board.
-        Ship* ship = nullptr;
-        for (Ship& s : m_ships)
-            if (s.id == player.pilotingShip) {
-                ship = &s;
-                break;
-            }
-        if (ship) {
-            const glm::quat q = shipOrientation(ship->yaw, ship->pitch);
-            const glm::vec3 right = q * glm::vec3(1.0f, 0.0f, 0.0f);
-            const float leaveDist = std::max(kShipLeaveOffset, ship->halfExtents.x + 1.5f);
-            const glm::vec3 leave =
-                ship->pos + right * leaveDist + glm::vec3(0.0f, 0.5f, 0.0f);
-            ship->pilot = 0;
-            player.pilotingShip = 0;
-            ensureShipBody(*ship);
-            player.controller.setState(leave, glm::vec3(0));
-            log::info("server: player left ship {}", ship->id);
+        if (Ship* ship = findShip(player.pilotingShip)) {
+            const int wasRole = static_cast<int>(player.shipRole);
+            const float side = player.shipRole == 2 ? -1.0f : 1.0f;
+            ejectFromShip(player, *ship, side);
+            log::info("server: player left ship {} (was role {})", ship->id, wasRole);
         } else {
             player.pilotingShip = 0;
+            player.shipRole = 0;
         }
         return true;
     }
@@ -611,7 +661,9 @@ bool ServerSim::tryBoardOrLeaveShip(Player& player) {
     Ship* nearest = nullptr;
     float best = 1.0e9f;
     for (Ship& s : m_ships) {
-        if (s.pilot != 0 || s.ai || s.health <= 0.0f) continue; // AI / occupied not boardable
+        if (s.ai || s.health <= 0.0f) continue;
+        // Boardable if pilot free OR passenger free (multi-seat).
+        if (s.pilot != 0 && s.passenger != 0) continue;
         const float reach =
             std::max(kShipBoardRange, glm::length(glm::vec2(s.halfExtents.x, s.halfExtents.z)) + 1.5f);
         const float d = glm::length(s.pos - feet);
@@ -629,13 +681,27 @@ bool ServerSim::tryBoardOrLeaveShip(Player& player) {
         }
     }
     if (peer == 0) return false;
-    nearest->pilot = peer;
-    player.pilotingShip = nearest->id;
+
     clearShipBody(*nearest);
-    const glm::vec3 seat =
-        nearest->pos + shipOrientation(nearest->yaw, nearest->pitch) * nearest->seatOffset;
-    player.controller.setState(seat, nearest->vel);
-    log::info("server: player {} boarded ship {}", peer, nearest->id);
+    player.pilotingShip = nearest->id;
+    if (nearest->pilot == 0) {
+        nearest->pilot = peer;
+        player.shipRole = 1;
+        nearest->passengerOffset =
+            glm::vec3(nearest->halfExtents.x * 0.55f, nearest->halfExtents.y * 0.2f,
+                      -nearest->halfExtents.z * 0.05f);
+        const glm::vec3 seat =
+            nearest->pos + shipOrientation(nearest->yaw, nearest->pitch) * nearest->seatOffset;
+        player.controller.setState(seat, nearest->vel);
+        log::info("server: player {} boarded ship {} as PILOT", peer, nearest->id);
+    } else {
+        nearest->passenger = peer;
+        player.shipRole = 2;
+        const glm::vec3 seat =
+            nearest->pos + shipOrientation(nearest->yaw, nearest->pitch) * nearest->passengerOffset;
+        player.controller.setState(seat, nearest->vel);
+        log::info("server: player {} boarded ship {} as PASSENGER", peer, nearest->id);
+    }
     return true;
 }
 
@@ -1501,7 +1567,14 @@ void ServerSim::tick(Transport& transport) {
         }
         if (player->pilotingShip == 0) {
             // B3b: sample the field at the feet before integrating so habitat/orbital SOI apply.
-            player->controller.setGravity(m_gravity.sample(player->controller.position()));
+            // Local-up: feet plant opposite gravity when |g| is meaningful (planetoid / habitat).
+            const glm::vec3 g = m_gravity.sample(player->controller.position());
+            player->controller.setGravity(g);
+            const float gLen = glm::length(g);
+            if (gLen > 0.5f)
+                player->controller.setUp(-g / gLen);
+            else
+                player->controller.setUp(glm::vec3(0.0f, 1.0f, 0.0f));
             player->controller.update(player->lastCmd, kFixedDtServer, m_physics);
             if (player->controller.position().y < -30.0f) // fell out (colliders pending)
                 player->controller.setState(defaultSpawnPos(), glm::vec3(0));
@@ -1591,17 +1664,16 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
     player.reloadCooldown -= kFixedDtServer;
     tickModifiers(player, kFixedDtServer); // decay active ApplyModifier buffs
 
-    // H4: pilots shoot from twin hardpoints (alternating); on foot uses eye.
+    // H4: pilot hardpoints use ship cannon; passenger/EVA use inventory.
     const glm::vec3 eye = combatMuzzle(player);
     const glm::vec3 dir = viewForward(player.lastCmd.yaw, player.lastCmd.pitch);
-    const bool piloting = player.pilotingShip != 0;
+    const bool aboard = player.pilotingShip != 0;
+    const bool isPilot = player.shipRole == 1;
     const int slotIndex = player.lastCmd.selectedSlot % Inventory::kSlots;
     const ItemStack& held = player.inventory.slot(slotIndex);
-    // While piloting, hardpoints always use the dedicated ship cannon (not the
-    // hotbar pick — EVA still uses inventory guns).
     const ItemDef& heldDef =
-        piloting && m_defaultItems.shipCannon != 0 ? m_items.get(m_defaultItems.shipCannon)
-                                                   : m_items.get(held.id);
+        isPilot && m_defaultItems.shipCannon != 0 ? m_items.get(m_defaultItems.shipCannon)
+                                                 : m_items.get(held.id);
 
     // --- Reload (H3): resolve before firing so a finished reload feeds this tick.
     const bool firePressed = player.lastCmd.fire && !player.prevFire;
@@ -1663,16 +1735,16 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
                     player.inventoryDirty = true;
                 }
 
-                // On foot: muzzle slightly ahead of the eye. Piloting: hardpoint itself.
-                const glm::vec3 muzzle = piloting ? eye : (eye + dir * 0.6f);
+                // Pilot: hardpoint is the muzzle. Passenger/foot: slight eye offset.
+                const glm::vec3 muzzle = isPilot ? eye : (eye + dir * 0.6f);
                 if (heldDef.delivery == DeliveryKind::Hitscan) {
                     fireHitscan(transport, peer, player, heldDef);
-                    if (piloting) player.shipHardpoint ^= 1; // twin guns alternate
+                    if (isPilot) player.shipHardpoint ^= 1;
                 } else if (heldDef.delivery == DeliveryKind::Projectile) {
                     const glm::vec3 vel = dir * heldDef.projectileSpeed;
                     spawnProjectile(peer, muzzle, vel, heldDef);
-                    if (piloting) player.shipHardpoint ^= 1;
-                } else if (heldDef.delivery == DeliveryKind::Deployable && !piloting) {
+                    if (isPilot) player.shipHardpoint ^= 1;
+                } else if (heldDef.delivery == DeliveryKind::Deployable && !aboard) {
                     // Deployables stay EVA/on-foot only (no dropping mines from the cockpit).
                     glm::vec3 at = eye + dir * 2.5f;
                     if (const auto hit = m_voxels.raycast(eye, dir, 3.0f))
@@ -1707,7 +1779,7 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
                 }
             }
         }
-    } else if (!piloting && heldDef.type == ItemType::Block && player.lastCmd.fire &&
+    } else if (!aboard && heldDef.type == ItemType::Block && player.lastCmd.fire &&
                player.fireCooldown <= 0.0f) {
         // Holding a block: LMB is the mining tool (held-repeat, no fire-mode discipline).
         player.fireCooldown = kPlaceInterval;
@@ -1723,7 +1795,7 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
     player.prevFire = player.lastCmd.fire;
     player.prevReload = player.lastCmd.reload;
 
-    if (!piloting && player.lastCmd.place && player.placeCooldown <= 0.0f &&
+    if (!aboard && player.lastCmd.place && player.placeCooldown <= 0.0f &&
         heldDef.type == ItemType::Block) {
         const bool hasBlocks = !m_rules.minedBlockDrops || held.count > 0;
         if (hasBlocks) {
@@ -1926,6 +1998,7 @@ void ServerSim::broadcastSnapshot(Transport& transport) {
         ps.crouched = player->controller.crouched();
         ps.health = player->health;
         ps.vehicleId = player->pilotingShip;
+        ps.vehicleRole = player->shipRole;
         snap.players.push_back(ps);
     }
     for (const Ship& s : m_ships) {

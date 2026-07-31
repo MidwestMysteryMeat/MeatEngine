@@ -181,6 +181,7 @@ void Client::applySnapshot(const SnapshotMsg& snap, PhysicsWorld& physics,
     if (!own) return;
     m_ownHealth = own->health;
     m_vehicleId = own->vehicleId;
+    m_vehicleRole = own->vehicleRole;
     m_ownPos = own->pos;
     m_ownYaw = own->yaw;
     m_ownPitch = own->pitch;
@@ -189,8 +190,9 @@ void Client::applySnapshot(const SnapshotMsg& snap, PhysicsWorld& physics,
     // command the server hasn't seen yet. When prediction was right this lands
     // exactly where we already were, so no correction is visible.
     player.setState(own->pos, own->vel);
-    if (m_vehicleId != 0) {
-        // H4: predict thrusters with the same integrateShip the server runs.
+    if (m_vehicleId != 0 && m_vehicleRole == 1) {
+        // H4 pilot only: predict thrusters with the same integrateShip the server runs.
+        // Passengers are glued to passengerOffset by authority — no thruster predict.
         ShipPose pose{own->pos, own->vel, own->yaw, own->pitch};
         // Prefer ship entity pitch when present (packed in data).
         for (const EntityState& e : m_entities) {
@@ -209,6 +211,11 @@ void Client::applySnapshot(const SnapshotMsg& snap, PhysicsWorld& physics,
         m_ownPos = pose.pos;
         m_ownYaw = pose.yaw;
         m_ownPitch = pose.pitch;
+    } else if (m_vehicleId != 0) {
+        // Passenger: hold snapshot seat pose (server glues each tick).
+        m_ownPos = own->pos;
+        m_ownYaw = own->yaw;
+        m_ownPitch = own->pitch;
     } else {
         for (const PlayerCommand& cmd : m_unacked) player.update(cmd, kFixedDt, physics);
     }
