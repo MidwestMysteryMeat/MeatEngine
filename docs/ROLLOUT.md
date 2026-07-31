@@ -19,7 +19,14 @@ docs/ENGINE_REUSE_SURVEY.md + the memory OSS-grabs reference) and its verificati
 
 ---
 
+> See [NEXT_SESSION.md](NEXT_SESSION.md) for the current sprint plan.
+
 ## ✅ Done (foundation + recent)
+- **Creation suite** *(this sprint)*: world templates (Normal/Superflat/Void) × environment presets
+  (Surface/Underwater/Space — gravity+fog+ambient); editor **content browser** + UE5-style tile grid +
+  dark theme; **drag-drop asset placement** with **server-authoritative props** (Jolt box collision,
+  MP-synced, saved); **weapon fire modes** (SemiAuto trigger-discipline / Auto / Burst) + magazines
+  (mag/reserve/reload, HUD); **per-vertex voxel ambient occlusion**.
 - **World/render**: chunked greedy-meshed voxel world (0fps), PSX low-res target + dither + posterize
   + vertex fog, atlas materials, torch block-light flood-fill (0..15), point/spot/dir Blinn-Phong.
 - **PSX look** *(2026-07-31)*: vertex snapping + affine (noperspective) texture mapping on

@@ -23,13 +23,19 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the engine contract and
   dither, per-vertex snapping (jitter), and affine/`noperspective` texture mapping — the
   signature PS1 look, all toggleable at runtime (F6 shader hot-reload)
 - Forward Blinn-Phong lighting: one directional sun + ambient, point lights (≤32) and
-  spot lights, emissive materials, atlas materials, and torch-style block-light flood-fill
-  (levels 0–15) baked into the mesh, plus vertex fog
+  spot lights, emissive materials, atlas materials, torch-style block-light flood-fill
+  (levels 0–15) baked into the mesh, per-vertex **ambient occlusion** (corner/edge
+  darkening, merge-key-preserved through greedy meshing), plus vertex fog
 
-**World generation**
+**World generation & templates**
 - FastNoiseLite OpenSimplex2 + FBm terrain (deterministic from a seed)
 - Seeded procedural dungeon generation (rooms, corridors, loops, verticality), mixable
   with hand-authored spaces
+- **World templates** — pick `normal` (terrain + dungeon), `superflat` (flat building
+  ground), or `void` (blank canvas + spawn pad) per project (`game.json "terrain"` / `--terrain`)
+- **Environment presets** — `surface`, `underwater` (buoyant gravity + thick blue fog), or
+  `space` (near-zero gravity + black void, no fog); drives gravity + fog + ambient together
+  (`game.json "environment"` / `--env`)
 
 **Netcode (host-authoritative)**
 - ENet UDP transport with reliable + unreliable channels behind a `Transport` interface
@@ -55,13 +61,27 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the engine contract and
   deterministic facing
 - Two-bone foot IK for terrain foot-planting (VLM-verified, no regression)
 
-**Scripting & tooling**
-- Lua 5.4 gameplay scripting via sol2, sandboxed with an instruction budget
-- ImGui Room Designer editor (+ ImGuizmo transform gizmos) for hand-building worlds
+**Weapons & combat (server-authoritative)**
+- Distinct fire modes with real trigger discipline: **SemiAuto** (one shot per trigger
+  pull — holding never repeats), **Auto** (held cadence), **Burst** (N per pull), and
+  shotgun feel via pellets + spread
+- **Magazines**: per-weapon mag size + reserve ammo, empty-mag block, timed reload (R),
+  HUD mag/reserve readout; the `finiteAmmo` rule is the arcade↔realistic master switch
+- Hitscan (pistol/AR/SMG/shotgun/sniper with penetration + AP/HP ammo) and projectiles
+  (RPG/grenade), composed from the GAS-lite effect system
+
+**Editor & authoring**
+- ImGui **Room Designer** with a UE5-style dark theme, voxel brush tools, and ImGuizmo gizmos
+- **Content Browser** — recursive asset scan, tile grid with type-colored tiles, folder
+  breadcrumbs, name filter
+- **Drag-drop asset placement** — place models from the browser into the world; placed props
+  are **server-authoritative** (Jolt box collision, multiplayer-synced, saved with the world)
+- `tools/autorig/` — a headless Blender auto-rigger that rigs an un-rigged humanoid mesh to
+  the Mixamo-named skeleton and exports a rigged FBX, so shared clips play with no retargeting
+
+**Scripting & audio**
+- Lua 5.4 gameplay scripting via sol2, sandboxed with an instruction budget; hot-reloads live
 - Positional 3D audio (miniaudio)
-- `tools/autorig/` — a headless Blender auto-rigger that rigs an un-rigged humanoid mesh
-  to the Mixamo-named skeleton and exports a rigged FBX, so shared clips play on it with
-  no retargeting
 
 ## Tech stack
 
