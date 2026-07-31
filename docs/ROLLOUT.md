@@ -158,11 +158,15 @@ Human feel-playtests (mouse feel, combat cadence, editor ergonomics), and real L
 
 ---
 
-## Recommended near-term order  *(usability-first, per the UE5-style creation-suite vision)*
-**C3 drag-drop asset placement + world outliner** ⭐ (the core "fill the map" loop) → **C2 content-
-browser styling + editor theme** (the UE5 feel) → **B3 environments** (space / underwater) + **B4 New
-Map dialog** → **A1 voxel AO + A2 sun shadow** (lighting payoff) → **C5 inspectors** → **C6 node
-scripting / blueprints** → **B2 non-voxel mesh levels** → **C4/C7 import-export + packaging** → the
-engine OSS grabs (**D** — cooked mesh, binary mesher, EnTT) and anim polish (**E1 foot-slide**) folded
-in as they unblock. Rationale: make it *feel* like a tool a dev wants to build in (place, style, light)
-before the deeper generality (mesh levels) and the risky hot-path swaps (mesher, ECS) that come late.
+## Recommended near-term order  *(usability-first — updated 2026-07-31)*
+
+> **Canonical ranking:** [ENGINE_PRIORITY_PLAN.md](ENGINE_PRIORITY_PLAN.md).  
+> Note: C1–C3, B1/B3/B4, A1/A3, C6 (first slices), H1/H2/H3/H4 (first slices), E1 are largely **shipped**;
+> older “C3 first” ordering below is historical.
+
+**Now:** **C9 Output Log** ⭐ → **C6 reliability + selective API** → **C5 inspectors lite / C4 import** →
+**A2 sun shadow** ⭐ → **B3b editor gravity volumes** → **C6 subgraphs/watches** → **B2 MeshLevel** →
+**C7 packaging** → **F netcode / D OSS** as scale demands.
+
+Rationale: creators already place assets and run blueprints; the gap is **seeing errors** (C9), then
+**finishing the tool loop** (inspectors, shadows), then **generality** (mesh levels) and **scale** (net/ECS).
