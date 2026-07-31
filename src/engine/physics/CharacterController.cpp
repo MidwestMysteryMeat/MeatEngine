@@ -134,13 +134,19 @@ void CharacterController::update(const PlayerCommand& cmd, float fixedDt, Physic
         horiz = deltaLen <= maxStep ? want : horiz + delta * (maxStep / deltaLen);
     }
 
+    // B3b: full gravity vector. CharacterVirtual still uses world +Y as "up"
+    // (capsule / walk stairs); non-Y components only affect airborne acceleration
+    // so orbital SOI pulls you sideways without reorienting the FPS capsule yet.
+    const glm::vec3 g = t.gravityVec;
     float vy = curVel.GetY();
     if (grounded && vy <= 0.1f) { // not already moving up (fresh jump keeps its velocity)
         vy = 0.0f;
         if (cmd.jump && !im.jumpHeld)
             vy = t.jumpSpeed;
     } else {
-        vy += t.gravity * fixedDt;
+        horiz.x += g.x * fixedDt;
+        horiz.y += g.z * fixedDt;
+        vy += g.y * fixedDt;
     }
     im.jumpHeld = cmd.jump;
 
@@ -150,7 +156,7 @@ void CharacterController::update(const PlayerCommand& cmd, float fixedDt, Physic
     updateSettings.mWalkStairsStepUp = JPH::Vec3(0.0f, t.stepUp, 0.0f);
     // mStickToFloorStepDown keeps its Jolt default (0,-0.5,0): a little deeper
     // than stepUp so walking down stairs/slopes never enters a fall.
-    im.character->ExtendedUpdate(fixedDt, JPH::Vec3(0.0f, t.gravity, 0.0f), updateSettings,
+    im.character->ExtendedUpdate(fixedDt, JPH::Vec3(g.x, g.y, g.z), updateSettings,
                                  system.GetDefaultBroadPhaseLayerFilter(objlayer::kMoving),
                                  system.GetDefaultLayerFilter(objlayer::kMoving), {}, {},
                                  tempAlloc);
@@ -159,7 +165,15 @@ void CharacterController::update(const PlayerCommand& cmd, float fixedDt, Physic
     im.eyeHeight += (targetEye - im.eyeHeight) * std::min(1.0f, t.eyeLerpRate * fixedDt);
 }
 
-void CharacterController::setGravity(float gravityY) { m_impl->tuning.gravity = gravityY; }
+void CharacterController::setGravity(float gravityY) {
+    m_impl->tuning.gravity = gravityY;
+    m_impl->tuning.gravityVec = glm::vec3(0.0f, gravityY, 0.0f);
+}
+
+void CharacterController::setGravity(glm::vec3 gravity) {
+    m_impl->tuning.gravityVec = gravity;
+    m_impl->tuning.gravity = gravity.y; // keep scalar in sync for any Y-only readers
+}
 
 glm::vec3 CharacterController::position() const {
     if (!m_impl->character)

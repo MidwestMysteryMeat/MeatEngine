@@ -73,15 +73,11 @@ blank / …), but spanning voxel AND non-voxel AND themed worlds. Physics is alr
   level mesh instead of chunks. True non-voxel games.
 - [x] **B3. Environment presets** — Surface / Underwater / Space drive gravity + fog + ambient
   (+ hemi lobes). Skybox/water plane still open.
-- [ ] **B3b. Gravity volumes / zoned gravity** ⭐ — gravity is a *field*, not a global: per-region
-  volumes (0-g in open space, normal inside a ship, radial "planet" / orbital-body gravity). The
-  controller samples the active volume's gravity vector each tick. Unlocks **space games**, **ship
-  interiors vs. void**, **ship builders** (a craft that carries its own g-field), and the **Space
-  ship template (H4)**. Design targets:
-  - **Local volumes** — AABB/sphere zones with constant or radial `g` (ship deck = −Y, void = ~0).
-  - **Orbital bodies** — planetoids/stations as gravity sources (radial pull toward center; optional
-    soft SOI cutoffs). Player + ship + EVA body all sample the same field.
-  - **Authority** — server owns gravity field + vehicle state; client predicts with the same sampler.
+- [~] **B3b. Gravity volumes / zoned gravity** ⭐ — first slice shipped: `engine/physics/GravityField`
+  (base + AABB volumes + radial orbital bodies), CharacterController samples `gravityVec` each tick
+  (server + client prediction), Space env seeds habitat box at spawn pad + a planetoid SOI.
+  Still open: editor-placed volumes, net sync of custom fields, capsule reorient to local "up",
+  ship/EVA sampling once H4 lands.
 - [x] **B4. "New Map" dialog** (editor) — template (Landscape / Superflat / Void) + environment +
   seed → `reseedWorld` (host/SP). Mesh template still open (B2).
 - [ ] **B5. `game.json` `world: {template, environment}`** so a project ships its map choice; no C++.
@@ -124,8 +120,8 @@ light → ship) without the bloat/missing pieces that don't fit a PSX voxel FPS.
   (Ogre pattern, MIT reference). Feeds C3. Lower urgency given the fixed PSX look.
 
 ## Pillar E — Animation polish
-- [ ] **E1. Foot-slide fix** ("too fluid") — tie walk-clip playback to move speed (Torque3D
-  `dot(vel,dir)/clipSpeed`, MIT) or distance-phased gait. *Last unfixed original NPC complaint.*
+- [x] **E1. Foot-slide fix** ("too fluid") — per-entity walk phase advances at
+  `worldSpeed / clipSpeed * walkWeight` (idle keeps free-running clock).
 - [ ] **E2. Pelvis-lower** for downslopes in the foot-IK; **E3. weapon aim** via ozz `IKAimJob`
   (shooter aims pistol at target); **E4. additive layers / state machine**; **E5. pose/morph faces**
   (ozz is skeletal-only — Ogre `VertexAnimationTrack` reference for facial morphs, later).

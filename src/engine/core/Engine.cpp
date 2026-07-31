@@ -148,13 +148,19 @@ bool Engine::initNetwork(const EngineConfig& config) {
     return true;
 }
 
+void Engine::rebuildClientGravityField(const GameRules& rules) {
+    const EnvSettings env = envSettings(rules.environment);
+    const bool space = rules.environment == GameRules::Environment::Space;
+    // Must match ServerSim::rebuildGravityField so prediction agrees with authority.
+    configureDefaultGravityField(m_gravity, env.gravity, space);
+    m_physics.setGravity(env.gravity);
+}
+
 void Engine::applyEnvironment(const GameRules& rules) {
     const EnvSettings env = envSettings(rules.environment);
-    // Client mirror physics + the local prediction body match the server's authoritative gravity so
-    // predicted falls line up with reconciled ones. setGravity on the controller only writes tuning,
-    // so it holds through the later m_player.init() in setupClientWorld().
-    m_physics.setGravity(env.gravity);
-    m_player.setGravity(env.gravity);
+    rebuildClientGravityField(rules);
+    // Seed the controller with the field at origin; each tick re-samples at feet.
+    m_player.setGravity(m_gravity.sample(m_player.position()));
     // Fog + ambient are purely visual (client-only): the void of space, the murk of deep water.
     m_renderer.psx.fogColor = env.fogColor;
     m_renderer.psx.fogStart = env.fogStart;
@@ -200,6 +206,7 @@ bool Engine::rebuildWorld(GameRules::Terrain terrain, GameRules::Environment env
     m_propBodies.clear();
     m_editorProps.clear();
     m_entityPrevPos.clear();
+    m_entityAnimPhase.clear();
     m_remoteAudio.clear();
 
     m_voxels.clearWorld();
@@ -218,7 +225,7 @@ bool Engine::rebuildWorld(GameRules::Terrain terrain, GameRules::Environment env
 
     const glm::vec3 spawn = clientSpawnPos();
     m_player.setState(spawn, glm::vec3(0));
-    m_player.setGravity(envSettings(environment).gravity);
+    m_player.setGravity(m_gravity.sample(spawn));
     m_prevPlayerPos = m_currPlayerPos = spawn;
     m_editorCamera.pos = spawn + glm::vec3(0.0f, m_player.eyeHeight(), 0.0f);
 
@@ -589,6 +596,8 @@ void Engine::simulateClientTick(const PlayerCommand& frameCmd) {
         m_audio.play(Sound::Gunshot, 0.6f);
     }
 
+    // B3b: sample the same field shape the server uses (env-derived defaults).
+    m_player.setGravity(m_gravity.sample(m_player.position()));
     m_player.update(cmd, kFixedDt, m_physics);
 
     // Footsteps: paced by horizontal speed while grounded.
@@ -710,12 +719,15 @@ void Engine::render(float alpha) {
         }
     }
 
-    // Shared animated humanoid for NPCs/companions. One clip, sampled per-instance at a
-    // per-id phase so a room of NPCs isn't lock-stepped; placed at the entity's pos + yaw.
-    // Falls back to the box proxy when no npc_char.fbx is staged.
+    // Shared animated humanoid for NPCs/companions. Falls back to the box proxy when
+    // no npc_char.fbx is staged. Global time still drives idle sway; walk phase is
+    // per-entity (E1) so gait rate tracks move speed instead of skating.
     if (m_npcActor && m_npcActor->mesh != 0) m_npcActor->time += m_frameDt;
     // Facing correction derived at load from the rig's bind foot->toe direction (see loadNpcActor).
     const float kHumanoidYawOffset = m_humanoidYawOffset;
+    // Nominal walk clip metres-per-second of foot travel (Mixamo-ish). Rate =
+    // worldSpeed / this so full-speed chasers don't foot-slide.
+    constexpr float kWalkClipSpeed = 2.8f;
     // Sample a clip's precomputed lowest-point curve at time t (linear-interp, wraps over the
     // clip). Used to drop each pose so its planted foot stays on the ground (no walk-float).
     const auto footYAt = [&](int clip, float t) -> float {
@@ -736,14 +748,31 @@ void Engine::render(float alpha) {
                                     int idleClip, int walkClip, float walkWeight,
                                     MaterialHandle material) {
         if (m_npcActor && m_npcActor->mesh != 0) {
-            const float t = m_npcActor->time + 0.37f * static_cast<float>(id % 13);
             const float w = glm::clamp(walkWeight, 0.0f, 1.0f);
+            // E1 foot-slide: advance walk phase by estimated world speed / clip speed.
+            // Idle keeps a shared clock (breathing); walk uses per-id phase.
+            float worldSpeed = 0.0f;
+            if (const auto pit = m_entityPrevPos.find(id); pit != m_entityPrevPos.end() &&
+                                                          m_frameDt > 1e-4f) {
+                worldSpeed = glm::length(glm::vec2(pos.x - pit->second.x, pos.z - pit->second.z)) /
+                             m_frameDt;
+            }
+            m_entityPrevPos[id] = pos;
+            float& phase = m_entityAnimPhase[id];
+            // When fully idle, hold walk phase; when walking, rate tracks speed.
+            // Blend weight gates the rate so a half-blend NPC doesn't double-time.
+            const float rate = w > 0.05f
+                                   ? std::max(0.15f, (worldSpeed / kWalkClipSpeed) * w)
+                                   : 0.0f;
+            phase += m_frameDt * rate;
+            const float tIdle = m_npcActor->time + 0.37f * static_cast<float>(id % 13);
+            const float tWalk = phase + 0.37f * static_cast<float>(id % 13);
             // Whole-body drop so the planted foot stays on the floor through the walk cycle.
             float footY = 0.0f;
             if (idleClip >= 0 && walkClip >= 0)
-                footY = glm::mix(footYAt(idleClip, t), footYAt(walkClip, t), w);
+                footY = glm::mix(footYAt(idleClip, tIdle), footYAt(walkClip, tWalk), w);
             else if (m_npcActor->hasRealClip)
-                footY = footYAt(m_npcActor->clipIndex, t);
+                footY = footYAt(m_npcActor->clipIndex, tWalk);
             const glm::mat4 xform = glm::translate(glm::mat4(1.0f), pos - glm::vec3(0, footY, 0)) *
                                     glm::rotate(glm::mat4(1.0f), yaw + kHumanoidYawOffset,
                                                 glm::vec3(0, 1, 0)) *
@@ -751,10 +780,10 @@ void Engine::render(float alpha) {
             Pose pose;
             if (idleClip >= 0 && walkClip >= 0) {
                 // Idle↔walk blend by the server's AUTHORITATIVE walk weight (EntityState.anim);
-                // client-derived speed read ~0 (interp) and froze NPCs in idle.
+                // walk time is speed-scaled (E1); idle time is free-running.
                 std::vector<glm::mat4> locals =
-                    blendLocalMatrices(m_npcActor->model, m_npcActor->model.clips[idleClip], t,
-                                       m_npcActor->model.clips[walkClip], t, w);
+                    blendLocalMatrices(m_npcActor->model, m_npcActor->model.clips[idleClip], tIdle,
+                                       m_npcActor->model.clips[walkClip], tWalk, w);
                 // Two-bone foot IK plants each foot on the terrain under it (steps/slopes). No-op on
                 // flat ground (each foot is already at/above its target), so no regression there.
                 if (m_footIkRig.valid()) {
@@ -778,9 +807,9 @@ void Engine::render(float alpha) {
                 pose = resolveLocals(m_npcActor->model, locals, nullptr);
             } else if (m_npcActor->hasRealClip) {
                 pose = samplePose(m_npcActor->model,
-                                  m_npcActor->model.clips[m_npcActor->clipIndex], t);
+                                  m_npcActor->model.clips[m_npcActor->clipIndex], tWalk);
             } else {
-                pose = idlePose(m_npcActor->model, t);
+                pose = idlePose(m_npcActor->model, tIdle);
             }
             m_renderer.submitSkinned(m_npcActor->mesh, xform, pose,
                                      material != MaterialHandle::Invalid ? material

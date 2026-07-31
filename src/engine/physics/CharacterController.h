@@ -16,7 +16,8 @@ struct CharacterTuning {
     float sprintSpeed = 7.0f;       // m/s
     float crouchSpeed = 2.2f;       // m/s
     float jumpSpeed = 4.6f;         // m/s straight up, edge-triggered
-    float gravity = -18.0f;         // m/s², matches PhysicsWorld gravity
+    float gravity = -18.0f;         // legacy Y scalar; kept for defaults / tools
+    glm::vec3 gravityVec{0.0f, -18.0f, 0.0f}; // active acceleration (B3b field sample)
     float groundAccelScale = 10.0f; // accel = scale * targetSpeed → full speed in ~0.1 s
     float airControl = 0.3f;        // fraction of ground accel while airborne
     float stepUp = 0.35f;           // m, walk-stairs step height
@@ -43,10 +44,11 @@ public:
 
     void update(const PlayerCommand& cmd, float fixedDt, PhysicsWorld& world);
 
-    // Sets the fall gravity (m/s², negative = down) to match the world's Environment preset. Only
-    // touches tuning, so it is valid before or after init(). Keeps prediction (client) in step with
-    // the authoritative controller (server) when both apply the same environment.
+    // Fall acceleration (m/s²). Scalar form is world-down (0, gY, 0) for env presets.
+    // Vector form is B3b field sampling (volumes / orbital bodies). Valid before or after
+    // init(); client prediction must apply the same sample the server used.
     void setGravity(float gravityY);
+    void setGravity(glm::vec3 gravity);
 
     glm::vec3 position() const; // feet (capsule bottom), meters
     glm::vec3 velocity() const; // m/s

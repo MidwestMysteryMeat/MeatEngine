@@ -11,6 +11,7 @@
 #include "engine/net/LanDiscovery.h"
 #include "engine/net/LoopbackTransport.h"
 #include "engine/physics/CharacterController.h"
+#include "engine/physics/GravityField.h"
 #include "engine/physics/PhysicsWorld.h"
 #include "engine/platform/Input.h"
 #include "engine/platform/Window.h"
@@ -67,6 +68,7 @@ private:
     void stopHosting();
     void setupClientWorld();                    // after Welcome: seed-matched mirror
     void applyEnvironment(const GameRules& rules); // world preset → gravity + fog + ambient
+    void rebuildClientGravityField(const GameRules& rules);
     int runDedicated(const EngineConfig& config);
     GameRules::Perspective m_perspective = GameRules::Perspective::First;
     bool m_hemisphereAmbient = true; // A3 toggle (F7); applied with environment
@@ -83,6 +85,7 @@ private:
     Renderer m_renderer;
     AudioEngine m_audio;
     PhysicsWorld m_physics;   // client mirror
+    GravityField m_gravity;   // client prediction mirror of server field (B3b)
     VoxelWorld m_voxels;      // client mirror
     EntityRegistry m_entities;
     EventBus m_events;
@@ -151,6 +154,9 @@ private:
     // Previous entity positions (client-side), to derive each humanoid's speed for the
     // idle↔walk blend weight without a server-side anim-state byte.
     std::unordered_map<std::uint32_t, glm::vec3> m_entityPrevPos;
+    // E1: per-entity locomotion phase (seconds). Advanced by walk weight × rate so
+    // walk clips don't skate when the blend is full but feet move at world speed.
+    std::unordered_map<std::uint32_t, float> m_entityAnimPhase;
     // Per-remote-player audio pacing: derive each remote's speed from its
     // interpolated position (client-side, no net change) to pace positional
     // footstep SFX. Keyed by PeerId; grows with players seen (bounded, like above).

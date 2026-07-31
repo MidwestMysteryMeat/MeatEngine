@@ -54,12 +54,20 @@ float raySegmentDistance(glm::vec3 ro, glm::vec3 rd, float range, glm::vec3 a, g
 }
 } // namespace
 
+void ServerSim::rebuildGravityField() {
+    const EnvSettings env = envSettings(m_rules.environment);
+    const bool space = m_rules.environment == GameRules::Environment::Space;
+    configureDefaultGravityField(m_gravity, env.gravity, space);
+    // Rigid-body Jolt gravity stays the ambient Y component; characters sample the field.
+    m_physics.setGravity(env.gravity);
+}
+
 void ServerSim::reseedWorld(std::uint32_t seed, GameRules::Terrain terrain,
                             GameRules::Environment environment) {
     m_seed = seed;
     m_rules.terrain = terrain;
     m_rules.environment = environment;
-    m_physics.setGravity(envSettings(m_rules.environment).gravity);
+    rebuildGravityField();
 
     // Tear down dynamic world objects first (props drop colliders).
     for (WorldProp& prop : m_props) {
@@ -88,7 +96,7 @@ void ServerSim::reseedWorld(std::uint32_t seed, GameRules::Terrain terrain,
         if (!player) continue;
         if (player->spawned) {
             player->controller.setState(spawn, glm::vec3(0));
-            player->controller.setGravity(envSettings(m_rules.environment).gravity);
+            player->controller.setGravity(m_gravity.sample(spawn));
         } else {
             player->spawnOverride = spawn;
         }
@@ -115,9 +123,9 @@ void ServerSim::reseedWorld(std::uint32_t seed, GameRules::Terrain terrain,
 bool ServerSim::init(std::uint32_t worldSeed) {
     m_seed = worldSeed;
     if (!m_physics.init()) return false;
-    // World Environment preset drives authoritative gravity (fog/ambient are client-only). Player
-    // controllers pick the same value up as they spawn (see tick()).
-    m_physics.setGravity(envSettings(m_rules.environment).gravity);
+    // World Environment preset drives gravity field base + fog/ambient (client). Characters
+    // sample m_gravity each tick (B3b volumes / orbital bodies).
+    rebuildGravityField();
     m_jobs.start(std::thread::hardware_concurrency());
 
     m_palette = registerDefaultBlocks(m_voxels.blockRegistry());
@@ -1123,9 +1131,10 @@ void ServerSim::tick(Transport& transport) {
         if (!player->spawned) {
             if (!player->controller.init(m_physics, player->spawnOverride.value_or(defaultSpawnPos())))
                 continue;
-            player->controller.setGravity(envSettings(m_rules.environment).gravity);
             player->spawned = true;
         }
+        // B3b: sample the field at the feet before integrating so habitat/orbital SOI apply.
+        player->controller.setGravity(m_gravity.sample(player->controller.position()));
         player->controller.update(player->lastCmd, kFixedDtServer, m_physics);
         if (player->controller.position().y < -30.0f) // fell out (colliders pending)
             player->controller.setState(defaultSpawnPos(), glm::vec3(0));

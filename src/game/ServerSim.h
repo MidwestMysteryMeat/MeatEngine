@@ -4,6 +4,7 @@
 #include "engine/net/Transport.h"
 #include "engine/script/ScriptHost.h"
 #include "engine/physics/CharacterController.h"
+#include "engine/physics/GravityField.h"
 #include "engine/physics/PhysicsWorld.h"
 #include "engine/voxel/VoxelWorld.h"
 #include "game/Effects.h"
@@ -47,6 +48,8 @@ public:
     std::uint64_t currentTick() const { return m_tick; }
     const GameRules& rules() const { return m_rules; }
     int playerCount() const { return static_cast<int>(m_players.size()); }
+    // B3b: authoritative gravity field (env base + volumes + orbital bodies).
+    const GravityField& gravityField() const { return m_gravity; }
 
     // B4 New Map: clear voxels/props/entities, switch terrain+environment+seed, and
     // regenerate dungeon content. Connected players are respawned at the default pad.
@@ -236,6 +239,8 @@ private:
     PhysicsWorld m_physics;
     VoxelWorld m_voxels;
     NavMesh m_navmesh;       // optional Detour path provider (A* is the fallback)
+    GravityField m_gravity;  // B3b: field sampled each player tick
+    void rebuildGravityField();
 
     void setupScripting();
 
