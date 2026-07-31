@@ -136,9 +136,14 @@ light → ship) without the bloat/missing pieces that don't fit a PSX voxel FPS.
 The engine must not force "FPS shooter." A project picks its genre/game-mode; the FPS/combat layer
 (guns, hotbar, hitscan, enemy NPCs) is a MODULE a game opts into, so a space ship-builder or an
 underwater explorer needn't ship guns. Composes with world templates (B) + environments (B3).
-- [ ] **H1. Genre / game-mode selection** — `game.json "genre": "fps" | "sandbox" | "builder" | …`
-  (and a New-Map choice, B4). FPS combat + HUD + loadout become opt-in modules gated on it; ties to
-  the game-mode framework (G2). Default stays `fps` so nothing regresses.
+- [ ] **H1. Game templates (UE5-style)** ⭐ — a project picks a TEMPLATE that presets camera +
+  controls + core mechanics, like UE5's FPS/TPS/Racer/etc. project templates: **FPS** (first-person
+  cam, gun module — today's default), **TPS** (third-person over-shoulder cam, same combat), **Racer**
+  (vehicle controller + chase cam, no guns), and room to add more (top-down, platformer, sandbox/
+  builder). `game.json "template"` + a New-Map choice (B4). The camera mode (first/third/chase) + the
+  active control+mechanic module are gated on it; combat/HUD/loadout become opt-in so a Racer or a
+  builder ships no guns. Default `fps` so nothing regresses. First tractable slice: a **perspective
+  option** (first- vs third-person camera) — the FPS↔TPS split — then the vehicle/chase (Racer).
 - [ ] **H2. Weapon fire modes** ⭐ — **Semi / Auto / Burst / Shotgun that FEEL distinct.** Semi-auto
   **requires a trigger release between shots** (server tracks the fire-press EDGE — holding fire does
   NOT auto-repeat a semi); Auto fires at the weapon's cadence while held; Burst = N rounds per press;
