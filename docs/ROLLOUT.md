@@ -132,6 +132,22 @@ light → ship) without the bloat/missing pieces that don't fit a PSX voxel FPS.
 - [ ] **G2. Game-mode framework** (Breach/Horde) — WIP stashed; re-dispatch serially.
 - [ ] **G3. Lua-bind abilities**; **G4. per-model embedded textures / PSX env staging** (Roll-1 items).
 
+## Pillar H — Genre & weapons (FPS is OPTIONAL)
+The engine must not force "FPS shooter." A project picks its genre/game-mode; the FPS/combat layer
+(guns, hotbar, hitscan, enemy NPCs) is a MODULE a game opts into, so a space ship-builder or an
+underwater explorer needn't ship guns. Composes with world templates (B) + environments (B3).
+- [ ] **H1. Genre / game-mode selection** — `game.json "genre": "fps" | "sandbox" | "builder" | …`
+  (and a New-Map choice, B4). FPS combat + HUD + loadout become opt-in modules gated on it; ties to
+  the game-mode framework (G2). Default stays `fps` so nothing regresses.
+- [ ] **H2. Weapon fire modes** ⭐ — **Semi / Auto / Burst / Shotgun that FEEL distinct.** Semi-auto
+  **requires a trigger release between shots** (server tracks the fire-press EDGE — holding fire does
+  NOT auto-repeat a semi); Auto fires at the weapon's cadence while held; Burst = N rounds per press;
+  Shotgun = multiple pellets with spread per shot. Per-weapon `fireMode` + `pelletCount` + `spread`
+  in `ItemDef`; the client must send a press-edge/held bit so the server can gate semi.
+- [ ] **H3. Ammo + magazines** — per-weapon `magSize` + reserve ammo; a shot consumes a round, an
+  empty mag blocks fire, **reload (R)** refills from reserve on a timer; HUD shows mag/reserve. Extends
+  the existing `finiteAmmo` rule, which becomes the on/off switch for the whole ammo model.
+
 ## Not automatable
 Human feel-playtests (mouse feel, combat cadence, editor ergonomics), and real Linux-hardware CI.
 
