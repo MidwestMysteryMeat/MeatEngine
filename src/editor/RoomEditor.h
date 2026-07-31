@@ -1,5 +1,6 @@
 #pragma once
 #include "engine/core/EditorHost.h"
+#include "engine/script/NodeGraph.h"
 
 #include <glm/glm.hpp>
 
@@ -10,6 +11,7 @@
 #include <vector>
 
 struct ImGuiInputTextCallbackData; // fwd: code-editor resize callback signature
+struct ImNodesContext;             // fwd: C6 imnodes context (created lazily)
 
 namespace meat {
 
@@ -46,6 +48,12 @@ private:
     void setImportStatus(std::string text);
     void drawCodeEditor(EditorContext& ctx);
     void openLuaFile(EditorContext& ctx, const std::string& path);
+
+    // C6 Blueprints — imnodes graph that compiles to sandboxed Lua.
+    void drawBlueprints(EditorContext& ctx);
+    void ensureBlueprintContext();
+    void loadOrSeedBlueprint(EditorContext& ctx);
+    bool saveAndCompileBlueprint(EditorContext& ctx);
 
     // Content browser: a flat, cached, type-grouped listing of the project's
     // assets with per-file sizes. Unlike the Assets tree (which lazily lists via
@@ -151,6 +159,18 @@ private:
     int m_newMapTerrain = 0;     // 0 Normal, 1 Superflat, 2 Void
     int m_newMapEnvironment = 0; // 0 Surface, 1 Underwater, 2 Space
     int m_newMapSeed = 1337;
+
+    // --- Blueprints (C6) ---------------------------------------------------
+    bool m_blueprintsOpen = true;
+    bool m_blueprintLoaded = false;
+    bool m_blueprintDirty = false;
+    NodeGraph m_blueprint;
+    ImNodesContext* m_imnodes = nullptr;
+    std::string m_bpStatus;
+    float m_bpStatusTtl = 0.0f;
+    int m_bpAddKind = 0; // palette index for "Add node"
+    // Node ids that already received SetNodeGridSpacePos (imnodes owns drag after).
+    std::vector<int> m_bpPlacedIds;
 };
 
 } // namespace meat

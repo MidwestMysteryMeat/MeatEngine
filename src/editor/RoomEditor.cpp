@@ -7,6 +7,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
 #include <ImGuizmo.h> // must follow imgui.h — its header uses ImGui types
+#include <imnodes.h>
 
 #include <algorithm>
 #include <cctype>
@@ -119,6 +120,7 @@ void RoomEditor::update(EditorContext& ctx, float dt) {
     if (m_statusTtl > 0.0f && (m_statusTtl -= dt) <= 0.0f) m_status.clear();
     if (m_codeStatusTtl > 0.0f && (m_codeStatusTtl -= dt) <= 0.0f) m_codeStatus.clear();
     if (m_importStatusTtl > 0.0f && (m_importStatusTtl -= dt) <= 0.0f) m_importStatus.clear();
+    if (m_bpStatusTtl > 0.0f && (m_bpStatusTtl -= dt) <= 0.0f) m_bpStatus.clear();
 
     // OS drag-drop: any files dropped on the window this frame get imported, so a
     // dev can drop an .fbx straight onto the viewport instead of typing a path.
@@ -137,6 +139,7 @@ void RoomEditor::update(EditorContext& ctx, float dt) {
     drawAssetBrowser(ctx);
     drawContentBrowser(ctx);
     drawCodeEditor(ctx);
+    drawBlueprints(ctx);
     if (!m_flying) drawGizmo(ctx, view, proj);
 
     // Picking ray: camera center while flying, otherwise unproject the cursor.
@@ -317,6 +320,11 @@ void RoomEditor::drawTopBar(EditorContext& ctx) {
         m_newMapEnvironment = static_cast<int>(ctx.currentEnvironment);
         m_newMapSeed = static_cast<int>(ctx.currentSeed);
     }
+    ImGui::SameLine();
+    if (ImGui::Button(m_blueprintsOpen ? "Blueprints##hide" : "Blueprints##show"))
+        m_blueprintsOpen = !m_blueprintsOpen;
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("C6 visual scripting — node graph compiles to Lua");
     if (ctx.setHemisphereAmbient) {
         bool hemi = ctx.hemisphereAmbient;
         if (ImGui::Checkbox("hemisphere ambient", &hemi)) ctx.setHemisphereAmbient(hemi);
@@ -1167,4 +1175,267 @@ void RoomEditor::placeSelectedProp(EditorContext& ctx) {
     setStatus("placed " + assetPath);
 }
 
+// ===== Blueprints (C6 visual scripting) ====================================
+
+namespace {
+constexpr const char* kGraphPath = "scripts/blueprints/main.graph.json";
+// Load last alphabetically so hand-written example.lua does not stomp it.
+constexpr const char* kEmitLuaPath = "scripts/zz_blueprint.lua";
+
+const NodeKind kPaletteKinds[] = {
+    NodeKind::EventOnInit,     NodeKind::EventOnTick,      NodeKind::EventOnPlayerJoin,
+    NodeKind::EventOnPlayerDeath, NodeKind::ActionLog,     NodeKind::ActionSetBlock,
+    NodeKind::ActionSpawnPickup, NodeKind::GetPlayerCount, NodeKind::GetItemId,
+    NodeKind::Randi,           NodeKind::ConstInt,         NodeKind::ConstFloat,
+    NodeKind::ConstString,     NodeKind::Branch,           NodeKind::MathAdd,
+    NodeKind::MathGreater,
+};
+constexpr int kPaletteCount = static_cast<int>(sizeof(kPaletteKinds) / sizeof(kPaletteKinds[0]));
+
+ImU32 categoryTitleColor(const char* cat) {
+    if (std::strcmp(cat, "Event") == 0) return IM_COL32(140, 50, 50, 255);
+    if (std::strcmp(cat, "Action") == 0) return IM_COL32(40, 80, 140, 255);
+    if (std::strcmp(cat, "Flow") == 0) return IM_COL32(120, 90, 30, 255);
+    if (std::strcmp(cat, "Math") == 0) return IM_COL32(50, 100, 70, 255);
+    return IM_COL32(50, 90, 60, 255); // Data
+}
+} // namespace
+
+void RoomEditor::ensureBlueprintContext() {
+    if (m_imnodes) return;
+    ImNodes::SetImGuiContext(ImGui::GetCurrentContext());
+    m_imnodes = ImNodes::CreateContext();
+    ImNodes::StyleColorsDark();
+    ImNodes::GetIO().LinkDetachWithModifierClick.Modifier = &ImGui::GetIO().KeyCtrl;
+}
+
+void RoomEditor::loadOrSeedBlueprint(EditorContext& ctx) {
+    if (m_blueprintLoaded) return;
+    m_blueprintLoaded = true;
+    bool ok = false;
+    if (ctx.readFile) {
+        const std::string text = ctx.readFile(kGraphPath);
+        if (!text.empty()) ok = loadGraphJson(m_blueprint, text);
+    }
+    m_bpPlacedIds.clear();
+    if (!ok) {
+        m_blueprint = NodeGraph::makeExample();
+        m_blueprintDirty = true;
+        m_bpStatus = "seeded example blueprint graph";
+        m_bpStatusTtl = 4.0f;
+    } else {
+        m_bpStatus = "loaded " + std::string(kGraphPath);
+        m_bpStatusTtl = 3.0f;
+    }
+}
+
+bool RoomEditor::saveAndCompileBlueprint(EditorContext& ctx) {
+    if (!ctx.writeFile) {
+        m_bpStatus = "writeFile unavailable";
+        m_bpStatusTtl = 4.0f;
+        return false;
+    }
+    // Sync node positions from imnodes before save.
+    for (GraphNode& n : m_blueprint.nodes) {
+        const ImVec2 p = ImNodes::GetNodeGridSpacePos(n.id);
+        n.posX = p.x;
+        n.posY = p.y;
+    }
+    const std::string json = saveGraphJson(m_blueprint);
+    if (!ctx.writeFile(kGraphPath, json)) {
+        m_bpStatus = "failed to write graph JSON";
+        m_bpStatusTtl = 4.0f;
+        return false;
+    }
+    const std::string lua = emitGraphLua(m_blueprint);
+    if (!ctx.writeFile(kEmitLuaPath, lua)) {
+        m_bpStatus = "failed to write generated Lua";
+        m_bpStatusTtl = 4.0f;
+        return false;
+    }
+    m_blueprintDirty = false;
+    bool reloaded = false;
+    if (ctx.reloadScripts) reloaded = ctx.reloadScripts();
+    m_bpStatus = reloaded ? "saved + compiled + scripts reloaded"
+                          : "saved + compiled (reload skipped / host only)";
+    m_bpStatusTtl = 5.0f;
+    return true;
+}
+
+void RoomEditor::drawBlueprints(EditorContext& ctx) {
+    if (!m_blueprintsOpen) return;
+    ensureBlueprintContext();
+    loadOrSeedBlueprint(ctx);
+    ImNodes::SetCurrentContext(m_imnodes);
+
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos({vp->Pos.x + 320.0f, vp->Pos.y + 48.0f}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({720.0f, 480.0f}, ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Blueprints", &m_blueprintsOpen)) {
+        ImGui::End();
+        return;
+    }
+
+    ImGui::TextUnformatted("Visual scripting (C6) — compiles to sandboxed Lua");
+    ImGui::TextDisabled("graph: %s  →  %s", kGraphPath, kEmitLuaPath);
+    if (m_blueprintDirty) {
+        ImGui::SameLine();
+        ImGui::TextColored({1.0f, 0.7f, 0.2f, 1.0f}, "* dirty");
+    }
+
+    // Palette
+    if (m_bpAddKind < 0 || m_bpAddKind >= kPaletteCount) m_bpAddKind = 0;
+    if (ImGui::BeginCombo("##addkind", nodeKindName(kPaletteKinds[m_bpAddKind]))) {
+        for (int i = 0; i < kPaletteCount; ++i) {
+            const bool sel = i == m_bpAddKind;
+            if (ImGui::Selectable(nodeKindName(kPaletteKinds[i]), sel)) m_bpAddKind = i;
+            if (sel) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Add node")) {
+        const ImVec2 pan = ImNodes::EditorContextGetPanning();
+        m_blueprint.addNode(kPaletteKinds[m_bpAddKind], 80.0f - pan.x, 80.0f - pan.y);
+        m_blueprintDirty = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Save + Compile")) saveAndCompileBlueprint(ctx);
+    ImGui::SameLine();
+    if (ImGui::Button("Reset example")) {
+        m_blueprint = NodeGraph::makeExample();
+        m_bpPlacedIds.clear();
+        m_blueprintDirty = true;
+        m_bpStatus = "reset to example graph";
+        m_bpStatusTtl = 3.0f;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Delete selected") && ImNodes::NumSelectedNodes() > 0) {
+        std::vector<int> ids(static_cast<std::size_t>(ImNodes::NumSelectedNodes()));
+        ImNodes::GetSelectedNodes(ids.data());
+        for (int id : ids) m_blueprint.removeNode(id);
+        ImNodes::ClearNodeSelection();
+        m_blueprintDirty = true;
+    }
+    if (!m_bpStatus.empty()) {
+        ImGui::TextColored({0.45f, 0.9f, 0.5f, 1.0f}, "%s", m_bpStatus.c_str());
+    }
+
+    ImNodes::BeginNodeEditor();
+    for (GraphNode& n : m_blueprint.nodes) {
+        if (std::find(m_bpPlacedIds.begin(), m_bpPlacedIds.end(), n.id) == m_bpPlacedIds.end()) {
+            ImNodes::SetNodeGridSpacePos(n.id, ImVec2(n.posX, n.posY));
+            m_bpPlacedIds.push_back(n.id);
+        }
+        ImNodes::PushColorStyle(ImNodesCol_TitleBar, categoryTitleColor(nodeKindCategory(n.kind)));
+        ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered,
+                                categoryTitleColor(nodeKindCategory(n.kind)));
+        ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected,
+                                categoryTitleColor(nodeKindCategory(n.kind)));
+        ImNodes::BeginNode(n.id);
+        ImNodes::BeginNodeTitleBar();
+        ImGui::TextUnformatted(nodeKindName(n.kind));
+        ImNodes::EndNodeTitleBar();
+
+        int pinCount = 0;
+        const GraphPinDesc* pins = nodePinLayout(n.kind, pinCount);
+        for (int p = 0; p < pinCount; ++p) {
+            const int attr = pinAttrId(n.id, p);
+            if (pins[p].isInput) {
+                ImNodes::BeginInputAttribute(attr);
+                ImGui::Text("%s", pins[p].name);
+                // Inline editors for unwired literal pins on a few kinds.
+                if (n.kind == NodeKind::ActionLog && p == 2) {
+                    char buf[128];
+                    std::snprintf(buf, sizeof(buf), "%s", n.strA.c_str());
+                    ImGui::SetNextItemWidth(140.0f);
+                    if (ImGui::InputText("##msg", buf, sizeof(buf))) {
+                        n.strA = buf;
+                        m_blueprintDirty = true;
+                    }
+                }
+                if (n.kind == NodeKind::GetItemId && p == 0) {
+                    char buf[64];
+                    std::snprintf(buf, sizeof(buf), "%s", n.strA.c_str());
+                    ImGui::SetNextItemWidth(100.0f);
+                    if (ImGui::InputText("##item", buf, sizeof(buf))) {
+                        n.strA = buf;
+                        m_blueprintDirty = true;
+                    }
+                }
+                if ((n.kind == NodeKind::ActionSetBlock || n.kind == NodeKind::Randi) &&
+                    pins[p].kind == PinKind::Int) {
+                    int* slot = (p == 2 || (n.kind == NodeKind::Randi && p == 0)) ? &n.intA
+                                : (p == 3 || (n.kind == NodeKind::Randi && p == 1)) ? &n.intB
+                                : (p == 4)                                           ? &n.intC
+                                                                                     : &n.intD;
+                    ImGui::SetNextItemWidth(60.0f);
+                    if (ImGui::InputInt("##i", slot, 0, 0)) m_blueprintDirty = true;
+                }
+                ImNodes::EndInputAttribute();
+            } else {
+                ImNodes::BeginOutputAttribute(attr);
+                if (n.kind == NodeKind::ConstInt) {
+                    ImGui::SetNextItemWidth(70.0f);
+                    if (ImGui::InputInt("##ci", &n.intA, 0, 0)) m_blueprintDirty = true;
+                } else if (n.kind == NodeKind::ConstFloat) {
+                    ImGui::SetNextItemWidth(70.0f);
+                    if (ImGui::InputFloat("##cf", &n.floatA, 0, 0, "%.2f")) m_blueprintDirty = true;
+                } else if (n.kind == NodeKind::ConstString) {
+                    char buf[128];
+                    std::snprintf(buf, sizeof(buf), "%s", n.strA.c_str());
+                    ImGui::SetNextItemWidth(120.0f);
+                    if (ImGui::InputText("##cs", buf, sizeof(buf))) {
+                        n.strA = buf;
+                        m_blueprintDirty = true;
+                    }
+                } else {
+                    ImGui::Text("%s", pins[p].name);
+                }
+                ImNodes::EndOutputAttribute();
+            }
+        }
+        ImNodes::EndNode();
+        ImNodes::PopColorStyle();
+        ImNodes::PopColorStyle();
+        ImNodes::PopColorStyle();
+    }
+
+    for (const GraphLink& L : m_blueprint.links) {
+        ImNodes::Link(L.id, pinAttrId(L.fromNode, L.fromPin), pinAttrId(L.toNode, L.toPin));
+    }
+
+    ImNodes::MiniMap(0.18f, ImNodesMiniMapLocation_BottomRight);
+    ImNodes::EndNodeEditor();
+
+    // Link create / destroy
+    int startAttr = 0, endAttr = 0;
+    if (ImNodes::IsLinkCreated(&startAttr, &endAttr)) {
+        // Ensure start is output side: if user dragged reverse, swap.
+        int sn = pinNodeId(startAttr), sp = pinIndexOf(startAttr);
+        int en = pinNodeId(endAttr), ep = pinIndexOf(endAttr);
+        const GraphNode* a = m_blueprint.findNode(sn);
+        const GraphNode* b = m_blueprint.findNode(en);
+        if (a && b) {
+            int ca = 0, cb = 0;
+            const GraphPinDesc* pa = nodePinLayout(a->kind, ca);
+            const GraphPinDesc* pb = nodePinLayout(b->kind, cb);
+            if (sp < ca && ep < cb) {
+                if (pa[sp].isInput && !pb[ep].isInput)
+                    std::swap(sn, en), std::swap(sp, ep);
+                if (m_blueprint.addLink(sn, sp, en, ep)) m_blueprintDirty = true;
+            }
+        }
+    }
+    int destroyed = 0;
+    if (ImNodes::IsLinkDestroyed(&destroyed)) {
+        m_blueprint.removeLink(destroyed);
+        m_blueprintDirty = true;
+    }
+
+    ImGui::TextDisabled("Ctrl+click link to detach | middle-drag pan | box-select nodes");
+    ImGui::End();
+}
+
 } // namespace meat
+

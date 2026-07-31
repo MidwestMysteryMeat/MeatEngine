@@ -1121,6 +1121,10 @@ void Engine::render(float alpha) {
             return std::string(std::istreambuf_iterator<char>(in), {});
         };
         ctx.writeFile = [](const std::string& path, const std::string& text) {
+            namespace fs = std::filesystem;
+            std::error_code ec;
+            if (const fs::path parent = fs::path(path).parent_path(); !parent.empty())
+                fs::create_directories(parent, ec);
             std::ofstream out(path, std::ios::binary);
             if (!out) return false;
             out << text;

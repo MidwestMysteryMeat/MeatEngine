@@ -30,7 +30,9 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
    `kVoxelSize` (voxel cell 16,16,16).
 
 ## Stretch / bigger pieces (pull in as the sprint allows)
-- **C6 — node scripting / blueprints + live coding** (imnodes → Lua; the no-code layer + edit-live).
+- ~~**C6 — node scripting / blueprints + live coding**~~ ✅ (slice 1) — imnodes graph editor
+  in Room Designer; events/actions/data/flow/math nodes; JSON save; compiles to sandboxed
+  Lua (`scripts/zz_blueprint.lua`) + live reload. Open: more API nodes, subgraphs, debug.
 - **B2 — non-voxel MeshLevel** (Level interface: VoxelWorld vs static-mesh + Jolt MeshShape).
 - ~~**B3b — gravity volumes / zoned gravity**~~ ✅ (first slice) — `GravityField` with base + AABB
   volumes + radial orbital bodies; CharacterController samples full gravity vector each tick;

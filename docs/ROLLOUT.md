@@ -41,7 +41,7 @@ docs/ENGINE_REUSE_SURVEY.md + the memory OSS-grabs reference) and its verificati
   geometry), **NpcZombie + armed NpcShooter**, and **ozz-animation vendored + two-bone foot IK**
   (terrain foot planting, VLM-verified no-regression). Auto-rig Blender tool (`tools/autorig/`).
 - **Platform**: Linux build + CI (Linux hw unverified), positional 3D audio, Lua+sol2 scripting,
-  ImGui room editor + ImGuizmo.
+  ImGui room editor + ImGuizmo, **C6 blueprints** (imnodes → Lua, first slice).
 
 ---
 
@@ -96,11 +96,10 @@ light → ship) without the bloat/missing pieces that don't fit a PSX voxel FPS.
   OSS: ImGuiFileDialog.
 - [ ] **C5. Inspectors** — material, entity/prefab, block/atlas, and **environment settings** (drives
   B3). Struct-reflection via Boost.PFR (BSL-1.0) → auto widgets + JSON.
-- [ ] **C6. Node scripting / Blueprints + live coding** ⭐ — visual graphs (imnodes) for behaviour/
-  weapon/ability/material, compiled to Lua; paired with an in-editor Lua script editor
-  (ImGuiColorTextEdit). **Live coding** is the killer UE5 ergonomic: Lua already hot-reloads
-  (`loadDir`) + shaders reload on F6 — extend to **edit-a-blueprint/script-and-see-it-live** while the
-  game runs (no restart). C++ live-reload for engine systems is a later stretch (OSS: cr.h, MIT).
+- [~] **C6. Node scripting / Blueprints + live coding** ⭐ — first slice shipped: imnodes graph in
+  Room Designer (events/actions/data/flow/math) → JSON + sandboxed Lua (`zz_blueprint.lua`) +
+  Save+Compile live reload. Still open: more game API nodes, subgraphs, debug pins,
+  ImGuiColorTextEdit for the text path; C++ live-reload later (cr.h).
 - [ ] **C7. Packaging / export** — bundle exe + cooked assets + a zip/pk3 archive into a shippable
   build (ties to D2 resource archives + `tools/package.ps1`).
 - [ ] **C8. Profiler panels** — frame/mesh/netcode telemetry. OSS: ImPlot + Tracy (BSD-3).

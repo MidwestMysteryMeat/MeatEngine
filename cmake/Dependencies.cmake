@@ -71,6 +71,12 @@ FetchContent_Declare(imguizmo_src
     GIT_REPOSITORY https://github.com/CedricGuillemet/ImGuizmo
     GIT_TAG master GIT_SHALLOW ON
     SOURCE_SUBDIR _skip_own_cmake)
+# imnodes (MIT): node-graph editor for C6 visual scripting / blueprints.
+# No CMakeLists of its own we care about — compile into the imgui static lib.
+FetchContent_Declare(imnodes_src
+    GIT_REPOSITORY https://github.com/Nelarius/imnodes
+    GIT_TAG master GIT_SHALLOW ON
+    SOURCE_SUBDIR _skip_own_cmake)
 
 # ---- ENet (UDP transport) ---------------------------------------------------
 FetchContent_Declare(enet
@@ -141,7 +147,7 @@ FetchContent_Declare(nlohmann_json
     GIT_TAG v3.11.3 GIT_SHALLOW ON)
 
 FetchContent_MakeAvailable(glfw glad glm assimp joltphysics lua_src sol2
-                           imgui_src imguizmo_src enet stb_src miniaudio_src nlohmann_json
+                           imgui_src imguizmo_src imnodes_src enet stb_src miniaudio_src nlohmann_json
                            recastnavigation ozz enkits entt bitsery)
 
 # FastNoiseLite is a single header; skip its root CMake (non-lib targets) and expose the dir.
@@ -168,7 +174,7 @@ list(FILTER LUA_SOURCES EXCLUDE REGEX "(lua|luac|onelua)\\.c$")
 add_library(lua_static STATIC ${LUA_SOURCES})
 target_include_directories(lua_static PUBLIC ${lua_src_SOURCE_DIR})
 
-# ImGui + ImGuizmo as one static lib (GLFW + GL3 backends)
+# ImGui + ImGuizmo + imnodes as one static lib (GLFW + GL3 backends)
 add_library(imgui STATIC
     ${imgui_src_SOURCE_DIR}/imgui.cpp
     ${imgui_src_SOURCE_DIR}/imgui_draw.cpp
@@ -177,10 +183,13 @@ add_library(imgui STATIC
     ${imgui_src_SOURCE_DIR}/imgui_demo.cpp
     ${imgui_src_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
     ${imgui_src_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
-    ${imguizmo_src_SOURCE_DIR}/src/ImGuizmo.cpp)
+    ${imguizmo_src_SOURCE_DIR}/src/ImGuizmo.cpp
+    ${imnodes_src_SOURCE_DIR}/imnodes.cpp)
 target_include_directories(imgui PUBLIC
-    ${imgui_src_SOURCE_DIR} ${imgui_src_SOURCE_DIR}/backends ${imguizmo_src_SOURCE_DIR}/src)
+    ${imgui_src_SOURCE_DIR} ${imgui_src_SOURCE_DIR}/backends ${imguizmo_src_SOURCE_DIR}/src
+    ${imnodes_src_SOURCE_DIR})
 target_link_libraries(imgui PUBLIC glfw)
+# imnodes_internal.h defines IMGUI_DEFINE_MATH_OPERATORS itself when compiling imnodes.cpp.
 
 add_library(stb INTERFACE)
 target_include_directories(stb INTERFACE ${stb_src_SOURCE_DIR})
