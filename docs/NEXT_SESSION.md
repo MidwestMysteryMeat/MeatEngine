@@ -32,8 +32,14 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
 ## Stretch / bigger pieces (pull in as the sprint allows)
 - **C6 — node scripting / blueprints + live coding** (imnodes → Lua; the no-code layer + edit-live).
 - **B2 — non-voxel MeshLevel** (Level interface: VoxelWorld vs static-mesh + Jolt MeshShape).
-- **B3b — gravity volumes / zoned gravity** (0-g void vs ship interiors → ship builders).
+- **B3b — gravity volumes / zoned gravity** (0-g void vs ship interiors; radial orbital bodies —
+  prerequisite for H4 Space ship).
 - **Racer template** (vehicle controller + chase cam) — the second template after TPS.
+- **H4 — Space ship template** ⭐ *(product direction)* — space-themed; players pilot ships as the
+  primary control mode; **swap first/third person while flying** (cockpit vs chase cam on the ship);
+  **leave the ship (EVA)** back to on-foot control; gravity must account for ship artificial-g
+  volumes, void, and **orbital bodies**. Depends on B3b + vehicle possession. Full write-up under
+  Pillar H in [ROLLOUT.md](ROLLOUT.md).
 - **A2 — directional sun shadow map** (McNopper MIT; +LiSPSM later).
 
 ## Engine OSS grabs (deferred, low-risk-first)

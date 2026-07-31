@@ -74,9 +74,14 @@ blank / …), but spanning voxel AND non-voxel AND themed worlds. Physics is alr
 - [x] **B3. Environment presets** — Surface / Underwater / Space drive gravity + fog + ambient
   (+ hemi lobes). Skybox/water plane still open.
 - [ ] **B3b. Gravity volumes / zoned gravity** ⭐ — gravity is a *field*, not a global: per-region
-  volumes (0-g in open space, normal inside a ship, radial "planet" gravity). The controller samples
-  the active volume's gravity vector each tick. Unlocks **space games**, **ship interiors vs. void**,
-  and **ship builders** (build a voxel/mesh craft that carries its own g-field). Big but on-vision.
+  volumes (0-g in open space, normal inside a ship, radial "planet" / orbital-body gravity). The
+  controller samples the active volume's gravity vector each tick. Unlocks **space games**, **ship
+  interiors vs. void**, **ship builders** (a craft that carries its own g-field), and the **Space
+  ship template (H4)**. Design targets:
+  - **Local volumes** — AABB/sphere zones with constant or radial `g` (ship deck = −Y, void = ~0).
+  - **Orbital bodies** — planetoids/stations as gravity sources (radial pull toward center; optional
+    soft SOI cutoffs). Player + ship + EVA body all sample the same field.
+  - **Authority** — server owns gravity field + vehicle state; client predicts with the same sampler.
 - [x] **B4. "New Map" dialog** (editor) — template (Landscape / Superflat / Void) + environment +
   seed → `reseedWorld` (host/SP). Mesh template still open (B2).
 - [ ] **B5. `game.json` `world: {template, environment}`** so a project ships its map choice; no C++.
@@ -140,9 +145,25 @@ The engine must not force "FPS shooter." A project picks its genre/game-mode; th
 (guns, hotbar, hitscan, enemy NPCs) is a MODULE a game opts into, so a space ship-builder or an
 underwater explorer needn't ship guns. Composes with world templates (B) + environments (B3).
 - [~] **H1. Game templates (UE5-style)** ⭐ — FPS↔TPS perspective slice shipped (`template` /
-  `perspective` / over-shoulder cam). Racer + module opt-in still open.
+  `perspective` / over-shoulder cam). Racer + **Space ship (H4)** + module opt-in still open.
 - [x] **H2. Weapon fire modes** ⭐ — Semi / Auto / Burst with trigger-edge discipline + shotgun pellets.
 - [x] **H3. Ammo + magazines** — mag/reserve/reload + HUD; gated by `finiteAmmo`.
+- [ ] **H4. Space ship template** ⭐ *(planned — product note)* — space-themed game mode where the
+  default playable is a **controllable ship**, not an on-foot FPS. Composes with environment
+  `Space` (B3) and requires gravity fields (B3b). Slice plan:
+  1. **Vehicle entity** — server-authoritative ship body (Jolt rigid body or character-like
+     thruster controller): 6DOF thrust/torque, optional linear/angular damping for “gamey” feel.
+  2. **Perspective swap while piloting** — first-person cockpit *and* third-person chase/orbit
+     around the ship (reuse H1 perspective plumbing; camera attaches to ship transform, not the
+     capsule). Toggle is a pilot control, not a project-wide fixed choice.
+  3. **Board / leave ship (EVA)** — enter seat → possession of ship controls; exit → spawn/restore
+     on-foot player capsule (0-g or local ship gravity). Inventory/weapons stay on the body so
+     EVA combat remains possible.
+  4. **Gravity-aware motion** — ship + EVA both sample gravity volumes / orbital bodies (B3b);
+     ship interiors can host artificial “down” while the hull floats in void.
+  5. **Content defaults** — Void or sparse Space terrain + Space env fog/ambient; combat module
+     optional (guns on foot / ship hardpoints later). `game.json "template": "space"` (or
+     `"spaceship"`).
 
 ## Not automatable
 Human feel-playtests (mouse feel, combat cadence, editor ergonomics), and real Linux-hardware CI.
