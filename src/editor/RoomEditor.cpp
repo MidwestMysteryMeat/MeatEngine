@@ -9,10 +9,13 @@
 #include <ImGuizmo.h> // must follow imgui.h — its header uses ImGui types
 
 #include <algorithm>
+#include <cctype>
 #include <cfloat>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <iterator>
 #include <utility>
 
@@ -34,6 +37,29 @@ constexpr glm::vec3 kVolumePreview{0.15f, 0.2f, 0.6f};
 
 const char* const kToolNames[] = {"Place",   "Erase",   "Wall",  "Floor",
                                   "Platform", "Doorway", "Light", "Seed Volume"};
+
+// Content-browser group labels, indexed by RoomEditor::AssetKind (minus Count).
+const char* const kAssetKindNames[] = {"Models", "Textures", "Scripts", "Shaders", "Other"};
+
+// Human-readable byte count for the content browser's size column.
+std::string humanSize(std::uintmax_t bytes) {
+    const char* const units[] = {"B", "KB", "MB", "GB", "TB"};
+    double v = static_cast<double>(bytes);
+    int u = 0;
+    while (v >= 1024.0 && u < 4) {
+        v /= 1024.0;
+        ++u;
+    }
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), u == 0 ? "%.0f %s" : "%.1f %s", v, units[u]);
+    return buf;
+}
+
+std::string toLowerAscii(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return s;
+}
 
 int snapDown(int v, int step) {
     // floor-division snap so negative coords snap toward -inf, not toward 0
@@ -77,6 +103,7 @@ void RoomEditor::update(EditorContext& ctx, float dt) {
     drawToolbar();
     drawOutliner(ctx);
     drawAssetBrowser(ctx);
+    drawContentBrowser();
     drawCodeEditor(ctx);
     if (!m_flying) drawGizmo(ctx, view, proj);
 
@@ -631,6 +658,111 @@ void RoomEditor::drawCodeEditor(EditorContext& ctx) {
 void RoomEditor::setCodeStatus(std::string text) {
     m_codeStatus = std::move(text);
     m_codeStatusTtl = 4.0f;
+}
+
+// ===== Content browser =====================================================
+
+RoomEditor::AssetKind RoomEditor::classifyExt(const std::string& ext) {
+    if (ext == ".fbx" || ext == ".obj" || ext == ".glb" || ext == ".gltf")
+        return AssetKind::Model;
+    if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" || ext == ".bmp")
+        return AssetKind::Texture;
+    if (ext == ".lua") return AssetKind::Script;
+    if (ext == ".vert" || ext == ".frag" || ext == ".comp" || ext == ".glsl")
+        return AssetKind::Shader;
+    return AssetKind::Other;
+}
+
+// Walk assets/ once and cache a flat, type-sorted listing with per-file sizes.
+// The editor context doesn't surface --project's dir, so the scan is rooted at
+// the runtime assets/ dir — the same root the Assets tree lists. All filesystem
+// work is error_code-based so a missing/locked dir can't throw across the UI.
+void RoomEditor::rescanContent() {
+    namespace fs = std::filesystem;
+    m_content.clear();
+    m_contentScanned = true;
+
+    std::error_code ec;
+    const fs::path root = "assets";
+    if (!fs::exists(root, ec) || !fs::is_directory(root, ec)) return;
+
+    const fs::recursive_directory_iterator end;
+    fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
+    for (; !ec && it != end; it.increment(ec)) {
+        std::error_code fe;
+        if (!it->is_regular_file(fe) || fe) continue;
+
+        ContentEntry entry;
+        entry.name = it->path().filename().string();
+        entry.path = fs::relative(it->path(), root, fe).generic_string();
+        if (fe || entry.path.empty()) entry.path = it->path().generic_string();
+        entry.size = it->file_size(fe);
+        if (fe) entry.size = 0;
+        entry.kind = classifyExt(toLowerAscii(it->path().extension().string()));
+        m_content.push_back(std::move(entry));
+    }
+
+    std::sort(m_content.begin(), m_content.end(),
+              [](const ContentEntry& a, const ContentEntry& b) {
+                  if (a.kind != b.kind) return a.kind < b.kind;
+                  return a.name < b.name;
+              });
+}
+
+void RoomEditor::drawContentBrowser() {
+    ImGui::Begin("Content Browser");
+    if (!m_contentScanned) rescanContent(); // first open: scan once, not per frame
+
+    if (ImGui::Button("Refresh")) rescanContent();
+    ImGui::SameLine();
+    ImGui::Text("%d assets under assets/", static_cast<int>(m_content.size()));
+
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::InputTextWithHint("##contentfilter", "filter by name...", m_contentFilter,
+                             sizeof(m_contentFilter));
+    const std::string needle = toLowerAscii(m_contentFilter);
+    const auto matches = [&](const std::string& name) {
+        return needle.empty() || toLowerAscii(name).find(needle) != std::string::npos;
+    };
+
+    ImGui::Separator();
+    ImGui::BeginChild("##contentlist", ImVec2(0.0f, 240.0f), ImGuiChildFlags_Borders);
+    for (int k = 0; k < static_cast<int>(AssetKind::Count); ++k) {
+        bool headerDrawn = false;
+        for (const ContentEntry& e : m_content) {
+            if (static_cast<int>(e.kind) != k || !matches(e.name)) continue;
+            if (!headerDrawn) {
+                ImGui::SeparatorText(kAssetKindNames[k]); // group by type
+                headerDrawn = true;
+            }
+            ImGui::PushID(e.path.c_str());
+            if (ImGui::Selectable(e.name.c_str(), m_contentSelected == e.path,
+                                  ImGuiSelectableFlags_SpanAllColumns))
+                m_contentSelected = e.path;
+            ImGui::SameLine(240.0f);
+            ImGui::TextDisabled("%s", humanSize(e.size).c_str());
+            ImGui::PopID();
+        }
+    }
+    ImGui::EndChild();
+
+    // Details for the current selection.
+    const ContentEntry* sel = nullptr;
+    for (const ContentEntry& e : m_content)
+        if (e.path == m_contentSelected) {
+            sel = &e;
+            break;
+        }
+    ImGui::Separator();
+    if (sel) {
+        ImGui::Text("%s", sel->name.c_str());
+        ImGui::TextDisabled("assets/%s", sel->path.c_str());
+        ImGui::TextDisabled("%s  |  %s", kAssetKindNames[static_cast<int>(sel->kind)],
+                            humanSize(sel->size).c_str());
+    } else {
+        ImGui::TextDisabled("(no selection)");
+    }
+    ImGui::End();
 }
 
 } // namespace meat

@@ -3,6 +3,7 @@
 
 #include <glm/glm.hpp>
 
+#include <cstdint>
 #include <map>
 #include <optional>
 #include <string>
@@ -39,6 +40,23 @@ private:
     void setImportStatus(std::string text);
     void drawCodeEditor(EditorContext& ctx);
     void openLuaFile(EditorContext& ctx, const std::string& path);
+
+    // Content browser: a flat, cached, type-grouped listing of the project's
+    // assets with per-file sizes. Unlike the Assets tree (which lazily lists via
+    // ctx.listFiles), this panel scans the assets/ dir directly with
+    // std::filesystem so it can report sizes, and rescans only on first open or
+    // when the dev clicks Refresh — never per frame.
+    enum class AssetKind { Model, Texture, Script, Shader, Other, Count };
+    struct ContentEntry {
+        std::string name;        // file name (leaf)
+        std::string path;        // path relative to the scan root
+        std::uintmax_t size = 0; // bytes
+        AssetKind kind = AssetKind::Other;
+    };
+    void drawContentBrowser();
+    void rescanContent();
+    static AssetKind classifyExt(const std::string& ext);
+
     const std::vector<std::string>& listDir(EditorContext& ctx, const std::string& dir);
     void setCodeStatus(std::string text);
     // std::string-backed InputTextMultiline resize handler (imgui_stdlib pattern).
@@ -98,6 +116,14 @@ private:
     bool m_codeDirty = false;
     std::string m_codeStatus;
     float m_codeStatusTtl = 0.0f;
+
+    // --- Content browser ---------------------------------------------------
+    // m_content is the cached scan; m_contentScanned gates the one-time first
+    // scan so the panel populates on open without touching the disk every frame.
+    std::vector<ContentEntry> m_content;
+    bool m_contentScanned = false;
+    char m_contentFilter[128] = {}; // name substring filter (case-insensitive)
+    std::string m_contentSelected;  // scan-relative path of the highlighted entry
 };
 
 } // namespace meat
