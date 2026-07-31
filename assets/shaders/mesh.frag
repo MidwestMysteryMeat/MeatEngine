@@ -19,6 +19,9 @@ layout(std140, binding = 0) uniform FrameData {
 };
 
 layout(binding = 0) uniform sampler2D uAlbedo;
+layout(binding = 1) uniform sampler2D uShadowMap;
+uniform mat4 uLightVP;
+uniform int uShadows;
 
 // Per-draw material params (set via glProgramUniform, not the frame UBO).
 uniform vec3 uTint;
@@ -55,9 +58,30 @@ vec3 ambientTerm(vec3 albedo, vec3 n) {
     return albedo * mix(flatCol, hemiCol, hemi);
 }
 
+float sunShadow(vec3 worldPos, vec3 n) {
+    if (uShadows == 0) return 1.0;
+    vec4 ls = uLightVP * vec4(worldPos, 1.0);
+    vec3 p = ls.xyz / max(ls.w, 1e-5);
+    p = p * 0.5 + 0.5;
+    if (p.z > 1.0 || any(lessThan(p.xy, vec2(0.0))) || any(greaterThan(p.xy, vec2(1.0))))
+        return 1.0;
+    float ndl = max(dot(n, normalize(-uDirLightDir.xyz)), 0.0);
+    float bias = max(0.003 * (1.0 - ndl), 0.0008);
+    float shadow = 0.0;
+    vec2 ts = 1.0 / vec2(textureSize(uShadowMap, 0));
+    for (int x = -1; x <= 1; ++x) {
+        for (int y = -1; y <= 1; ++y) {
+            float closest = texture(uShadowMap, p.xy + vec2(float(x), float(y)) * ts).r;
+            shadow += (p.z - bias > closest) ? 0.40 : 1.0;
+        }
+    }
+    return shadow / 9.0;
+}
+
 vec3 shade(vec3 albedo, vec3 n, vec3 v, vec3 worldPos) {
     vec3 c = ambientTerm(albedo, n);
-    c += blinnPhong(albedo, n, v, normalize(-uDirLightDir.xyz), uDirLightColor.rgb, 1.0);
+    float sh = sunShadow(worldPos, n);
+    c += blinnPhong(albedo, n, v, normalize(-uDirLightDir.xyz), uDirLightColor.rgb, 1.0) * sh;
     for (int i = 0; i < uLightCounts.x; ++i) {
         vec3 toL = uPointLights[i].posRadius.xyz - worldPos;
         float d = length(toL);

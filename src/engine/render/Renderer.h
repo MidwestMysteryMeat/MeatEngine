@@ -25,6 +25,10 @@ struct PsxOptions {
     glm::vec3 fogColor{0.10f, 0.11f, 0.13f};
     float fogStart = 30.0f;
     float fogEnd = 120.0f;
+    // A2: directional sun shadow map (hard/PCF; low-res edges are on-aesthetic for PSX).
+    bool sunShadows = true;
+    int shadowMapSize = 2048; // square depth map resolution
+    float shadowExtent = 48.0f; // ortho half-size around camera (metres)
 };
 
 using MeshHandle = std::uint32_t;        // 0 = invalid
@@ -157,6 +161,9 @@ private:
     };
 
     void ensurePsxTarget(glm::ivec2 framebufferSize);
+    void ensureShadowMap();
+    void renderShadowMap();
+    void bindShadowUniforms(const GlShaderProgram& prog) const;
     void flushScenePasses();
     void drawCrosshairPass(glm::ivec2 targetSize);
     void resolveToBackbuffer();
@@ -168,6 +175,7 @@ private:
     Shader m_skinnedShader;
     Shader m_spriteShader;
     Shader m_resolveShader;
+    Shader m_shadowShader; // A2 depth-only sun pass
     GlShaderProgram m_crosshairProgram; // trivial, source embedded in Renderer.cpp
 
     GlBuffer m_frameUbo;
@@ -178,6 +186,12 @@ private:
     GlTexture m_psxDepth;
     glm::ivec2 m_psxSize{0, 0};
     glm::vec2 m_psxJitter{0.0f}; // vertex-snap grid for the chunk/mesh/skinned passes (0 = off)
+
+    // A2 sun shadow map (depth-only FBO).
+    GlFramebuffer m_shadowFbo;
+    GlTexture m_shadowDepth;
+    int m_shadowSize = 0;
+    glm::mat4 m_lightVP{1.0f};
 
     GlVertexArray m_fullscreenVao; // empty; resolve.vert builds the triangle from gl_VertexID
     GlVertexArray m_spriteVao;     // empty; sprite.vert builds the quad from gl_VertexID

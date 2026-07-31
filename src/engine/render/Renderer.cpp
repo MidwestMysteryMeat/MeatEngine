@@ -61,7 +61,8 @@ bool Renderer::init(Window& window) {
 
     if (!m_chunkShader.load(kShaderDir, "chunk") || !m_meshShader.load(kShaderDir, "mesh") ||
         !m_skinnedShader.load(kShaderDir, "skinned") ||
-        !m_spriteShader.load(kShaderDir, "sprite") || !m_resolveShader.load(kShaderDir, "resolve")) {
+        !m_spriteShader.load(kShaderDir, "sprite") || !m_resolveShader.load(kShaderDir, "resolve") ||
+        !m_shadowShader.load(kShaderDir, "shadow")) {
         return false;
     }
     if (!m_crosshairProgram.compile(kCrosshairVert, kCrosshairFrag, "crosshair")) {
@@ -95,6 +96,7 @@ void Renderer::reloadShaders() {
     m_skinnedShader.reload();
     m_spriteShader.reload();
     m_resolveShader.reload();
+    m_shadowShader.reload();
 }
 
 bool Renderer::captureScreenshot(const std::filesystem::path& path) {
@@ -445,6 +447,19 @@ void Renderer::endFrame() {
     m_frame.lightCounts = glm::ivec4(m_pointCount, m_spotCount, 0, 0);
     glNamedBufferSubData(m_frameUbo.id(), 0, sizeof(FrameUbo), &m_frame);
 
+    // A2: depth pass from the sun before the lit scene so chunks cast hard shadows.
+    if (psx.sunShadows) renderShadowMap();
+    else m_lightVP = glm::mat4(1.0f);
+
+    // Restore the colour target the scene draws into (shadow pass rebound the FBO).
+    if (m_usePsxTarget) {
+        glBindFramebuffer(GL_FRAMEBUFFER, m_psxFbo.id());
+        glViewport(0, 0, m_psxSize.x, m_psxSize.y);
+    } else {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, m_fbSize.x, m_fbSize.y);
+    }
+
     flushScenePasses();
     if (m_crosshairRequested) {
         drawCrosshairPass(m_usePsxTarget ? m_psxSize : m_fbSize);
@@ -452,6 +467,85 @@ void Renderer::endFrame() {
     if (m_usePsxTarget) {
         resolveToBackbuffer();
     }
+}
+
+void Renderer::ensureShadowMap() {
+    const int want = std::clamp(psx.shadowMapSize, 256, 4096);
+    if (m_shadowSize == want && m_shadowFbo && m_shadowDepth) return;
+    m_shadowSize = want;
+    m_shadowDepth.create(GL_TEXTURE_2D);
+    glTextureStorage2D(m_shadowDepth.id(), 1, GL_DEPTH_COMPONENT24, want, want);
+    glTextureParameteri(m_shadowDepth.id(), GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTextureParameteri(m_shadowDepth.id(), GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTextureParameteri(m_shadowDepth.id(), GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTextureParameteri(m_shadowDepth.id(), GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    const float border[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    glTextureParameterfv(m_shadowDepth.id(), GL_TEXTURE_BORDER_COLOR, border);
+
+    m_shadowFbo.create();
+    glNamedFramebufferTexture(m_shadowFbo.id(), GL_DEPTH_ATTACHMENT, m_shadowDepth.id(), 0);
+    glNamedFramebufferDrawBuffer(m_shadowFbo.id(), GL_NONE);
+    glNamedFramebufferReadBuffer(m_shadowFbo.id(), GL_NONE);
+    const GLenum status = glCheckNamedFramebufferStatus(m_shadowFbo.id(), GL_FRAMEBUFFER);
+    if (status != GL_FRAMEBUFFER_COMPLETE)
+        log::error("renderer: shadow FBO incomplete (0x{:x})", static_cast<unsigned>(status));
+    else
+        log::info("renderer: A2 sun shadow map {}x{}", want, want);
+}
+
+void Renderer::renderShadowMap() {
+    ensureShadowMap();
+    const glm::vec3 lightDir = glm::normalize(glm::vec3(m_frame.dirLightDir));
+    const glm::vec3 center = glm::vec3(m_frame.camPos);
+    // Light travels along lightDir; place the virtual sun opposite and look at the camera.
+    const float pull = psx.shadowExtent * 2.5f;
+    glm::vec3 lightPos = center - lightDir * pull;
+    glm::vec3 up(0.0f, 1.0f, 0.0f);
+    if (std::abs(glm::dot(lightDir, up)) > 0.95f) up = glm::vec3(0.0f, 0.0f, 1.0f);
+    const glm::mat4 lightView = glm::lookAt(lightPos, center, up);
+    const float half = std::max(8.0f, psx.shadowExtent);
+    const glm::mat4 lightProj =
+        glm::ortho(-half, half, -half, half, 1.0f, pull + half * 2.0f);
+    m_lightVP = lightProj * lightView;
+
+    glBindFramebuffer(GL_FRAMEBUFFER, m_shadowFbo.id());
+    glViewport(0, 0, m_shadowSize, m_shadowSize);
+    glClear(GL_DEPTH_BUFFER_BIT);
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+    // Front-face cull reduces shadow acne on voxel faces.
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_FRONT);
+
+    glUseProgram(m_shadowShader.id());
+    const GlShaderProgram& sh = m_shadowShader.program();
+    sh.setUniform("uLightVP", m_lightVP);
+
+    for (const ChunkDraw& draw : m_chunkDraws) {
+        const auto meshIt = m_meshes.find(draw.mesh);
+        if (meshIt == m_meshes.end()) continue;
+        sh.setUniform("uModel", glm::translate(glm::mat4(1.0f), draw.origin));
+        glBindVertexArray(meshIt->second.vao.id());
+        glDrawElements(GL_TRIANGLES, meshIt->second.indexCount, GL_UNSIGNED_INT, nullptr);
+    }
+    for (const MeshDraw& draw : m_meshDraws) {
+        const auto meshIt = m_meshes.find(draw.mesh);
+        if (meshIt == m_meshes.end()) continue;
+        sh.setUniform("uModel", draw.transform);
+        glBindVertexArray(meshIt->second.vao.id());
+        glDrawElements(GL_TRIANGLES, meshIt->second.indexCount, GL_UNSIGNED_INT, nullptr);
+    }
+    // Skinned casters skipped in v1 (need bone palette in shadow.vert); receivers still work.
+
+    glCullFace(GL_BACK);
+    glDisable(GL_CULL_FACE);
+    glBindVertexArray(0);
+}
+
+void Renderer::bindShadowUniforms(const GlShaderProgram& prog) const {
+    prog.setUniform("uLightVP", m_lightVP);
+    prog.setUniform("uShadows", (psx.sunShadows && m_shadowDepth) ? 1 : 0);
+    if (m_shadowDepth) glBindTextureUnit(1, m_shadowDepth.id());
 }
 
 void Renderer::flushScenePasses() {
@@ -467,6 +561,7 @@ void Renderer::flushScenePasses() {
         } else {
             glUseProgram(m_chunkShader.id());
             m_chunkShader.program().setUniform("uPsxJitter", m_psxJitter);
+            bindShadowUniforms(m_chunkShader.program());
             glBindTextureUnit(0, atlasIt->second.id());
             for (const ChunkDraw& draw : m_chunkDraws) {
                 const auto meshIt = m_meshes.find(draw.mesh);
@@ -486,6 +581,7 @@ void Renderer::flushScenePasses() {
         glUseProgram(m_meshShader.id());
         const GlShaderProgram& meshProg = m_meshShader.program();
         meshProg.setUniform("uPsxJitter", m_psxJitter);
+        bindShadowUniforms(meshProg);
         for (const MeshDraw& draw : m_meshDraws) {
             const auto meshIt = m_meshes.find(draw.mesh);
             const auto texIt = m_textures.find(draw.material.albedo);
@@ -509,6 +605,7 @@ void Renderer::flushScenePasses() {
         glUseProgram(m_skinnedShader.id());
         const GlShaderProgram& skinnedProg = m_skinnedShader.program();
         skinnedProg.setUniform("uPsxJitter", m_psxJitter);
+        bindShadowUniforms(skinnedProg);
         const GLint bonesLoc = glGetUniformLocation(m_skinnedShader.id(), "uBones");
         for (const SkinnedDraw& draw : m_skinnedDraws) {
             const auto meshIt = m_skinnedMeshes.find(draw.mesh);

@@ -50,9 +50,10 @@ The single biggest visual lift. Do in this order:
 - [x] **A1. Voxel ambient occlusion** — per-vertex corner darkening baked in the greedy mesher (AO
   joins the merge key so per-voxel detail survives; 3-neighbour occlusion, 0fps.net algorithm,
   clean-room). New `ao` vertex attrib; shader multiplies lighting by it.
-- [ ] **A2. Directional (sun) shadow map** — one depth pass from the sun + PCF sample in the frag.
-  Low-res/hard edges are on-aesthetic for PSX. Add a day/sun option. OSS: McNopper/OpenGL Example28
-  (MIT) shadow GLSL, clean-room. Later: LiSPSM/PSSM for depth-resolution (Ogre reference only).
+- [x] **A2. Directional (sun) shadow map** — one depth pass from the sun + 3×3 PCF in chunk/mesh/
+  skinned frags (`shadow.vert`/`shadow.frag`, `Renderer::renderShadowMap`). Ortho around camera,
+  front-face cull casters, border=lit. Skinned **casters** deferred (v1 receivers only). Editor
+  toolbar toggle. Later: LiSPSM/PSSM / skinned casters.
 - [x] **A3. Better ambient / hemisphere term** — sky/ground hemi outside the torch gate; toggleable
   (F7 / game.json / editor) so dark PSX-night remains available.
 - [ ] **A4. SSAO (optional)** — screen-space contact AO in the resolve chain. OSS: McNopper (MIT) /
@@ -162,9 +163,8 @@ Human feel-playtests (mouse feel, combat cadence, editor ergonomics), and real L
 > Note: C1–C3, B1/B3/B4, A1/A3, C6 (first slices), H1/H2/H3/H4 (first slices), E1 are largely **shipped**;
 > older “C3 first” ordering below is historical.
 
-**Now:** **C9 Output Log** ⭐ → **C6 reliability + selective API** → **C5 inspectors lite / C4 import** →
-**A2 sun shadow** ⭐ → **B3b editor gravity volumes** → **C6 subgraphs/watches** → **B2 MeshLevel** →
-**C7 packaging** → **F netcode / D OSS** as scale demands.
+**Now:** ~~C9 / C6 reliability / C5 / A2~~ ✅ → **C6-b high-value nodes** → **B3b editor gravity volumes** →
+**C6-c subgraphs/watches** → **B5 game.json** / **B2 MeshLevel** → **C7 packaging** → **F / D** as scale demands.
 
-Rationale: creators already place assets and run node graphs; the gap is **seeing errors** (C9), then
-**finishing the tool loop** (inspectors, shadows), then **generality** (mesh levels) and **scale** (net/ECS).
+Rationale: tool loop (log, details, sun shadows) landed; next is **creator graph depth** and **Space
+authoring** (gravity volumes), then **generality** (mesh levels) and **scale** (net/ECS).

@@ -56,7 +56,7 @@ Scoring: **creator value** × **engine leverage** × **dependency readiness** �
 
 | # | ID | Item | Why | Size | Deps |
 |---|-----|------|-----|------|------|
-| 9 | **A2** | **Directional sun shadow map** ⭐ | Biggest remaining *look* upgrade; PSX-hard shadows OK. | M | A1 done |
+| 9 | **A2** | **Directional sun shadow map** ✅ | Shipped: depth pass + PCF; skinned casters later. | M | A1 done |
 | 10 | **B3-sky** | **Skybox / simple water plane** | Environment presets still fog-only; Space/Underwater read better with sky/water. | M | B3 |
 | 11 | **H4-p** | **Ship systems polish** | Dock latch, shield/HP UX, hangar — only if Space is the showcase game. | M | H4 |
 | 12 | **H1-r** | **Racer track mesh + server laps** | Fun genre sibling; lower than ship/log unless racing is the pitch. | M | Racer skeleton |
@@ -109,8 +109,8 @@ Your list:
 | **2** | **C6-a reliability** (compile → log, error surfacing) | Thin slice right after or with C9. |
 | **3** | **C6-b selective API nodes** | Only nodes that unblock real graphs (not infinite node catalog). |
 | **4** | **C5 lite inspectors / C4 import dialog** | Suite ergonomics; parallel-safe with small C6. |
-| **5** | **A2 sun shadows** | Highest visual ROI among L/M items. |
-| **6** | **C6-c subgraphs / multi-graph / watches** | **Demote** until log + reliability exist (UE subgraphs without debug log is pain). |
+| **5** | **A2 sun shadows** | ✅ Shipped (depth + PCF + editor toggle). |
+| **6** | **C6-c subgraphs / multi-graph / watches** | After log + reliability. |
 | **7** | **B3b editor gravity volumes** | Space authoring without code. |
 | **8** | **B2 MeshLevel** | Capacity allows — large, do after suite feels solid. |
 | **9** | H4/H1 polish, packaging, OSS grabs | Genre polish and infrastructure. |
@@ -173,7 +173,7 @@ Use this as the working list until the next research pass:
 4. **C6-b — High-value game API nodes only**  
 5. **C5 lite — Prop/env inspectors**  
 6. **C4 — Import file dialog**  
-7. ⭐ **A2 — Sun shadow map**  
+7. ~~**A2 — Sun shadow map**~~ ✅  
 8. **B3b-e — Editor gravity volumes**  
 9. **B5 — game.json world defaults**  
 10. **C6-c — Subgraphs / multi-graph / watches**  

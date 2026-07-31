@@ -46,7 +46,7 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
 - ~~**H4 — Space ship template**~~ ✅ (slice 8) — Fab hulls + station/junkyard; ship cannon;
   New Map genre; AI patrol (lead aim); multi-seat; local-up; **EVA RCS** in low-g;
   **station dock gravity**; ship thrusters/strafe use gravity-local up; hull HP HUD.
-- **A2 — directional sun shadow map** (McNopper MIT; +LiSPSM later).
+- ~~**A2 — directional sun shadow map**~~ ✅ — depth FBO + PCF; chunks/meshes cast; skinned receive.
 - ~~**E1 foot-slide**~~ ✅ — walk clip phase rate = worldSpeed / clipSpeed × walkWeight.
 
 ## Engine OSS grabs (deferred, low-risk-first)
@@ -64,9 +64,9 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
 2. ~~**C6-a reliability**~~ ✅ — compile/import errors open Output Log; editor boot log line.
 3. **C6-b high-value nodes only** — finish hooks creators need, not infinite catalog.
 4. ~~**C5 lite / C4 import path**~~ ✅ — Details panel (world + selection + import); import logs.
-5. ⭐ **A2 sun shadows** — biggest remaining visual lift.
+5. ~~**A2 sun shadows**~~ ✅ — sun depth map + PCF; editor toggle.
 6. **C6-c subgraphs / multi-graph / watches** — after reliability.
-7. **B2 MeshLevel / B3b editor volumes / B5 game.json** — as capacity allows.
+7. **B3b editor gravity volumes** / **B5 game.json** / **B2 MeshLevel** — as capacity allows.
 8. H4/H1 polish, C7 packaging, F/D pillars — later (see full plan).
 
 ## Cleanup / debt from last sprint

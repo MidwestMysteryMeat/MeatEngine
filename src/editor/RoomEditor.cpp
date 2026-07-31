@@ -402,6 +402,13 @@ void RoomEditor::drawTopBar(EditorContext& ctx) {
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("A3 sky/ground fill (not gated by torches). F7 also toggles.");
     }
+    ImGui::SameLine();
+    {
+        bool sunSh = ctx.renderer.psx.sunShadows;
+        if (ImGui::Checkbox("sun shadows", &sunSh)) ctx.renderer.psx.sunShadows = sunSh;
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("A2 directional sun shadow map (PCF). Chunks + static meshes cast.");
+    }
     ImGui::TextDisabled("RMB fly (WASD/QE, wheel = speed) | LMB apply | Esc cancel | F1 exit");
     if (!m_status.empty())
         ImGui::TextColored({1.0f, 0.85f, 0.3f, 1.0f}, "%s", m_status.c_str());
@@ -1839,6 +1846,9 @@ void RoomEditor::drawDetailsPanel(EditorContext& ctx) {
         ImGui::Text("Hemi ambient");
         ImGui::SameLine(110);
         ImGui::TextDisabled("%s", ctx.hemisphereAmbient ? "on" : "off");
+        ImGui::Text("Sun shadows");
+        ImGui::SameLine(110);
+        ImGui::TextDisabled("%s", ctx.renderer.psx.sunShadows ? "on" : "off");
         if (ImGui::SmallButton("New Map...")) {
             m_newMapOpen = true;
             m_newMapGenre = ctx.currentGameTemplate;
