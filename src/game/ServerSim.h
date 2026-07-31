@@ -121,6 +121,9 @@ private:
         std::size_t pathIndex = 0;
         float repathTimer = 0.0f;
         float attackCooldown = 0.0f;
+        float animSpeed = 0.0f;     // authoritative walk weight (0=idle..1=full walk); sent to
+                                    // clients as EntityState.anim so they don't guess from
+                                    // interpolated positions (which read ~0 and froze the blend).
     };
     struct Companion {                // mobile ally: follows owner, shoots hostile NPCs
         std::uint32_t id = 0;
@@ -132,6 +135,7 @@ private:
         std::vector<glm::ivec3> path; // reuses the NPC A* pathing toward owner/target
         std::size_t pathIndex = 0;
         float repathTimer = 0.0f;
+        float animSpeed = 0.0f;       // see Npc::animSpeed
     };
 
     void handlePacket(Transport& transport, PeerId peer, std::span<const std::byte> data);

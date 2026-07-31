@@ -129,13 +129,16 @@ void ServerSim::spawnDungeonNpcs() {
     const DungeonLayout layout = DungeonLayout::generate(m_seed, {});
     std::size_t i = 0;
     for (const auto& room : layout.rooms()) {
-        // Chasers guard every 3rd room, shooters every 5th; entrance room stays clear.
-        const bool chaser = i % 3 == 1, shooter = i % 5 == 4;
-        if (chaser || shooter) {
+        // Zombies shamble every 4th room, chasers every 3rd, shooters every 5th; the
+        // entrance room stays clear. A room that matches several takes the first here.
+        const bool zombie = i % 4 == 2, chaser = i % 3 == 1, shooter = i % 5 == 4;
+        if (zombie || chaser || shooter) {
             Npc npc;
             npc.id = m_nextEntityId++;
-            npc.type = chaser ? EntityArchetype::NpcChaser : EntityArchetype::NpcShooter;
-            npc.health = chaser ? 60.0f : 40.0f;
+            npc.type = zombie    ? EntityArchetype::NpcZombie
+                       : chaser  ? EntityArchetype::NpcChaser
+                                 : EntityArchetype::NpcShooter;
+            npc.health = zombie ? 120.0f : chaser ? 60.0f : 40.0f;
             const glm::ivec3 c{std::min((room.min.x + room.max.x) / 2 + 1, room.max.x),
                                room.min.y,
                                std::min((room.min.z + room.max.z) / 2 + 1, room.max.z)};
@@ -219,6 +222,7 @@ std::vector<glm::ivec3> ServerSim::planPath(glm::vec3 fromPos, glm::vec3 toPos, 
 
 void ServerSim::updateNpcs(Transport& transport) {
     constexpr float kAggroRange = 18.0f, kChaserSpeed = 3.2f, kShooterSpeed = 2.2f;
+    constexpr float kZombieSpeed = 1.5f; // shamble — slower than a chaser rush
     constexpr float kMeleeRange = 1.4f, kShootRange = 14.0f;
 
     for (Npc& npc : m_npcs) {
@@ -228,6 +232,10 @@ void ServerSim::updateNpcs(Transport& transport) {
         if (!m_voxels.isChunkLoaded(voxelToChunk(worldToVoxel(npc.pos)))) continue;
         npc.repathTimer -= kFixedDtServer;
         npc.attackCooldown -= kFixedDtServer;
+        // Decays toward idle every tick; the path-follow step below refreshes it to full walk
+        // while the NPC is actually stepping. This is the authoritative walk weight the client
+        // reads from EntityState.anim (client-side speed-from-interp read ~0 and froze the blend).
+        npc.animSpeed *= 0.80f;
 
         // Acquire/keep the nearest visible player.
         PeerId bestPeer = 0;
@@ -253,11 +261,15 @@ void ServerSim::updateNpcs(Transport& transport) {
         const float dist = glm::length(toTarget);
         npc.yaw = std::atan2(-toTarget.x, -toTarget.z); // face target (viewForward inverse)
 
-        // Attack when in envelope.
-        if (npc.type == EntityArchetype::NpcChaser && dist < kMeleeRange) {
+        // Attack when in envelope. Chasers and zombies both melee; zombies swing
+        // slower but hit harder.
+        const bool melee =
+            npc.type == EntityArchetype::NpcChaser || npc.type == EntityArchetype::NpcZombie;
+        if (melee && dist < kMeleeRange) {
             if (npc.attackCooldown <= 0.0f) {
-                npc.attackCooldown = 1.0f;
-                bestPlayer->health -= 12.0f;
+                const bool zombie = npc.type == EntityArchetype::NpcZombie;
+                npc.attackCooldown = zombie ? 1.6f : 1.0f;
+                bestPlayer->health -= zombie ? 15.0f : 12.0f;
                 if (bestPlayer->health <= 0.0f) {
                     log::info("server: player {} was mauled", bestPeer);
                     dropPlayerLoot(*bestPlayer, bestPlayer->controller.position());
@@ -304,8 +316,9 @@ void ServerSim::updateNpcs(Transport& transport) {
                 (glm::vec3(npc.path[npc.pathIndex]) + glm::vec3(0.5f, 0.0f, 0.5f)) *
                 kVoxelSize;
             const glm::vec3 delta = waypoint - npc.pos;
-            const float speed =
-                npc.type == EntityArchetype::NpcChaser ? kChaserSpeed : kShooterSpeed;
+            const float speed = npc.type == EntityArchetype::NpcChaser  ? kChaserSpeed
+                                : npc.type == EntityArchetype::NpcZombie ? kZombieSpeed
+                                                                         : kShooterSpeed;
             const float stepLen = speed * kFixedDtServer;
             if (glm::length(delta) <= stepLen) {
                 npc.pos = waypoint;
@@ -313,6 +326,7 @@ void ServerSim::updateNpcs(Transport& transport) {
             } else {
                 npc.pos += glm::normalize(delta) * stepLen;
             }
+            npc.animSpeed = 1.0f; // stepping this tick → full walk (decays back to idle when stopped)
         }
     }
 
@@ -1265,7 +1279,8 @@ void ServerSim::broadcastSnapshot(Transport& transport) {
     // rockets are far worse than an unrendered ammo box.
     for (const Npc& n : m_npcs) {
         if (snap.entities.size() >= kMaxSnapshotEntities) break;
-        snap.entities.push_back({n.id, static_cast<std::uint8_t>(n.type), n.pos, n.yaw, 0,
+        const auto anim = static_cast<std::uint8_t>(glm::clamp(n.animSpeed, 0.0f, 1.0f) * 255.0f);
+        snap.entities.push_back({n.id, static_cast<std::uint8_t>(n.type), n.pos, n.yaw, anim,
                                  n.health, 0});
     }
     for (const Turret& t : m_turrets) {

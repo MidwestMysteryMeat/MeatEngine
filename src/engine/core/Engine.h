@@ -122,6 +122,13 @@ private:
     void loadNpcActor();
     int m_npcIdleClip = -1; // clip indices in m_npcActor->model for the idle↔walk blend
     int m_npcWalkClip = -1; // (-1 = not present → fall back to the single-clip path)
+    // Zombie clips live on the SAME m_npcActor model (one mesh, extra clips); NpcZombie
+    // entities blend these instead of the regular locomotion. -1 → box/regular fallback.
+    int m_zombieIdleClip = -1;
+    int m_zombieWalkClip = -1;
+    MaterialHandle m_zombieMaterial{0}; // green-tinted + faintly emissive variant of the NPC
+                                        // material so zombies read as zombies (and stay visible
+                                        // in the dark) using the same shared mesh.
     // Previous entity positions (client-side), to derive each humanoid's speed for the
     // idle↔walk blend weight without a server-side anim-state byte.
     std::unordered_map<std::uint32_t, glm::vec3> m_entityPrevPos;

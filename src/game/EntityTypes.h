@@ -17,6 +17,7 @@ enum class EntityArchetype : std::uint8_t {
     NpcShooter = 5, // ranged, holds distance
     Turret = 6,     // placed auto-defense
     Companion = 7,  // mobile ally: follows its owner, engages hostile NPCs
+    NpcZombie = 8,  // slow melee shambler; tanky, hits hard
     // Scheduled NPCs land with their phases.
 };
 

@@ -305,7 +305,14 @@ void Engine::loadNpcActor() {
         mat.albedo = m_renderer.loadTexture("assets/models/anim_test_body.png");
     if (mat.albedo == 0) mat.albedo = m_atlasTexture;
     mat.tint = mat.albedo == m_atlasTexture ? glm::vec3(0.55f, 0.57f, 0.63f) : glm::vec3(1.0f);
+    mat.emissive = glm::vec3(0.05f, 0.05f, 0.06f); // lift NPCs off pure-black in the night scene
     actor->material = m_renderer.createMaterial(mat);
+    // Zombie variant: same albedo/mesh, sickly-green tint + stronger green emissive so a zombie
+    // reads as a zombie and stays visible in the dark.
+    MaterialDesc zmat = mat;
+    zmat.tint = glm::vec3(0.45f, 0.62f, 0.38f);
+    zmat.emissive = glm::vec3(0.05f, 0.14f, 0.05f);
+    m_zombieMaterial = m_renderer.createMaterial(zmat);
 
     const glm::vec3 ext = model->boundsMax - model->boundsMin;
     glm::mat4 orient(1.0f);
@@ -332,15 +339,19 @@ void Engine::loadNpcActor() {
     };
     m_npcWalkClip = loadClip("assets/models/npc_walk.fbx");
     m_npcIdleClip = loadClip("assets/models/npc_idle.fbx");
+    // Zombie shamble clips retargeted onto the SAME model — NpcZombie entities blend
+    // these (see submitHumanoid); absent → zombies fall back to the regular locomotion.
+    m_zombieWalkClip = loadClip("assets/models/zombie_walk.fbx");
+    m_zombieIdleClip = loadClip("assets/models/zombie_idle.fbx");
     actor->clipIndex = m_npcWalkClip >= 0 ? m_npcWalkClip : 0; // single-clip path plays walk
     actor->hasRealClip = !actor->model.clips.empty() &&
                          actor->model.clips[actor->clipIndex].duration /
                                  actor->model.clips[actor->clipIndex].ticksPerSec >=
                              0.02f;
     m_npcActor = std::move(actor);
-    log::info("NPC actor up: {} verts, {} clips (walk={}, idle={}) (norm x{:.3f})",
+    log::info("NPC actor up: {} verts, {} clips (walk={}, idle={}, zwalk={}, zidle={}) (norm x{:.3f})",
               m_npcActor->model.vertices.size(), m_npcActor->model.clips.size(), m_npcWalkClip,
-              m_npcIdleClip, norm);
+              m_npcIdleClip, m_zombieWalkClip, m_zombieIdleClip, norm);
 }
 
 void Engine::simulateClientTick(const PlayerCommand& frameCmd) {
@@ -452,32 +463,40 @@ void Engine::render(float alpha) {
     // per-id phase so a room of NPCs isn't lock-stepped; placed at the entity's pos + yaw.
     // Falls back to the box proxy when no npc_char.fbx is staged.
     if (m_npcActor && m_npcActor->mesh != 0) m_npcActor->time += m_frameDt;
-    const auto submitHumanoid = [&](const glm::vec3& pos, float yaw, std::uint32_t id) {
+    // TODO(facing): the npc_char rig's bind forward isn't the -Z the server yaw assumes, so NPCs
+    // render turned from their travel direction. The exact offset needs a DETERMINISTIC fixed-camera
+    // harness — in-game shots vary the camera per run (player spawn/fall + approach angle), which
+    // made screenshot calibration flip between "sideways" and "backwards". Left at 0 until a
+    // booth-style facing rig pins it; the frozen/visibility fixes here are independent of it.
+    constexpr float kHumanoidYawOffset = 0.0f;
+    // idleClip/walkClip select which locomotion set this humanoid blends (regular NPC vs
+    // zombie shamble) — both live on the one shared m_npcActor model.
+    const auto submitHumanoid = [&](const glm::vec3& pos, float yaw, std::uint32_t id,
+                                    int idleClip, int walkClip, float walkWeight,
+                                    MaterialHandle material) {
         if (m_npcActor && m_npcActor->mesh != 0) {
             const float t = m_npcActor->time + 0.37f * static_cast<float>(id % 13);
             Pose pose;
-            if (m_npcIdleClip >= 0 && m_npcWalkClip >= 0) {
-                // Idle↔walk blend by the entity's speed (client-derived from its position
-                // delta): still → idle, moving → walk, cross-fading in between.
-                float speed = 0.0f;
-                if (const auto it = m_entityPrevPos.find(id);
-                    it != m_entityPrevPos.end() && m_frameDt > 0.0f) {
-                    speed = glm::length(pos - it->second) / m_frameDt;
-                }
-                const float w = glm::clamp(speed / 2.5f, 0.0f, 1.0f); // ~walk speed = full walk
-                pose = blendPose(m_npcActor->model, m_npcActor->model.clips[m_npcIdleClip], t,
-                                 m_npcActor->model.clips[m_npcWalkClip], t, w);
+            if (idleClip >= 0 && walkClip >= 0) {
+                // Idle↔walk blend by the server's AUTHORITATIVE walk weight (EntityState.anim).
+                // Deriving speed client-side from interpolated positions read ~0 (interp smooths
+                // per-frame deltas to nothing) and froze every NPC in the idle pose.
+                const float w = glm::clamp(walkWeight, 0.0f, 1.0f);
+                pose = blendPose(m_npcActor->model, m_npcActor->model.clips[idleClip], t,
+                                 m_npcActor->model.clips[walkClip], t, w);
             } else if (m_npcActor->hasRealClip) {
                 pose = samplePose(m_npcActor->model,
                                   m_npcActor->model.clips[m_npcActor->clipIndex], t);
             } else {
                 pose = idlePose(m_npcActor->model, t);
             }
-            m_entityPrevPos[id] = pos; // for next frame's speed
             const glm::mat4 xform = glm::translate(glm::mat4(1.0f), pos) *
-                                    glm::rotate(glm::mat4(1.0f), yaw, glm::vec3(0, 1, 0)) *
+                                    glm::rotate(glm::mat4(1.0f), yaw + kHumanoidYawOffset,
+                                                glm::vec3(0, 1, 0)) *
                                     m_npcActor->transform;
-            m_renderer.submitSkinned(m_npcActor->mesh, xform, pose, m_npcActor->material);
+            m_renderer.submitSkinned(m_npcActor->mesh, xform, pose,
+                                     material != MaterialHandle::Invalid ? material
+                                                                         : m_npcActor->material);
         } else {
             m_renderer.submitChunk(m_remotePlayerMesh, pos);
         }
@@ -500,7 +519,8 @@ void Engine::render(float alpha) {
             break;
         case 4: // NpcChaser / NpcShooter: animated humanoid (or box if none staged)
         case 5:
-            submitHumanoid(e.pos, e.yaw, e.id);
+            submitHumanoid(e.pos, e.yaw, e.id, m_npcIdleClip, m_npcWalkClip, e.anim / 255.0f,
+                           MaterialHandle::Invalid);
             break;
         case 6: // Turret: small box + a blue status light
             m_renderer.submitChunk(m_pickupMesh, e.pos);
@@ -508,9 +528,16 @@ void Engine::render(float alpha) {
                                         glm::vec3(0.2f, 0.5f, 1.0f), 5.0f);
             break;
         case 7: // Companion: animated humanoid + a friendly green light
-            submitHumanoid(e.pos, e.yaw, e.id);
+            submitHumanoid(e.pos, e.yaw, e.id, m_npcIdleClip, m_npcWalkClip, e.anim / 255.0f,
+                           MaterialHandle::Invalid);
             m_renderer.submitPointLight(e.pos + glm::vec3(0, 1.6f, 0),
                                         glm::vec3(0.2f, 1.0f, 0.35f), 5.0f);
+            break;
+        case 8: // NpcZombie: same mesh, zombie shamble clips + green material (falls back if unstaged)
+            submitHumanoid(e.pos, e.yaw, e.id,
+                           m_zombieIdleClip >= 0 ? m_zombieIdleClip : m_npcIdleClip,
+                           m_zombieWalkClip >= 0 ? m_zombieWalkClip : m_npcWalkClip,
+                           e.anim / 255.0f, m_zombieMaterial);
             break;
         default:
             break;
