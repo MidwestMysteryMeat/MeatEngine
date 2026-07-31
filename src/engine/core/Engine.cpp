@@ -1221,7 +1221,9 @@ void Engine::render(float alpha) {
                 }
             }
             if (m_client.rules().gameTemplate == GameRules::Template::Racer) {
-                ImGui::Text("CAR %u  DRIVER", m_client.vehicleId());
+                const glm::vec3 v = m_player.velocity();
+                const float kph = glm::length(glm::vec2(v.x, v.z)) * 3.6f;
+                ImGui::Text("CAR %u  DRIVER  %.0f km/h", m_client.vehicleId(), kph);
                 ImGui::TextDisabled("E leave | WASD drive | Space hop | Ctrl brake");
             } else if (m_client.vehicleRole() == 1) {
                 ImGui::Text("SHIP %u  PILOT  cannon (auto hardpoints)", m_client.vehicleId());

@@ -371,21 +371,43 @@ void ServerSim::spawnDemoShip() {
     const bool space = m_rules.gameTemplate == GameRules::Template::Space;
     const bool racer = m_rules.gameTemplate == GameRules::Template::Racer;
     if (racer) {
-        Ship car;
-        car.id = m_nextEntityId++;
-        car.groundVehicle = true;
-        car.hullVariant = 0;
-        car.halfExtents = kRacerHalfExtents;
-        car.seatOffset = kRacerSeatOffset;
-        car.passengerOffset = glm::vec3(0.55f, 0.25f, 0.1f);
-        car.health = 400.0f;
-        car.pos = defaultSpawnPos() + glm::vec3(4.0f, kRacerHalfExtents.y, 2.0f);
-        car.yaw = 0.0f;
-        car.pitch = 0.0f;
-        ensureShipBody(car);
-        m_ships.push_back(car);
-        log::info("server: racer car {} — Use (E) to drive (WASD + Space hop / Ctrl brake)",
-                  car.id);
+        const glm::vec3 pad = defaultSpawnPos();
+        // Two player cars on the grid + one AI pace car on a loop.
+        for (int i = 0; i < 2; ++i) {
+            Ship car;
+            car.id = m_nextEntityId++;
+            car.groundVehicle = true;
+            car.hullVariant = i % kShipHullCount;
+            car.halfExtents = kRacerHalfExtents;
+            car.seatOffset = kRacerSeatOffset;
+            car.passengerOffset = glm::vec3(0.55f, 0.25f, 0.1f);
+            car.health = 400.0f;
+            car.pos = pad + glm::vec3(4.0f + static_cast<float>(i) * 3.5f, kRacerHalfExtents.y,
+                                      2.0f);
+            car.yaw = 0.0f;
+            car.pitch = 0.0f;
+            ensureShipBody(car);
+            m_ships.push_back(car);
+            log::info("server: racer car {} — Use (E) to drive (WASD + Space hop / Ctrl brake)",
+                      car.id);
+        }
+        // AI pace car orbits the pad on the ground plane (not boardable).
+        Ship ai;
+        ai.id = m_nextEntityId++;
+        ai.groundVehicle = true;
+        ai.ai = true;
+        ai.hullVariant = 2 % kShipHullCount;
+        ai.halfExtents = kRacerHalfExtents;
+        ai.seatOffset = kRacerSeatOffset;
+        ai.health = 300.0f;
+        ai.patrolCenter = pad + glm::vec3(0.0f, kRacerHalfExtents.y, 0.0f);
+        ai.patrolRadius = 22.0f;
+        ai.patrolPhase = 0.0f;
+        ai.patrolOmega = 0.55f;
+        ai.patrolAltitude = 0.0f;
+        ai.pos = ai.patrolCenter + glm::vec3(ai.patrolRadius, 0.0f, 0.0f);
+        m_ships.push_back(ai);
+        log::info("server: AI pace car {} on loop", ai.id);
         return;
     }
     const int count = space ? kShipHullCount : 1;
@@ -532,17 +554,31 @@ void ServerSim::updateShips(Transport& transport) {
             ship.patrolPhase += ship.patrolOmega * kFixedDtServer;
             const float c = std::cos(ship.patrolPhase), s = std::sin(ship.patrolPhase);
             const glm::vec3 target =
-                ship.patrolCenter +
-                glm::vec3(c * ship.patrolRadius, ship.patrolAltitude * 0.2f * s,
-                          s * ship.patrolRadius);
+                ship.groundVehicle
+                    ? ship.patrolCenter +
+                          glm::vec3(c * ship.patrolRadius, 0.0f, s * ship.patrolRadius)
+                    : ship.patrolCenter +
+                          glm::vec3(c * ship.patrolRadius, ship.patrolAltitude * 0.2f * s,
+                                    s * ship.patrolRadius);
             ShipPose pose{ship.pos, ship.vel, ship.yaw, ship.pitch};
-            integrateShipAi(pose, target, kFixedDtServer, kAiCruise, m_gravity.sample(ship.pos));
+            if (ship.groundVehicle) {
+                // Flat-track AI: chase the orbit point with racer-style planar motion.
+                integrateShipAi(pose, target, kFixedDtServer, kAiCruise * 0.85f,
+                                m_gravity.sample(ship.pos));
+                pose.pitch = 0.0f;
+                pose.pos.y = ship.patrolCenter.y;
+                pose.vel.y = 0.0f;
+            } else {
+                integrateShipAi(pose, target, kFixedDtServer, kAiCruise,
+                                m_gravity.sample(ship.pos));
+            }
             ship.pos = pose.pos;
             ship.vel = pose.vel;
             ship.yaw = pose.yaw;
             ship.pitch = pose.pitch;
 
-            // Hostile: shoot nearest living player with simple lead aim.
+            // Hostile space traffic only — ground pace cars just race.
+            if (ship.groundVehicle) continue;
             if (ship.fireCooldown <= 0.0f) {
                 PeerId bestPeer = 0;
                 Player* best = nullptr;
