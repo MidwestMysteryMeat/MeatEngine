@@ -114,6 +114,10 @@ private:
     MeshHandle m_pickupMesh = 0;       // small bobbing cube for item pickups
     MeshHandle m_shipMesh = 0;         // fallback box if no FBX staged
     MaterialHandle m_shipMaterial{0};
+    // A6 blob shadow disc under feet. B3 water is renderer PsxOptions (not a mesh).
+    MeshHandle m_blobMesh = 0;
+    MaterialHandle m_blobMaterial{0};
+    bool m_profilerOpen = false; // C8 lite (F3)
     // H4: per-hull GPU cache (cyber / star / lowpoly). mesh==0 means load failed.
     struct ShipHullGpu {
         MeshHandle mesh = 0;

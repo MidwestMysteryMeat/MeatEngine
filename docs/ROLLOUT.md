@@ -60,8 +60,7 @@ The single biggest visual lift. Do in this order:
   lettier 3d-game-shaders (BSD-3). More cost; after A1–A3.
 - [ ] **A5. Colored block-light + emissive polish** — extend the torch flood-fill to RGB; night
   scenes read by torch color. Reference: VektorKnight/vektor-voxels (MIT), 0fps (technique).
-- [ ] **A6. Character shadows for night** — cheap projected/blob shadow under NPCs (point-light
-  shadow cubes are too costly for many torches). Pragmatic pairing with A2.
+- [x] **A6. Character shadows for night** — cheap blob discs under local/remotes/NPCs (A6).
 
 ## Pillar B — World creation: templates + environments (UE5-style "New Map")
 The dev picks a starting **template**, then hand-authors/fills it — like UE5's New Level (landscape /
@@ -73,7 +72,7 @@ blank / …), but spanning voxel AND non-voxel AND themed worlds. Physics is alr
   `meshLevel` / **`meshLevels[]`** with pos/yaw/scale. Still open: full Level interface,
   disable voxel meshing entirely.
 - [x] **B3. Environment presets** — Surface / Underwater / Space drive gravity + fog + ambient
-  (+ hemi lobes). **B3-sky** procedural gradient + Space stars. Water plane still open.
+  (+ hemi lobes). **B3-sky** procedural gradient + Space stars. **Water plane** under Underwater.
 - [x] **B3b. Gravity volumes / zoned gravity** ⭐ — `GravityField` + CharacterController sampling;
   Space habitat/station/planetoid defaults; **B3b-e** editor **Gravity** tool places AABB volumes
   (priority + vector), saved in `saves/editor_extras.json`, applied to client + host server field.
@@ -102,7 +101,7 @@ light → ship) without the bloat/missing pieces that don't fit a PSX voxel FPS.
   C++ live-reload later (cr.h).
 - [x] **C7. Packaging / export** — `tools/package.ps1` ships exe + assets + project, Play/Host/
   Server/Editor launchers, credits, zip. D2 resource archives still open.
-- [ ] **C8. Profiler panels** — frame/mesh/netcode telemetry. OSS: ImPlot + Tracy (BSD-3).
+- [~] **C8. Profiler panels** — **F3 lite** panel (FPS, tick, chunk/entity counts). Tracy/ImPlot later.
 - [x] **C9. Output Log browser (UE5-style)** ⭐ — ring buffer in `Log.cpp` + Room Designer
   **Output Log** (All/Messages/Warnings/Errors, search, clear, auto-scroll, double-click copy).
   Captures `meat::log`, ScriptHost failures, node-graph compile.

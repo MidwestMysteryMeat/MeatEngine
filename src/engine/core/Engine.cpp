@@ -153,6 +153,15 @@ bool Engine::initClientSystems() {
                                    glm::vec3(1.0f, 0.96f, 0.88f));
     m_remotePlayerMesh = m_renderer.uploadChunkMesh(makeBoxMesh(0.35f, 1.8f, 2));
     m_pickupMesh = m_renderer.uploadChunkMesh(makeBoxMesh(0.15f, 0.3f, 3));
+    // A6 blob shadow disc (thin dark slab under feet). Water plane is renderer-side (PsxOptions).
+    m_blobMesh = m_renderer.uploadChunkMesh(makeCenteredBoxMesh(glm::vec3(0.42f, 0.025f, 0.42f), 2));
+    {
+        MaterialDesc b;
+        b.tint = glm::vec3(0.02f, 0.02f, 0.03f);
+        b.emissive = glm::vec3(0.0f);
+        b.shininess = 1.0f;
+        m_blobMaterial = m_renderer.createMaterial(b);
+    }
     // H4: fallback box + pre-warm the CC-BY hull catalog (lazy loads on first use too).
     m_shipMesh = m_renderer.uploadChunkMesh(makeCenteredBoxMesh(kShipHalfExtents, 4));
     {
@@ -263,6 +272,12 @@ void Engine::applyEnvironment(const GameRules& rules) {
     m_renderer.psx.skyHorizon = env.skyHorizon;
     m_renderer.psx.skyGround = env.skyGround;
     m_renderer.psx.skyStars = env.skyStars;
+    // B3 water plane (Underwater): large tinted surface quad.
+    m_renderer.psx.waterPlane = env.waterPlane;
+    m_renderer.psx.waterY = env.waterY;
+    m_renderer.psx.waterExtent = env.waterExtent;
+    m_renderer.psx.waterColor = env.waterColor;
+    m_renderer.psx.waterAlpha = env.waterAlpha;
     m_renderer.setAmbientLight(env.ambient);
     // A3: hemisphere ambient — form-defining fill not gated by torch light. Toggleable so the
     // dark PSX-night look stays available (game.json / F7 / New Map "hemisphere ambient").
@@ -1092,6 +1107,22 @@ void Engine::render(float alpha) {
 
     // B2 mesh level geometry (static hangar / arena).
     m_meshLevel.submit(m_renderer);
+    // B3 water plane: drawn in Renderer::drawWaterPass when psx.waterPlane (Underwater env).
+
+    // A6 blob shadows under local player, remotes, and NPCs (cheap projected discs).
+    if (m_blobMesh != 0 && m_blobMaterial != MaterialHandle::Invalid) {
+        auto blobAt = [&](glm::vec3 feet) {
+            const glm::mat4 x =
+                glm::translate(glm::mat4(1.0f), feet + glm::vec3(0.0f, 0.03f, 0.0f));
+            m_renderer.submitMesh(m_blobMesh, x, m_blobMaterial);
+        };
+        if (!m_editorActive) blobAt(m_currPlayerPos);
+        for (const auto& rp : remotes) blobAt(rp.pos);
+        for (const EntityState& e : m_client.entities()) {
+            if (e.archetype == 4 || e.archetype == 5) // NPC chaser / shooter
+                blobAt(e.pos);
+        }
+    }
 
     for (const EditorProp& prop : m_editorProps) { // editor-placed decoration meshes
         const EditorPropMesh& pm = editorPropMesh(prop.assetPath);
@@ -1351,6 +1382,30 @@ void Engine::render(float alpha) {
         ImGui::TextDisabled("ships: JamyzGenius / JazOone3D / ABJVNK  (CC-BY 4.0)");
         ImGui::Text("%.0f fps", ImGui::GetIO().Framerate);
         ImGui::End();
+
+        // C8 lite profiler (F3) — no Tracy dependency.
+        if (m_profilerOpen) {
+            ImGui::SetNextWindowPos({12, 220}, ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize({280, 180}, ImGuiCond_FirstUseEver);
+            if (ImGui::Begin("Profiler (F3)", &m_profilerOpen)) {
+                const ImGuiIO& io = ImGui::GetIO();
+                ImGui::Text("FPS  %.1f  (%.2f ms)", io.Framerate,
+                            io.Framerate > 0.0f ? 1000.0f / io.Framerate : 0.0f);
+                ImGui::Text("frameDt  %.2f ms", m_frameDt * 1000.0f);
+                ImGui::Text("sim tick  %llu", static_cast<unsigned long long>(m_tick));
+                ImGui::Separator();
+                ImGui::Text("chunks  %zu", m_chunkMeshes.size());
+                ImGui::Text("entities  %zu", m_client.entities().size());
+                ImGui::Text("remotes  %zu", remotes.size());
+                ImGui::Text("props  %zu", m_editorProps.size());
+                ImGui::Text("meshLevel parts  %zu", m_meshLevel.parts.size());
+                ImGui::Text("lights (editor)  %zu", m_editorLights.size());
+                ImGui::Separator();
+                ImGui::TextDisabled("F3 toggle  |  F6 shaders  |  F7 hemi");
+            }
+            ImGui::End();
+        }
+
         drawInventoryUi();
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -1697,6 +1752,7 @@ int Engine::run(const EngineConfig& configIn) {
 
         if (m_input.pressed(GLFW_KEY_ESCAPE)) break;
         if (m_input.pressed(GLFW_KEY_F6)) m_renderer.reloadShaders();
+        if (m_input.pressed(GLFW_KEY_F3)) m_profilerOpen = !m_profilerOpen; // C8 lite
         if (m_input.pressed(GLFW_KEY_F7)) {
             // A3: toggle hemisphere ambient — dark PSX-night (off) vs form-readable fill (on).
             m_hemisphereAmbient = !m_hemisphereAmbient;

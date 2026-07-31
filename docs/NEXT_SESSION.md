@@ -72,7 +72,12 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
 11. ~~**C7 packaging**~~ ✅ — `tools/package.ps1` launchers + zip.
 12. ~~**B2 multi-mesh + C2/C3 drag-place**~~ ✅ — `meshLevels[]`, content drag-to-viewport.
 13. ~~**ARCHITECTURE reconcile + B3-sky**~~ ✅ — status banner + key sections; procedural sky.
-14. **F netcode** / **D OSS** / real asset thumbnails / water plane — as needed.
+14. ~~**B3 water plane**~~ ✅ — Underwater: camera-centred alpha-tinted surface (`water.*` shaders).
+15. ~~**A6 blob shadows**~~ ✅ — thin dark discs under local/remote/NPC feet.
+16. ~~**C8 lite profiler**~~ ✅ — F3 panel (FPS, frameDt, chunk/entity/prop counts).
+17. **Scheduled open queue** — see [OPEN_SCHEDULE.md](OPEN_SCHEDULE.md) (30m durable).
+18. Next fires: skinned casters (A2-s), Details materials (C5+), gravity net sync (B3b-net), ARCH.
+19. Deferred: F netcode / D1 mesher / D4 EnTT / human playtests.
 
 ## Cleanup / debt from last sprint
 - ~~**ARCHITECTURE.md is stale**~~ ✅ (partial) — top status + layout + lighting + nodegraph/AI notes.
