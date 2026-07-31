@@ -74,11 +74,10 @@ blank / …), but spanning voxel AND non-voxel AND themed worlds. Physics is alr
   level mesh instead of chunks. True non-voxel games.
 - [x] **B3. Environment presets** — Surface / Underwater / Space drive gravity + fog + ambient
   (+ hemi lobes). Skybox/water plane still open.
-- [~] **B3b. Gravity volumes / zoned gravity** ⭐ — first slice shipped: `engine/physics/GravityField`
-  (base + AABB volumes + radial orbital bodies), CharacterController samples `gravityVec` each tick
-  (server + client prediction), Space env seeds habitat box at spawn pad + a planetoid SOI.
-  Still open: editor-placed volumes, net sync of custom fields, capsule reorient to local "up",
-  ship/EVA sampling once H4 lands.
+- [x] **B3b. Gravity volumes / zoned gravity** ⭐ — `GravityField` + CharacterController sampling;
+  Space habitat/station/planetoid defaults; **B3b-e** editor **Gravity** tool places AABB volumes
+  (priority + vector), saved in `saves/editor_extras.json`, applied to client + host server field.
+  Still open: net sync of custom fields to pure clients, capsule reorient to local "up".
 - [x] **B4. "New Map" dialog** (editor) — template (Landscape / Superflat / Void) + environment +
   seed → `reseedWorld` (host/SP). Mesh template still open (B2).
 - [ ] **B5. `game.json` `world: {template, environment}`** so a project ships its map choice; no C++.
@@ -163,8 +162,8 @@ Human feel-playtests (mouse feel, combat cadence, editor ergonomics), and real L
 > Note: C1–C3, B1/B3/B4, A1/A3, C6 (first slices), H1/H2/H3/H4 (first slices), E1 are largely **shipped**;
 > older “C3 first” ordering below is historical.
 
-**Now:** ~~C9 / C6 reliability / C5 / A2 / C6-b~~ ✅ → **B3b editor gravity volumes** →
-**C6-c subgraphs/watches** → **B5 game.json** / **B2 MeshLevel** → **C7 packaging** → **F / D** as scale demands.
+**Now:** ~~C9 / C6 reliability / C5 / A2 / C6-b / B3b-e~~ ✅ → **C6-c subgraphs/watches** →
+**B5 game.json** / **B2 MeshLevel** → **C7 packaging** → **F / D** as scale demands.
 
-Rationale: tool loop + high-value graph hooks landed; next is **Space authoring** (gravity volumes)
-and **graph power** (subgraphs), then **generality** (mesh levels) and **scale** (net/ECS).
+Rationale: creation suite + Space gravity authoring landed; next is **graph power** (subgraphs),
+then **generality** (mesh levels) and **scale** (net/ECS).

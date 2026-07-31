@@ -30,6 +30,16 @@ struct SeedVolume { // marks a region for procedural dungeon generation (Phase 6
     std::uint32_t seed = 0;
 };
 
+// B3b-e: editor-authored local gravity AABB (world metres). Applied on top of the
+// env default field (habitat / planetoid still come from configureDefaultGravityField).
+// Higher priority wins when volumes overlap.
+struct EditorGravityVolume {
+    glm::vec3 min{0.0f};
+    glm::vec3 max{0.0f};
+    glm::vec3 gravity{0.0f, -12.0f, 0.0f};
+    int priority = 20; // above Space habitat (10) / station dock (9) by default
+};
+
 // A mesh asset placed into the world. As of the prop-sync pass this list is the
 // engine's mirror of the SERVER-authoritative world props: entries arrive only
 // from the server (PropAddedMsg / join replay), carry the server-assigned id, are
@@ -49,6 +59,7 @@ struct EditorContext {
     Renderer& renderer; // for preview submits (sprites/lights); engine owns passes
     std::vector<EditorLight>& lights;      // shared: engine renders these always
     std::vector<SeedVolume>& seedVolumes;  // shared: consumed by dungeon gen
+    std::vector<EditorGravityVolume>& gravityVolumes; // B3b-e habitat boxes
     std::vector<EditorProp>& props;        // shared: engine renders these always
     std::function<void(glm::ivec3, BlockId)> requestVoxelOp; // → server, validated
     std::function<void(bool)> setRelativeMouse;              // capture for fly-look
@@ -72,6 +83,8 @@ struct EditorContext {
     std::uint32_t currentSeed = 1337;
     bool hemisphereAmbient = true;
     std::function<void(bool)> setHemisphereAmbient;
+    // Rebuild client (+ host server) gravity field after B3b-e volume edits.
+    std::function<void()> applyGravityVolumes;
     // Asset/code panels: enumerate files under a project-relative dir, read/write
     // text, and hot-reload scripts into the running server (host/single-player).
     std::function<std::vector<std::string>(const std::string& dir)> listFiles;

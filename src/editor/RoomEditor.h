@@ -24,8 +24,18 @@ public:
     void update(EditorContext& ctx, float dt) override;
 
 private:
-    enum class Tool { Place, Erase, Wall, Floor, Platform, Doorway, Light, SeedVolume };
-    enum class Selection { None, Light, Volume, Prop };
+    enum class Tool {
+        Place,
+        Erase,
+        Wall,
+        Floor,
+        Platform,
+        Doorway,
+        Light,
+        SeedVolume,
+        GravityVolume
+    };
+    enum class Selection { None, Light, Volume, GravityVolume, Prop };
 
     // One-time Dear ImGui style: UE5-Slate-inspired dark charcoal + blue select.
     // Editor windows only — the in-game HUD is not drawn while this is active.
@@ -106,6 +116,9 @@ private:
     int m_platformOffset = 4; // voxels above the clicked anchor
     int m_snap = 1;           // 1 = off, else round anchors to multiples of 2/4
     std::uint32_t m_nextSeed = 42;
+    // B3b-e Gravity tool defaults (written into each newly placed volume).
+    glm::vec3 m_gravG{0.0f, -12.0f, 0.0f};
+    int m_gravPriority = 20;
 
     bool m_flying = false;
     float m_flySpeed = 8.0f; // m/s, scroll-adjusted while flying

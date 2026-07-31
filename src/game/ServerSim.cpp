@@ -61,8 +61,14 @@ void ServerSim::rebuildGravityField() {
     const EnvSettings env = envSettings(m_rules.environment);
     const bool space = m_rules.environment == GameRules::Environment::Space;
     configureDefaultGravityField(m_gravity, env.gravity, space);
+    for (const GravityBoxVolume& box : m_extraGravityBoxes) m_gravity.addBox(box);
     // Rigid-body Jolt gravity stays the ambient Y component; characters sample the field.
     m_physics.setGravity(env.gravity);
+}
+
+void ServerSim::setExtraGravityBoxes(std::vector<GravityBoxVolume> boxes) {
+    m_extraGravityBoxes = std::move(boxes);
+    rebuildGravityField();
 }
 
 void ServerSim::reseedWorld(std::uint32_t seed, GameRules::Terrain terrain,

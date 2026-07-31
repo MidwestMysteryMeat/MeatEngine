@@ -49,7 +49,7 @@ Scoring: **creator value** × **engine leverage** × **dependency readiness** �
 | 4 | **C6-b** | **More `game.*` nodes (combat/world hooks)** ✅ | Announce + damage player + tick/prop count/health. Spawn light later. | M | C9 |
 | 5 | **C5** | **Inspectors (prop/env/material lite)** | UE Details-panel depth for selected prop/env/rules. Outliner already exists; needs richer fields. | M | C3 done |
 | 6 | **C4** | **Import polish + path UX** | Paste-path import exists; file dialog (ImGuiFileDialog MIT) + clearer reject reasons. | S–M | C1 |
-| 7 | **B3b-e** | **Editor gravity volumes** | Place habitat boxes in editor; save + Welcome/replay. Unlocks Space level design without code. | M | GravityField done |
+| 7 | **B3b-e** | **Editor gravity volumes** ✅ | Gravity tool + extras save + host apply. Net Welcome sync later. | M | GravityField done |
 | 8 | **C6-c** | **Subgraphs / multi-graph / watches** | Power-user visual-script subgraph features. **After** log + basic API reliability. | L | C6-a, C9 |
 
 ### P2 — Visual & world payoff (player-facing quality)
@@ -111,7 +111,7 @@ Your list:
 | **4** | **C5 lite inspectors / C4 import dialog** | Suite ergonomics; parallel-safe with small C6. |
 | **5** | **A2 sun shadows** | ✅ Shipped (depth + PCF + editor toggle). |
 | **6** | **C6-c subgraphs / multi-graph / watches** | After log + reliability. |
-| **7** | **B3b editor gravity volumes** | Space authoring without code. |
+| **7** | **B3b editor gravity volumes** | ✅ Place/save/apply (host/SP). |
 | **8** | **B2 MeshLevel** | Capacity allows — large, do after suite feels solid. |
 | **9** | H4/H1 polish, packaging, OSS grabs | Genre polish and infrastructure. |
 
@@ -174,7 +174,7 @@ Use this as the working list until the next research pass:
 5. **C5 lite — Prop/env inspectors**  
 6. **C4 — Import file dialog**  
 7. ~~**A2 — Sun shadow map**~~ ✅  
-8. **B3b-e — Editor gravity volumes**  
+8. ~~**B3b-e — Editor gravity volumes**~~ ✅  
 9. **B5 — game.json world defaults**  
 10. **C6-c — Subgraphs / multi-graph / watches**  
 11. **B2 — MeshLevel**  

@@ -213,7 +213,35 @@ void Engine::rebuildClientGravityField(const GameRules& rules) {
     const bool space = rules.environment == GameRules::Environment::Space;
     // Must match ServerSim::rebuildGravityField so prediction agrees with authority.
     configureDefaultGravityField(m_gravity, env.gravity, space);
+    for (const EditorGravityVolume& v : m_gravityVolumes) {
+        GravityBoxVolume box;
+        box.min = v.min;
+        box.max = v.max;
+        box.gravity = v.gravity;
+        box.priority = v.priority;
+        m_gravity.addBox(box);
+    }
     m_physics.setGravity(env.gravity);
+}
+
+void Engine::applyEditorGravityVolumes() {
+    // Rebuild client field from current rules + extras.
+    const GameRules rules = m_server ? m_server->rules() : m_client.rules();
+    rebuildClientGravityField(rules);
+    if (m_server) {
+        std::vector<GravityBoxVolume> boxes;
+        boxes.reserve(m_gravityVolumes.size());
+        for (const EditorGravityVolume& v : m_gravityVolumes) {
+            GravityBoxVolume box;
+            box.min = v.min;
+            box.max = v.max;
+            box.gravity = v.gravity;
+            box.priority = v.priority;
+            boxes.push_back(box);
+        }
+        m_server->setExtraGravityBoxes(std::move(boxes));
+    }
+    log::info("gravity: applied {} editor volume(s)", m_gravityVolumes.size());
 }
 
 void Engine::applyEnvironment(const GameRules& rules) {
@@ -1089,6 +1117,7 @@ void Engine::render(float alpha) {
                           m_renderer,
                           m_editorLights,
                           m_seedVolumes,
+                          m_gravityVolumes,
                           m_editorProps,
                           [this](glm::ivec3 v, BlockId b) { m_client.sendVoxelOp(v, b); },
                           [this](bool on) { m_window.setRelativeMouse(on); },
@@ -1096,6 +1125,7 @@ void Engine::render(float alpha) {
                               if (m_server) m_server->saveTo("saves/quick.json");
                               saveEditorExtras();
                           }};
+        ctx.applyGravityVolumes = [this] { applyEditorGravityVolumes(); };
         // Prop placement is a server intent, exactly like a voxel edit: the prop
         // returns via PropAddedMsg and appears in m_editorProps with a collider.
         ctx.requestPlaceProp = [this](std::string asset, glm::mat4 transform) {
@@ -1376,10 +1406,11 @@ void Engine::drawInventoryUi() {
 void Engine::saveEditorExtras() const {
     // Props are NO LONGER saved here: they are server-authoritative world objects
     // persisted in the world save (ServerSim::saveTo). Extras keep only the
-    // client-side editor authoring aids (lights, seed volumes).
+    // client-side editor authoring aids (lights, seed volumes, gravity boxes).
     nlohmann::json j = nlohmann::json::object();
     j["lights"] = nlohmann::json::array();
     j["seedVolumes"] = nlohmann::json::array();
+    j["gravityVolumes"] = nlohmann::json::array();
     for (const EditorLight& l : m_editorLights)
         j["lights"].push_back({{"type", l.type},
                                {"pos", {l.pos.x, l.pos.y, l.pos.z}},
@@ -1391,6 +1422,11 @@ void Engine::saveEditorExtras() const {
         j["seedVolumes"].push_back({{"min", {v.min.x, v.min.y, v.min.z}},
                                     {"max", {v.max.x, v.max.y, v.max.z}},
                                     {"seed", v.seed}});
+    for (const EditorGravityVolume& g : m_gravityVolumes)
+        j["gravityVolumes"].push_back({{"min", {g.min.x, g.min.y, g.min.z}},
+                                       {"max", {g.max.x, g.max.y, g.max.z}},
+                                       {"gravity", {g.gravity.x, g.gravity.y, g.gravity.z}},
+                                       {"priority", g.priority}});
     std::ofstream out("saves/editor_extras.json");
     if (out) out << j.dump();
 }
@@ -1417,11 +1453,22 @@ void Engine::loadEditorExtras() {
         vol.seed = v.value("seed", 0u);
         m_seedVolumes.push_back(vol);
     }
+    m_gravityVolumes.clear();
+    for (const auto& g : j.value("gravityVolumes", nlohmann::json::array())) {
+        EditorGravityVolume vol;
+        vol.min = {g["min"][0], g["min"][1], g["min"][2]};
+        vol.max = {g["max"][0], g["max"][1], g["max"][2]};
+        if (g.contains("gravity") && g["gravity"].is_array() && g["gravity"].size() >= 3)
+            vol.gravity = {g["gravity"][0], g["gravity"][1], g["gravity"][2]};
+        vol.priority = g.value("priority", 20);
+        m_gravityVolumes.push_back(vol);
+    }
     // Props are intentionally NOT loaded here anymore — they arrive from the
     // server (PropAddedMsg / join replay), driven by the world save. A legacy
     // extras file may still carry a "props" array; it is simply ignored.
-    log::info("editor extras loaded ({} lights, {} volumes)", m_editorLights.size(),
-              m_seedVolumes.size());
+    log::info("editor extras loaded ({} lights, {} seed volumes, {} gravity volumes)",
+              m_editorLights.size(), m_seedVolumes.size(), m_gravityVolumes.size());
+    if (!m_gravityVolumes.empty()) applyEditorGravityVolumes();
 }
 
 bool Engine::runMenu(EngineConfig& config) {

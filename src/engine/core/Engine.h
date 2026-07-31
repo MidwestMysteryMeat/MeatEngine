@@ -214,7 +214,9 @@ private:
     Camera m_editorCamera;
     std::vector<EditorLight> m_editorLights;    // rendered every frame, saved as extras
     std::vector<SeedVolume> m_seedVolumes;      // consumed by dungeon gen later
+    std::vector<EditorGravityVolume> m_gravityVolumes; // B3b-e editor habitat boxes
     std::vector<EditorProp> m_editorProps;      // placed mesh props, rendered + saved as extras
+    void applyEditorGravityVolumes(); // push volumes into client (+ host server) field
     // Loaded-mesh cache for editor props, keyed by assetPath so repeated props /
     // per-frame re-renders don't reload from disk. A cached entry with mesh==0
     // marks a missing/failed load, so we don't retry (or spam logs) every frame.

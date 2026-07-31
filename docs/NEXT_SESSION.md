@@ -37,9 +37,8 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
   **Output Log** (All/Messages/Warnings/Errors, search, clear, auto-scroll, double-click copy).
   Captures engine log, ScriptHost failures, node-graph compile.
 - **B2 — non-voxel MeshLevel** (Level interface: VoxelWorld vs static-mesh + Jolt MeshShape).
-- ~~**B3b — gravity volumes / zoned gravity**~~ ✅ (first slice) — `GravityField` with base + AABB
-  volumes + radial orbital bodies; CharacterController samples full gravity vector each tick;
-  Space env seeds habitat box + planetoid; editor-authored volumes / net sync of custom fields later.
+- ~~**B3b — gravity volumes / zoned gravity**~~ ✅ — field + sampling + Space defaults;
+  **B3b-e editor volumes** place/save/apply (host/SP). Net sync of custom fields still open.
 - ~~**Racer template**~~ ✅ (slice 3) — car + chase cam + predict, 2-car grid, AI pace loop,
   speed HUD, **client lap timer** (pad Z finish). Open: track props, proper car mesh, server
   authority for laps.
@@ -66,7 +65,7 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
 4. ~~**C5 lite / C4 import path**~~ ✅ — Details panel (world + selection + import); import logs.
 5. ~~**A2 sun shadows**~~ ✅ — sun depth map + PCF; editor toggle.
 6. **C6-c subgraphs / multi-graph / watches** — after reliability.
-7. **B3b editor gravity volumes** / **B5 game.json** / **B2 MeshLevel** — as capacity allows.
+7. ~~**B3b editor gravity volumes**~~ ✅ — **B5 game.json** / **B2 MeshLevel** — as capacity allows.
 8. H4/H1 polish, C7 packaging, F/D pillars — later (see full plan).
 
 ## Cleanup / debt from last sprint

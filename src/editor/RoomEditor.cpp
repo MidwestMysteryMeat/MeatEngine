@@ -37,9 +37,11 @@ constexpr int kMaxPreviewLights = 16;
 constexpr glm::vec3 kBuildPreview{0.3f, 0.9f, 0.3f};
 constexpr glm::vec3 kErasePreview{0.9f, 0.3f, 0.3f};
 constexpr glm::vec3 kVolumePreview{0.15f, 0.2f, 0.6f};
+constexpr glm::vec3 kGravityPreview{0.55f, 0.35f, 0.9f};
 
 const char* const kToolNames[] = {"Place",   "Erase",   "Wall",  "Floor",
-                                  "Platform", "Doorway", "Light", "Seed Volume"};
+                                  "Platform", "Doorway", "Light", "Seed Volume",
+                                  "Gravity"};
 
 // Content-browser group labels, indexed by RoomEditor::AssetKind (minus Count).
 const char* const kAssetKindNames[] = {"Models", "Textures", "Scripts", "Shaders", "Other"};
@@ -171,6 +173,15 @@ void RoomEditor::update(EditorContext& ctx, float dt) {
         m_selIndex < static_cast<int>(ctx.seedVolumes.size())) {
         const SeedVolume& sv = ctx.seedVolumes[static_cast<std::size_t>(m_selIndex)];
         previewBox(ctx, sv.min, sv.max, kVolumePreview, false);
+    }
+    // B3b-e: selected gravity volume (world AABB → voxel box for preview).
+    if (m_selKind == Selection::GravityVolume && m_selIndex >= 0 &&
+        m_selIndex < static_cast<int>(ctx.gravityVolumes.size())) {
+        const EditorGravityVolume& gv =
+            ctx.gravityVolumes[static_cast<std::size_t>(m_selIndex)];
+        const glm::ivec3 lo = glm::ivec3(glm::floor(gv.min / kVoxelSize));
+        const glm::ivec3 hi = glm::ivec3(glm::ceil(gv.max / kVoxelSize)) - 1;
+        previewBox(ctx, lo, hi, kGravityPreview, false);
     }
 
     if (ctx.input.pressed(GLFW_KEY_ESCAPE)) m_anchor.reset();
@@ -510,6 +521,12 @@ void RoomEditor::drawToolbar() {
         int seed = static_cast<int>(m_nextSeed);
         if (ImGui::InputInt("seed", &seed)) m_nextSeed = static_cast<std::uint32_t>(seed);
     }
+    if (m_tool == Tool::GravityVolume) {
+        ImGui::DragFloat3("gravity m/s2", glm::value_ptr(m_gravG), 0.1f, -40.0f, 40.0f);
+        ImGui::SliderInt("priority", &m_gravPriority, 0, 50);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Higher priority wins over Space habitat (10) / dock (9).");
+    }
 
     ImGui::Text("snap");
     ImGui::SameLine();
@@ -550,6 +567,17 @@ void RoomEditor::drawOutliner(EditorContext& ctx) {
         }
         ImGui::PopID();
     }
+    for (int i = 0; i < static_cast<int>(ctx.gravityVolumes.size()); ++i) {
+        const EditorGravityVolume& gv = ctx.gravityVolumes[static_cast<std::size_t>(i)];
+        ImGui::PushID(1500 + i);
+        char label[48];
+        std::snprintf(label, sizeof(label), "gravity %d [p%d]", i, gv.priority);
+        if (ImGui::Selectable(label, m_selKind == Selection::GravityVolume && m_selIndex == i)) {
+            m_selKind = Selection::GravityVolume;
+            m_selIndex = i;
+        }
+        ImGui::PopID();
+    }
     for (int i = 0; i < static_cast<int>(ctx.props.size()); ++i) {
         const EditorProp& p = ctx.props[static_cast<std::size_t>(i)];
         ImGui::PushID(2000 + i);
@@ -564,7 +592,8 @@ void RoomEditor::drawOutliner(EditorContext& ctx) {
         }
         ImGui::PopID();
     }
-    if (ctx.lights.empty() && ctx.seedVolumes.empty() && ctx.props.empty())
+    if (ctx.lights.empty() && ctx.seedVolumes.empty() && ctx.gravityVolumes.empty() &&
+        ctx.props.empty())
         ImGui::TextDisabled("(empty)");
     ImGui::TextDisabled("Selection properties → Details panel");
     ImGui::End();
@@ -675,6 +704,32 @@ void RoomEditor::handleTool(EditorContext& ctx, glm::vec3 rayOrigin, glm::vec3 r
                 m_selKind = Selection::Volume;
                 m_selIndex = static_cast<int>(ctx.seedVolumes.size()) - 1;
                 m_anchor.reset();
+            }
+        }
+        break;
+    }
+    case Tool::GravityVolume: {
+        // Two-click AABB in voxels → world-metre GravityBoxVolume on the field.
+        const glm::ivec3 target = snapVoxel(hit->voxel + hit->normal);
+        if (!m_anchor) {
+            submitPreviewLight(ctx, voxelCenter(target), kGravityPreview, 2.0f);
+            if (click) m_anchor = target;
+        } else {
+            const glm::ivec3 lo = glm::min(*m_anchor, target);
+            const glm::ivec3 hi = glm::max(*m_anchor, target);
+            previewBox(ctx, lo, hi, kGravityPreview, true);
+            if (click) {
+                EditorGravityVolume gv;
+                gv.min = glm::vec3(lo) * kVoxelSize;
+                gv.max = glm::vec3(hi + 1) * kVoxelSize;
+                gv.gravity = m_gravG;
+                gv.priority = m_gravPriority;
+                ctx.gravityVolumes.push_back(gv);
+                m_selKind = Selection::GravityVolume;
+                m_selIndex = static_cast<int>(ctx.gravityVolumes.size()) - 1;
+                m_anchor.reset();
+                if (ctx.applyGravityVolumes) ctx.applyGravityVolumes();
+                setStatus("gravity volume placed (priority " + std::to_string(gv.priority) + ")");
             }
         }
         break;
@@ -1901,6 +1956,23 @@ void RoomEditor::drawDetailsPanel(EditorContext& ctx) {
                 m_selKind = Selection::None;
                 m_selIndex = -1;
             }
+        } else if (m_selKind == Selection::GravityVolume && m_selIndex >= 0 &&
+                   m_selIndex < static_cast<int>(ctx.gravityVolumes.size())) {
+            EditorGravityVolume& gv =
+                ctx.gravityVolumes[static_cast<std::size_t>(m_selIndex)];
+            ImGui::TextUnformatted("Gravity Volume");
+            bool dirty = false;
+            dirty |= ImGui::DragFloat3("min (m)", glm::value_ptr(gv.min), 0.1f);
+            dirty |= ImGui::DragFloat3("max (m)", glm::value_ptr(gv.max), 0.1f);
+            dirty |= ImGui::DragFloat3("gravity", glm::value_ptr(gv.gravity), 0.1f, -40.0f, 40.0f);
+            dirty |= ImGui::SliderInt("priority", &gv.priority, 0, 50);
+            if (dirty && ctx.applyGravityVolumes) ctx.applyGravityVolumes();
+            if (ImGui::Button("Delete Gravity Volume")) {
+                ctx.gravityVolumes.erase(ctx.gravityVolumes.begin() + m_selIndex);
+                m_selKind = Selection::None;
+                m_selIndex = -1;
+                if (ctx.applyGravityVolumes) ctx.applyGravityVolumes();
+            }
         } else if (m_selKind == Selection::Prop && m_selIndex >= 0 &&
                    m_selIndex < static_cast<int>(ctx.props.size())) {
             EditorProp& prop = ctx.props[static_cast<std::size_t>(m_selIndex)];
@@ -1942,7 +2014,8 @@ void RoomEditor::drawDetailsPanel(EditorContext& ctx) {
                 m_propGizmoDirty = false;
             }
         } else {
-            ImGui::TextDisabled("Nothing selected — pick a prop, light, or volume in the Outliner.");
+            ImGui::TextDisabled(
+                "Nothing selected — pick a prop, light, seed, or gravity volume in the Outliner.");
         }
     }
 
