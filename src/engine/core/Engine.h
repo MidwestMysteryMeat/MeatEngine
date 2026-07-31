@@ -104,6 +104,8 @@ private:
     std::unordered_map<ChunkPos, MeshHandle> m_chunkMeshes;
     MeshHandle m_remotePlayerMesh = 0; // box proxy until character meshes land
     MeshHandle m_pickupMesh = 0;       // small bobbing cube for item pickups
+    MeshHandle m_shipMesh = 0;         // H4 oriented hull (centered box)
+    MaterialHandle m_shipMaterial{0};
     struct PropInstance {
         MeshHandle mesh = 0;
         MaterialHandle material{0};

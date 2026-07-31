@@ -170,7 +170,8 @@ private:
         float repathTimer = 0.0f;
         float animSpeed = 0.0f;       // see Npc::animSpeed
     };
-    // H4 skeleton: thruster vehicle. No Jolt body yet — kinematic integrateShip.
+    // H4: thruster vehicle + kinematic Jolt hull (disabled while piloted so the
+    // seat capsule doesn't explode out of the box).
     struct Ship {
         std::uint32_t id = 0;
         glm::vec3 pos{0};
@@ -179,6 +180,7 @@ private:
         float pitch = 0.0f;
         PeerId pilot = 0; // 0 = empty seat
         float health = 500.0f;
+        PhysicsWorld::BodyHandle body = PhysicsWorld::kInvalidBody;
     };
 
     void handlePacket(Transport& transport, PeerId peer, std::span<const std::byte> data);
@@ -211,7 +213,9 @@ private:
 
     void spawnDungeonLoot();
     void spawnDungeonNpcs();
-    void spawnDemoShip(); // H4: one ship near the spawn pad
+    void spawnDemoShip(); // H4: one+ ships near the spawn pad
+    void ensureShipBody(Ship& ship);   // create/update kinematic hull when empty
+    void clearShipBody(Ship& ship);    // drop hull while piloted
     void updateShips();
     bool tryBoardOrLeaveShip(Player& player); // true if handled (Use consumed)
     void updateNpcs(Transport& transport);

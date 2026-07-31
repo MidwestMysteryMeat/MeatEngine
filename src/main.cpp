@@ -48,13 +48,27 @@ void loadProject(meat::EngineConfig& config, const std::string& dir) {
                                    : e == "space"     ? Environment::Space
                                                       : Environment::Surface;
     }
-    // Game template (H1): presets camera perspective. fps→first, tps→third.
-    // Explicit "perspective" overrides the template when both are present.
+    // Game template (H1/H4): presets camera + world for the genre.
+    // Explicit "perspective"/"terrain"/"environment" override when also present.
     if (j.contains("template")) {
         using Perspective = meat::GameRules::Perspective;
+        using Template = meat::GameRules::Template;
+        using Terrain = meat::GameRules::Terrain;
+        using Environment = meat::GameRules::Environment;
         const std::string t = j["template"].get<std::string>();
-        config.rules.perspective = (t == "tps" || t == "third") ? Perspective::Third
-                                                                : Perspective::First;
+        if (t == "tps" || t == "third") {
+            config.rules.gameTemplate = Template::Tps;
+            config.rules.perspective = Perspective::Third;
+        } else if (t == "space" || t == "spaceship") {
+            config.rules.gameTemplate = Template::Space;
+            config.rules.perspective = Perspective::First;
+            config.rules.terrain = Terrain::Void;
+            config.rules.environment = Environment::Space;
+            config.rules.hemisphereAmbient = false;
+        } else {
+            config.rules.gameTemplate = Template::Fps;
+            config.rules.perspective = Perspective::First;
+        }
     }
     if (j.contains("perspective")) {
         using Perspective = meat::GameRules::Perspective;
@@ -143,10 +157,24 @@ meat::EngineConfig parseArgs(int argc, char** argv) {
             }
         } else if (arg == "--template") {
             using Perspective = meat::GameRules::Perspective;
+            using Template = meat::GameRules::Template;
+            using Terrain = meat::GameRules::Terrain;
+            using Environment = meat::GameRules::Environment;
             if (const char* t = next()) {
                 const std::string m = t;
-                config.rules.perspective = (m == "tps" || m == "third") ? Perspective::Third
-                                                                        : Perspective::First;
+                if (m == "tps" || m == "third") {
+                    config.rules.gameTemplate = Template::Tps;
+                    config.rules.perspective = Perspective::Third;
+                } else if (m == "space" || m == "spaceship") {
+                    config.rules.gameTemplate = Template::Space;
+                    config.rules.perspective = Perspective::First;
+                    config.rules.terrain = Terrain::Void;
+                    config.rules.environment = Environment::Space;
+                    config.rules.hemisphereAmbient = false;
+                } else {
+                    config.rules.gameTemplate = Template::Fps;
+                    config.rules.perspective = Perspective::First;
+                }
             }
         } else if (arg == "--perspective") {
             using Perspective = meat::GameRules::Perspective;

@@ -114,6 +114,7 @@ void ServerSim::reseedWorld(std::uint32_t seed, GameRules::Terrain terrain,
         player->ackedSnapshotTick = 0; // force a keyframe after the world swap
     }
 
+    for (Ship& s : m_ships) clearShipBody(s);
     m_ships.clear();
     for (auto& [peer, player] : m_players) {
         if (player) player->pilotingShip = 0;
@@ -313,17 +314,37 @@ void ServerSim::spawnDungeonNpcs() {
     log::info("server: spawned {} dungeon NPCs", m_npcs.size());
 }
 
+void ServerSim::ensureShipBody(Ship& ship) {
+    if (ship.body != PhysicsWorld::kInvalidBody) {
+        m_physics.setBodyTransform(ship.body, ship.pos, shipOrientation(ship.yaw, ship.pitch));
+        return;
+    }
+    ship.body = m_physics.addKinematicBox(ship.pos, kShipHalfExtents);
+    if (ship.body != PhysicsWorld::kInvalidBody)
+        m_physics.setBodyTransform(ship.body, ship.pos, shipOrientation(ship.yaw, ship.pitch));
+}
+
+void ServerSim::clearShipBody(Ship& ship) {
+    if (ship.body == PhysicsWorld::kInvalidBody) return;
+    m_physics.removeStaticBox(ship.body);
+    ship.body = PhysicsWorld::kInvalidBody;
+}
+
 void ServerSim::spawnDemoShip() {
-    // H4: one empty ship near the spawn pad so board/pilot is immediately testable
-    // (Space template default content; fine for any env as a skeleton).
-    Ship ship;
-    ship.id = m_nextEntityId++;
-    ship.pos = defaultSpawnPos() + glm::vec3(6.0f, 1.5f, 0.0f);
-    ship.yaw = 0.0f;
-    ship.pitch = 0.0f;
-    m_ships.push_back(ship);
-    log::info("server: demo ship {} at ({:.1f},{:.1f},{:.1f}) — Use (E) to board", ship.id,
-              ship.pos.x, ship.pos.y, ship.pos.z);
+    // H4: empty ships near the pad. Space template gets a small flight of three.
+    const int count = m_rules.gameTemplate == GameRules::Template::Space ? 3 : 1;
+    for (int i = 0; i < count; ++i) {
+        Ship ship;
+        ship.id = m_nextEntityId++;
+        const float side = 6.0f + static_cast<float>(i) * 5.0f;
+        ship.pos = defaultSpawnPos() + glm::vec3(side, 1.8f, static_cast<float>(i) * 2.0f);
+        ship.yaw = -0.4f * static_cast<float>(i);
+        ship.pitch = 0.0f;
+        ensureShipBody(ship);
+        m_ships.push_back(ship);
+        log::info("server: ship {} at ({:.1f},{:.1f},{:.1f}) — Use (E) to board", ship.id,
+                  ship.pos.x, ship.pos.y, ship.pos.z);
+    }
 }
 
 void ServerSim::updateShips() {
@@ -334,13 +355,16 @@ void ServerSim::updateShips() {
             ship.vel += g * 0.15f * kFixedDtServer;
             ship.vel *= std::pow(kShipLinearDamp, kFixedDtServer * 60.0f);
             ship.pos += ship.vel * kFixedDtServer;
+            ensureShipBody(ship); // parkable hull for EVA foot traffic
             continue;
         }
         auto it = m_players.find(ship.pilot);
         if (it == m_players.end() || !it->second || it->second->pilotingShip != ship.id) {
             ship.pilot = 0; // pilot left / disconnected
+            ensureShipBody(ship);
             continue;
         }
+        clearShipBody(ship); // no self-collision with the seat capsule
         Player& pilot = *it->second;
         ShipPose pose{ship.pos, ship.vel, ship.yaw, ship.pitch};
         integrateShip(pose, pilot.lastCmd, kFixedDtServer, m_gravity.sample(ship.pos));
@@ -348,8 +372,10 @@ void ServerSim::updateShips() {
         ship.vel = pose.vel;
         ship.yaw = pose.yaw;
         ship.pitch = pose.pitch;
-        // Keep the capsule glued to the seat so stream center / saves / leave work.
-        pilot.controller.setState(ship.pos, ship.vel);
+        // Seat in local ship space so cockpit tracks pitch/yaw.
+        const glm::vec3 seat =
+            ship.pos + shipOrientation(ship.yaw, ship.pitch) * kShipSeatOffset;
+        pilot.controller.setState(seat, ship.vel);
     }
 }
 
@@ -363,11 +389,13 @@ bool ServerSim::tryBoardOrLeaveShip(Player& player) {
                 break;
             }
         if (ship) {
-            const float cy = std::cos(ship->yaw), sy = std::sin(ship->yaw);
-            const glm::vec3 right(cy, 0.0f, -sy);
-            const glm::vec3 leave = ship->pos + right * kShipLeaveOffset + glm::vec3(0, 0.2f, 0);
+            const glm::quat q = shipOrientation(ship->yaw, ship->pitch);
+            const glm::vec3 right = q * glm::vec3(1.0f, 0.0f, 0.0f);
+            const glm::vec3 leave =
+                ship->pos + right * kShipLeaveOffset + glm::vec3(0.0f, 0.5f, 0.0f);
             ship->pilot = 0;
             player.pilotingShip = 0;
+            ensureShipBody(*ship);
             player.controller.setState(leave, glm::vec3(0));
             log::info("server: player left ship {}", ship->id);
         } else {
@@ -398,7 +426,10 @@ bool ServerSim::tryBoardOrLeaveShip(Player& player) {
     if (peer == 0) return false;
     nearest->pilot = peer;
     player.pilotingShip = nearest->id;
-    player.controller.setState(nearest->pos, nearest->vel);
+    clearShipBody(*nearest);
+    const glm::vec3 seat =
+        nearest->pos + shipOrientation(nearest->yaw, nearest->pitch) * kShipSeatOffset;
+    player.controller.setState(seat, nearest->vel);
     log::info("server: player {} boarded ship {}", peer, nearest->id);
     return true;
 }

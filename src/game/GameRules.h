@@ -29,8 +29,12 @@ struct GameRules {
     // Camera presentation (H1 first slice: FPS↔TPS). First = eye-height FPS cam + crosshair;
     // Third = over-shoulder cam with collision pullback, no crosshair. Set via game.json
     // "perspective" or "template" (fps→First, tps→Third) / --perspective / --template.
+    // While piloting a ship (H4), V toggles this at runtime without changing the project default.
     enum class Perspective : std::uint8_t { First = 0, Third = 1 };
     Perspective perspective = Perspective::First;
+    // Project genre template (H1/H4). Space presets Void terrain + Space env + ships.
+    enum class Template : std::uint8_t { Fps = 0, Tps = 1, Space = 2 };
+    Template gameTemplate = Template::Fps;
     // When true, the environment's hemiStrength is applied (A3). When false, ambient is
     // classic isotropic only — the dark PSX-night look. Toggled via game.json / F7 / New Map.
     bool hemisphereAmbient = true;

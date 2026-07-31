@@ -3,6 +3,8 @@
 
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -23,8 +25,23 @@ inline constexpr float kShipThrust = 18.0f;      // m/s² forward/strafe
 inline constexpr float kShipVerticalThrust = 14.0f; // jump=up, crouch=down
 inline constexpr float kShipMaxSpeed = 40.0f;    // m/s hard cap
 inline constexpr float kShipLinearDamp = 0.92f;  // per-tick multiplicative @ 60 Hz baseline
-inline constexpr float kShipBoardRange = 4.5f;   // metres to Use-board
-inline constexpr float kShipLeaveOffset = 2.2f;  // metres to the right on EVA
+inline constexpr float kShipBoardRange = 5.5f;   // metres to Use-board
+inline constexpr float kShipLeaveOffset = 3.2f;  // metres to the right on EVA
+// Local half-extents of the hull box (X right, Y up, Z back — forward is -Z).
+inline constexpr glm::vec3 kShipHalfExtents{1.15f, 0.42f, 2.4f};
+// Seat offset from hull center (cockpit slightly forward/up).
+inline constexpr glm::vec3 kShipSeatOffset{0.0f, 0.15f, -0.35f};
+
+// Yaw/pitch → world orientation for the hull (pitch about local right, then yaw).
+inline glm::quat shipOrientation(float yaw, float pitch) {
+    const glm::quat qYaw = glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+    const glm::quat qPitch = glm::angleAxis(pitch, glm::vec3(1.0f, 0.0f, 0.0f));
+    return qYaw * qPitch;
+}
+
+inline glm::mat4 shipTransform(glm::vec3 pos, float yaw, float pitch) {
+    return glm::translate(glm::mat4(1.0f), pos) * glm::mat4_cast(shipOrientation(yaw, pitch));
+}
 
 // Look-relative thrust: W/S along view forward (including pitch), A/D strafe on
 // horizontal right, jump/crouch for world-up/down relative to gravity "up" (+Y

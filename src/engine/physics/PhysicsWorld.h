@@ -3,6 +3,7 @@
 #include "engine/core/EntityRegistry.h"
 #include "engine/voxel/ChunkMesher.h" // ChunkPos, ChunkMeshData
 
+#include <glm/gtc/quaternion.hpp>
 #include <glm/vec3.hpp>
 
 #include <cstdint>
@@ -56,6 +57,10 @@ public:
     // small positive value so a degenerate box never trips a Jolt assert.
     BodyHandle addStaticBox(glm::vec3 center, glm::vec3 halfExtents);
     void removeStaticBox(BodyHandle body);
+    // Kinematic box (H4 ships): CharacterVirtual collides with it like terrain, but
+    // the server moves it each tick via setBodyTransform. halfExtents local AABB.
+    BodyHandle addKinematicBox(glm::vec3 center, glm::vec3 halfExtents);
+    void setBodyTransform(BodyHandle body, glm::vec3 center, glm::quat rotation);
 
     struct RayHit {
         bool hit = false;

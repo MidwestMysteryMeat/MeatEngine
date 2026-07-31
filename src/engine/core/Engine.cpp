@@ -66,6 +66,30 @@ ChunkMeshData makeBoxMesh(float hw, float h, std::uint16_t tile) {
     }
     return data;
 }
+
+// Centered box (origin at geometric center) for oriented H4 ship hulls.
+ChunkMeshData makeCenteredBoxMesh(glm::vec3 half, std::uint16_t tile) {
+    ChunkMeshData data;
+    const glm::vec3 lo = -half, hi = half;
+    const struct {
+        glm::i8vec3 n;
+        glm::vec3 corners[4];
+    } faces[] = {
+        {{1, 0, 0}, {{hi.x, lo.y, hi.z}, {hi.x, lo.y, lo.z}, {hi.x, hi.y, lo.z}, {hi.x, hi.y, hi.z}}},
+        {{-1, 0, 0}, {{lo.x, lo.y, lo.z}, {lo.x, lo.y, hi.z}, {lo.x, hi.y, hi.z}, {lo.x, hi.y, lo.z}}},
+        {{0, 1, 0}, {{lo.x, hi.y, hi.z}, {hi.x, hi.y, hi.z}, {hi.x, hi.y, lo.z}, {lo.x, hi.y, lo.z}}},
+        {{0, -1, 0}, {{lo.x, lo.y, lo.z}, {hi.x, lo.y, lo.z}, {hi.x, lo.y, hi.z}, {lo.x, lo.y, hi.z}}},
+        {{0, 0, 1}, {{lo.x, lo.y, hi.z}, {hi.x, lo.y, hi.z}, {hi.x, hi.y, hi.z}, {lo.x, hi.y, hi.z}}},
+        {{0, 0, -1}, {{hi.x, lo.y, lo.z}, {lo.x, lo.y, lo.z}, {lo.x, hi.y, lo.z}, {hi.x, hi.y, lo.z}}},
+    };
+    const glm::vec2 uv[4] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    for (const auto& f : faces) {
+        const auto base = static_cast<std::uint32_t>(data.vertices.size());
+        for (int i = 0; i < 4; ++i) data.vertices.push_back({f.corners[i], f.n, uv[i], tile});
+        for (std::uint32_t idx : {0u, 1u, 2u, 0u, 2u, 3u}) data.indices.push_back(base + idx);
+    }
+    return data;
+}
 } // namespace
 
 bool Engine::initClientSystems() {
@@ -105,6 +129,15 @@ bool Engine::initClientSystems() {
                                    glm::vec3(1.0f, 0.96f, 0.88f));
     m_remotePlayerMesh = m_renderer.uploadChunkMesh(makeBoxMesh(0.35f, 1.8f, 2));
     m_pickupMesh = m_renderer.uploadChunkMesh(makeBoxMesh(0.15f, 0.3f, 3));
+    // H4: centered hull box, oriented with shipTransform each frame.
+    m_shipMesh = m_renderer.uploadChunkMesh(makeCenteredBoxMesh(kShipHalfExtents, 4));
+    {
+        MaterialDesc shipMat;
+        shipMat.tint = glm::vec3(0.40f, 0.55f, 0.72f);
+        shipMat.emissive = glm::vec3(0.04f, 0.10f, 0.18f);
+        shipMat.shininess = 48.0f;
+        m_shipMaterial = m_renderer.createMaterial(shipMat);
+    }
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -663,12 +696,13 @@ void Engine::render(float alpha) {
             playerCamera.pitch = shipPitch;
         }
         const glm::vec3 eye =
-            piloting ? (shipPos + glm::vec3(0.0f, 0.55f, 0.0f))
+            piloting ? (shipPos + shipOrientation(shipYaw, shipPitch) * kShipSeatOffset +
+                        glm::vec3(0.0f, 0.35f, 0.0f))
                      : (body + glm::vec3(0.0f, m_player.eyeHeight(), 0.0f));
         if (m_perspective == GameRules::Perspective::Third) {
             // Over-shoulder (on foot) or chase cam (ship) with collision pullback.
-            const float kBehind = piloting ? 8.0f : 2.8f;
-            const float kAbove = piloting ? 2.2f : 0.45f;
+            const float kBehind = piloting ? 10.0f : 2.8f;
+            const float kAbove = piloting ? 2.8f : 0.45f;
             const float kShoulder = piloting ? 0.0f : 0.55f;
             constexpr float kPullEps = 0.12f;
             const glm::vec3 fwd = playerCamera.forward();
@@ -892,11 +926,19 @@ void Engine::render(float alpha) {
                            m_zombieWalkClip >= 0 ? m_zombieWalkClip : m_npcWalkClip,
                            e.anim / 255.0f, m_zombieMaterial);
             break;
-        case 9: { // Ship (H4): box hull + thruster light; occupied = brighter cyan
-            m_renderer.submitChunk(m_remotePlayerMesh, e.pos);
+        case 9: { // Ship (H4): oriented hull mesh + thruster glow
+            const float pitch = unpackShipPitch(e.data);
+            const glm::mat4 xform = shipTransform(e.pos, e.yaw, pitch);
+            if (m_shipMesh != 0)
+                m_renderer.submitMesh(m_shipMesh, xform, m_shipMaterial);
+            else
+                m_renderer.submitChunk(m_remotePlayerMesh, e.pos);
+            // Engine light slightly aft of center (local +Z is back).
+            const glm::vec3 enginePos =
+                e.pos + shipOrientation(e.yaw, pitch) * glm::vec3(0.0f, 0.0f, 1.6f);
             const glm::vec3 glow =
-                e.anim > 0 ? glm::vec3(0.2f, 0.85f, 1.0f) : glm::vec3(0.15f, 0.4f, 0.7f);
-            m_renderer.submitPointLight(e.pos + glm::vec3(0, 0.4f, 0), glow, e.anim > 0 ? 10.0f : 5.0f);
+                e.anim > 0 ? glm::vec3(0.25f, 0.9f, 1.0f) : glm::vec3(0.12f, 0.35f, 0.55f);
+            m_renderer.submitPointLight(enginePos, glow, e.anim > 0 ? 12.0f : 5.0f);
             break;
         }
         default:
@@ -1084,7 +1126,7 @@ void Engine::render(float alpha) {
         ImGui::Text("pos %.1f %.1f %.1f", m_currPlayerPos.x, m_currPlayerPos.y,
                     m_currPlayerPos.z);
         if (m_client.vehicleId() != 0)
-            ImGui::Text("SHIP %u  (E leave | F7 hemi | cam first/third via --perspective)",
+            ImGui::Text("SHIP %u  (E leave | V cockpit/chase | WASD+Space/Ctrl thrust)",
                         m_client.vehicleId());
         else
             ImGui::TextDisabled("near ship: E board");
@@ -1425,6 +1467,14 @@ int Engine::run(const EngineConfig& configIn) {
             envRules.hemisphereAmbient = m_hemisphereAmbient;
             applyEnvironment(envRules);
             log::info("hemisphere ambient {}", m_hemisphereAmbient ? "ON" : "OFF");
+        }
+        if (m_input.pressed(GLFW_KEY_V) && m_client.vehicleId() != 0) {
+            // H4: while piloting, V swaps cockpit (first) ↔ chase (third) without a restart.
+            m_perspective = m_perspective == GameRules::Perspective::First
+                                ? GameRules::Perspective::Third
+                                : GameRules::Perspective::First;
+            log::info("pilot camera {}",
+                      m_perspective == GameRules::Perspective::Third ? "chase" : "cockpit");
         }
         if (m_input.pressed(GLFW_KEY_F12)) m_renderer.captureScreenshot("build/shot.png");
         if (m_input.pressed(GLFW_KEY_F5) && m_server) {

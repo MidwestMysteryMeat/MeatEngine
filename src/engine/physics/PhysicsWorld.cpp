@@ -246,6 +246,40 @@ void PhysicsWorld::removeStaticBox(BodyHandle handle) {
     m_impl->boxBodies.erase(it);
 }
 
+PhysicsWorld::BodyHandle PhysicsWorld::addKinematicBox(glm::vec3 center, glm::vec3 halfExtents) {
+    if (!m_impl->system)
+        return kInvalidBody;
+    const glm::vec3 he = glm::max(halfExtents, glm::vec3(0.05f));
+    JPH::BoxShapeSettings shapeSettings(JPH::Vec3(he.x, he.y, he.z));
+    const JPH::ShapeSettings::ShapeResult result = shapeSettings.Create();
+    if (result.HasError()) {
+        log::error("PhysicsWorld: kinematic box shape failed: {}", result.GetError().c_str());
+        return kInvalidBody;
+    }
+    // Kinematic + NonMoving layer: CharacterVirtual still hits it (same as static
+    // props/chunks), but we can teleport the body each tick for thruster ships.
+    const JPH::BodyCreationSettings bodySettings(
+        result.Get(), JPH::RVec3(center.x, center.y, center.z), JPH::Quat::sIdentity(),
+        JPH::EMotionType::Kinematic, layers::kNonMoving);
+    const JPH::BodyID id = m_impl->system->GetBodyInterface().CreateAndAddBody(
+        bodySettings, JPH::EActivation::DontActivate);
+    if (id.IsInvalid()) {
+        log::error("PhysicsWorld: out of bodies adding kinematic box");
+        return kInvalidBody;
+    }
+    m_impl->boxBodies.push_back(id);
+    return id.GetIndexAndSequenceNumber();
+}
+
+void PhysicsWorld::setBodyTransform(BodyHandle handle, glm::vec3 center, glm::quat rotation) {
+    if (!m_impl->system || handle == kInvalidBody)
+        return;
+    const JPH::BodyID id(handle);
+    const JPH::Quat q(rotation.x, rotation.y, rotation.z, rotation.w);
+    m_impl->system->GetBodyInterface().SetPositionAndRotation(
+        id, JPH::RVec3(center.x, center.y, center.z), q, JPH::EActivation::DontActivate);
+}
+
 PhysicsWorld::RayHit PhysicsWorld::raycast(glm::vec3 from, glm::vec3 dir, float maxDist) const {
     RayHit out;
     if (!m_impl->system)

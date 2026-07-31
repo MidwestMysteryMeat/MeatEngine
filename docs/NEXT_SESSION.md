@@ -36,10 +36,10 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
   volumes + radial orbital bodies; CharacterController samples full gravity vector each tick;
   Space env seeds habitat box + planetoid; editor-authored volumes / net sync of custom fields later.
 - **Racer template** (vehicle controller + chase cam) — the second template after TPS.
-- ~~**H4 — Space ship template (skeleton)**~~ ✅ — demo ship near spawn; **E** boards/leaves;
-  thruster 6DOF (`ShipControl`); `PlayerState.vehicleId` + `EntityArchetype::Ship` on wire;
-  pilot camera first = cockpit / third = chase (`--perspective`). Still open: Jolt hull,
-  ship mesh, hardpoints, `template: space` defaults, multi-seat.
+- ~~**H4 — Space ship template**~~ ✅ (slice 2) — oriented hull mesh + kinematic Jolt box
+  (empty only); **E** board/leave; **V** cockpit/chase while piloting; thrusters; Space
+  template (`--template space` / `game.json`) → Void+Space env + 3 ships. Still open:
+  real FBX mesh, hardpoints, multi-seat, AI traffic.
 - **A2 — directional sun shadow map** (McNopper MIT; +LiSPSM later).
 - ~~**E1 foot-slide**~~ ✅ — walk clip phase rate = worldSpeed / clipSpeed × walkWeight.
 
