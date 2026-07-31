@@ -27,7 +27,7 @@ uniform vec3 uEmissive;
 in VsOut {
     vec3 worldPos;
     vec3 normal;
-    vec2 uv;
+    noperspective vec2 uv; // affine — match mesh.vert
     float fog;
 } fs;
 

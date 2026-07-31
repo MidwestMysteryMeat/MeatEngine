@@ -20,6 +20,7 @@ struct PsxOptions {
     bool nearestFiltering = true;
     float internalScale = 0.5f; // fraction of framebuffer size; 0.5 => 800x450 at 1600x900
     bool dither = true;
+    bool vertexJitter = true;   // snap projected verts to the low-res pixel grid (PSX wobble)
     bool fog = true;
     glm::vec3 fogColor{0.10f, 0.11f, 0.13f};
     float fogStart = 30.0f;
@@ -171,6 +172,7 @@ private:
     GlTexture m_psxColor;
     GlTexture m_psxDepth;
     glm::ivec2 m_psxSize{0, 0};
+    glm::vec2 m_psxJitter{0.0f}; // vertex-snap grid for the chunk/mesh/skinned passes (0 = off)
 
     GlVertexArray m_fullscreenVao; // empty; resolve.vert builds the triangle from gl_VertexID
     GlVertexArray m_spriteVao;     // empty; sprite.vert builds the quad from gl_VertexID

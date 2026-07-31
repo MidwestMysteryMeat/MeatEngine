@@ -316,6 +316,9 @@ void Renderer::beginFrame(const Camera& camera, float alpha) {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, m_fbSize.x, m_fbSize.y);
     }
+    // PSX vertex-snap grid (0 disables): the low-res target resolution (now current), so verts
+    // quantize to its pixel grid. Consumed by the chunk/mesh/skinned draw passes.
+    m_psxJitter = (m_usePsxTarget && psx.vertexJitter) ? glm::vec2(m_psxSize) : glm::vec2(0.0f);
     glClearColor(psx.fogColor.r, psx.fogColor.g, psx.fogColor.b, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -454,6 +457,7 @@ void Renderer::flushScenePasses() {
             }
         } else {
             glUseProgram(m_chunkShader.id());
+            m_chunkShader.program().setUniform("uPsxJitter", m_psxJitter);
             glBindTextureUnit(0, atlasIt->second.id());
             for (const ChunkDraw& draw : m_chunkDraws) {
                 const auto meshIt = m_meshes.find(draw.mesh);
@@ -472,6 +476,7 @@ void Renderer::flushScenePasses() {
     if (!m_meshDraws.empty()) {
         glUseProgram(m_meshShader.id());
         const GlShaderProgram& meshProg = m_meshShader.program();
+        meshProg.setUniform("uPsxJitter", m_psxJitter);
         for (const MeshDraw& draw : m_meshDraws) {
             const auto meshIt = m_meshes.find(draw.mesh);
             const auto texIt = m_textures.find(draw.material.albedo);
@@ -494,6 +499,7 @@ void Renderer::flushScenePasses() {
     if (!m_skinnedDraws.empty()) {
         glUseProgram(m_skinnedShader.id());
         const GlShaderProgram& skinnedProg = m_skinnedShader.program();
+        skinnedProg.setUniform("uPsxJitter", m_psxJitter);
         const GLint bonesLoc = glGetUniformLocation(m_skinnedShader.id(), "uBones");
         for (const SkinnedDraw& draw : m_skinnedDraws) {
             const auto meshIt = m_skinnedMeshes.find(draw.mesh);

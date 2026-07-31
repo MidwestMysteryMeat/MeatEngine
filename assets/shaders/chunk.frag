@@ -22,7 +22,7 @@ layout(binding = 0) uniform sampler2D uAtlas;
 in VsOut {
     vec3 worldPos;
     vec3 normal;
-    vec2 uv;
+    noperspective vec2 uv; // affine — must match chunk.vert's interpolation qualifier
     float fog;
     float blockLight; // 0..1 torch flood-fill brightness
     flat uint tex;
