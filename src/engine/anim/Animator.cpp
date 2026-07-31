@@ -95,6 +95,42 @@ std::vector<glm::mat4> sampleLocalMatrices(const SkeletalModel& model, const Ani
     return locals;
 }
 
+// Per-bone RAW clip-key TRS (exactly what the keys store), BEFORE the offset-space
+// reconciliation (localBind * nodeBindLocalInv * ·). This is the ONLY clean space to blend in:
+// the reconciled local carries the FBX unit-scale factor (in nodeBindLocalInv, ~100x) and
+// shear/reflection, which decompose() cannot represent — decomposing it leaks the ~100x into
+// translation and flings a bone to Y~100 (the "flying NPC" bug). Blend these raw TRS, then
+// apply the reconciliation as matrix math once (see blendPose), matching samplePose exactly.
+struct RawLocal {
+    Trs trs;        // clip-key-space TRS (or the node-bind gap-fill when untracked)
+    bool tracked;   // did this clip actually key this bone?
+};
+std::vector<RawLocal> sampleClipRawTrs(const SkeletalModel& model, const AnimClip& clip,
+                                       float timeSeconds) {
+    const std::size_t count = model.bones.size();
+    float ticks = timeSeconds * (clip.ticksPerSec > 0.0f ? clip.ticksPerSec : 25.0f);
+    if (clip.duration > 0.0f) {
+        ticks = std::fmod(ticks, clip.duration);
+        if (ticks < 0.0f) ticks += clip.duration;
+    }
+    std::vector<RawLocal> out(count);
+    for (std::size_t b = 0; b < count; ++b) {
+        out[b].trs = decompose(model.bones[b].nodeBindLocal); // zero-delta gap-fill
+        out[b].tracked = false;
+    }
+    for (const BoneTrack& track : clip.tracks) {
+        if (track.boneIndex < 0 || static_cast<std::size_t>(track.boneIndex) >= count) continue;
+        const std::size_t b = static_cast<std::size_t>(track.boneIndex);
+        Trs trs = out[b].trs; // start from the node-bind gap-fill (missing sub-channel = no delta)
+        if (!track.positions.empty()) trs.pos = sampleVec(track.positions, ticks);
+        if (!track.rotations.empty()) trs.rot = sampleQuat(track.rotations, ticks);
+        if (!track.scales.empty()) trs.scl = sampleVec(track.scales, ticks);
+        out[b].trs = trs;
+        out[b].tracked = true;
+    }
+    return out;
+}
+
 // Forward pass over the topologically ordered bones: parents are always
 // resolved before their children, so one loop composes every global.
 Pose resolve(const SkeletalModel& model, const std::vector<glm::mat4>& locals) {
@@ -145,16 +181,32 @@ Trs blendTrs(const Trs& a, const Trs& b, float w) {
     return r;
 }
 
-// Sample BOTH clips to local TRS, blend per bone, resolve ONCE (never lerp final skinning
-// matrices — that shears). w clamps 0→A, 1→B; a 1D blend space passes the same phase to both.
+// Blend two clips per bone in RAW clip-key space, apply the offset-space reconciliation as
+// matrix math, resolve ONCE. Blending the raw (clean) TRS — NOT the reconciled local, whose
+// ~100x unit scale + shear a decompose can't represent — is what keeps a bone from flying to
+// Y~100. At w=0 this is bit-identical to samplePose(clipA) (blendTrs returns a; the reconciliation
+// line matches sampleLocalMatrices exactly), so the clean single-clip path and the blend agree.
+// w clamps 0→A, 1→B; a 1D blend space passes the same phase to both.
 Pose blendPose(const SkeletalModel& model, const AnimClip& clipA, float tA,
                const AnimClip& clipB, float tB, float w) {
     w = glm::clamp(w, 0.0f, 1.0f);
-    const std::vector<Trs> a = sampleLocalTrs(model, clipA, tA);
-    const std::vector<Trs> b = sampleLocalTrs(model, clipB, tB);
-    std::vector<Trs> out(a.size());
-    for (std::size_t i = 0; i < a.size() && i < b.size(); ++i) out[i] = blendTrs(a[i], b[i], w);
-    return resolveLocalTrs(model, out);
+    const std::vector<RawLocal> a = sampleClipRawTrs(model, clipA, tA);
+    const std::vector<RawLocal> b = sampleClipRawTrs(model, clipB, tB);
+    const std::size_t count = model.bones.size();
+    std::vector<glm::mat4> locals(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        const Bone& bone = model.bones[i];
+        // Bones neither clip keys keep their exact bind local — never round-trip it (that's
+        // where the shear/scale corruption enters). Otherwise blend the clean raw TRS and apply
+        // the SAME reconciliation samplePose uses (localBind * nodeBindLocalInv * compose(·)).
+        if (i < a.size() && i < b.size() && (a[i].tracked || b[i].tracked)) {
+            const Trs blended = blendTrs(a[i].trs, b[i].trs, w);
+            locals[i] = bone.localBind * bone.nodeBindLocalInv * compose(blended);
+        } else {
+            locals[i] = bone.localBind;
+        }
+    }
+    return resolve(model, locals);
 }
 
 Pose bindPose(const SkeletalModel& model) {
