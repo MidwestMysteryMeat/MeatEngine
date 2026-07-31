@@ -191,10 +191,8 @@ void Client::applySnapshot(const SnapshotMsg& snap, PhysicsWorld& physics,
     // exactly where we already were, so no correction is visible.
     player.setState(own->pos, own->vel);
     if (m_vehicleId != 0 && m_vehicleRole == 1) {
-        // H4 pilot only: predict thrusters with the same integrateShip the server runs.
-        // Passengers are glued to passengerOffset by authority — no thruster predict.
+        // Pilot only: predict thrusters (ship) or ground car (racer). Passengers skip.
         ShipPose pose{own->pos, own->vel, own->yaw, own->pitch};
-        // Prefer ship entity pitch when present (packed in data).
         for (const EntityState& e : m_entities) {
             if (e.id == m_vehicleId &&
                 e.archetype == static_cast<std::uint8_t>(EntityArchetype::Ship)) {
@@ -204,8 +202,12 @@ void Client::applySnapshot(const SnapshotMsg& snap, PhysicsWorld& physics,
                 break;
             }
         }
+        const bool groundVehicle = m_rules.gameTemplate == GameRules::Template::Racer;
         for (const PlayerCommand& cmd : m_unacked) {
-            integrateShip(pose, cmd, kFixedDt, glm::vec3(0.0f, -1.5f, 0.0f));
+            if (groundVehicle)
+                integrateRacer(pose, cmd, kFixedDt, glm::vec3(0.0f, -18.0f, 0.0f));
+            else
+                integrateShip(pose, cmd, kFixedDt, glm::vec3(0.0f, -1.5f, 0.0f));
         }
         player.setState(pose.pos, pose.vel);
         m_ownPos = pose.pos;

@@ -147,7 +147,7 @@ private:
 
     // --- New Map (B4) ------------------------------------------------------
     bool m_newMapOpen = false;
-    int m_newMapGenre = 0;       // 0 FPS, 1 TPS, 2 Space ship
+    int m_newMapGenre = 0;       // 0 FPS, 1 TPS, 2 Space ship, 3 Racer
     int m_newMapTerrain = 0;     // 0 Normal, 1 Superflat, 2 Void
     int m_newMapEnvironment = 0; // 0 Surface, 1 Underwater, 2 Space
     int m_newMapSeed = 1337;

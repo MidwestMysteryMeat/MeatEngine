@@ -367,7 +367,27 @@ void ServerSim::spawnSpaceDecor() {
 
 void ServerSim::spawnDemoShip() {
     // H4: empty ships near the pad. Space template gets one of each CC-BY hull.
+    // H1 Racer: one ground car on the pad (box collider, no thrusters).
     const bool space = m_rules.gameTemplate == GameRules::Template::Space;
+    const bool racer = m_rules.gameTemplate == GameRules::Template::Racer;
+    if (racer) {
+        Ship car;
+        car.id = m_nextEntityId++;
+        car.groundVehicle = true;
+        car.hullVariant = 0;
+        car.halfExtents = kRacerHalfExtents;
+        car.seatOffset = kRacerSeatOffset;
+        car.passengerOffset = glm::vec3(0.55f, 0.25f, 0.1f);
+        car.health = 400.0f;
+        car.pos = defaultSpawnPos() + glm::vec3(4.0f, kRacerHalfExtents.y, 2.0f);
+        car.yaw = 0.0f;
+        car.pitch = 0.0f;
+        ensureShipBody(car);
+        m_ships.push_back(car);
+        log::info("server: racer car {} — Use (E) to drive (WASD + Space hop / Ctrl brake)",
+                  car.id);
+        return;
+    }
     const int count = space ? kShipHullCount : 1;
     for (int i = 0; i < count; ++i) {
         Ship ship;
@@ -614,11 +634,20 @@ void ServerSim::updateShips(Transport& transport) {
         if (ship.pilot != 0) {
             Player& pilot = *m_players[ship.pilot];
             ShipPose pose{ship.pos, ship.vel, ship.yaw, ship.pitch};
-            integrateShip(pose, pilot.lastCmd, kFixedDtServer, m_gravity.sample(ship.pos));
+            const glm::vec3 g = m_gravity.sample(ship.pos);
+            if (ship.groundVehicle)
+                integrateRacer(pose, pilot.lastCmd, kFixedDtServer, g);
+            else
+                integrateShip(pose, pilot.lastCmd, kFixedDtServer, g);
             ship.pos = pose.pos;
             ship.vel = pose.vel;
             ship.yaw = pose.yaw;
             ship.pitch = pose.pitch;
+            // Ground vehicles: keep the hull from sinking (simple floor clamp at pad level).
+            if (ship.groundVehicle && ship.pos.y < defaultSpawnPos().y) {
+                ship.pos.y = defaultSpawnPos().y;
+                if (ship.vel.y < 0.0f) ship.vel.y = 0.0f;
+            }
             const glm::vec3 seat =
                 ship.pos + shipOrientation(ship.yaw, ship.pitch) * ship.seatOffset;
             pilot.controller.setState(seat, ship.vel);
@@ -1119,8 +1148,8 @@ void ServerSim::marchBullet(Transport& transport, PeerId peer, Player& player,
         Ship* shipVictim = nullptr;
         for (Ship& sh : m_ships) {
             if (sh.health <= 0.0f) continue;
-            // Don't shoot your own seat out from under yourself.
-            if (sh.pilot == peer) continue;
+            // Don't shoot your own seat out from under yourself (pilot or passenger).
+            if (sh.pilot == peer || sh.passenger == peer) continue;
             const float rad = glm::length(sh.halfExtents) * 0.65f;
             const glm::vec3 a = sh.pos - glm::vec3(0, sh.halfExtents.y * 0.3f, 0);
             const glm::vec3 b = sh.pos + glm::vec3(0, sh.halfExtents.y * 0.3f, 0);

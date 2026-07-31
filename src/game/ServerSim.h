@@ -187,6 +187,7 @@ private:
         PeerId pilot = 0;     // 0 = empty pilot seat (AI ships always 0)
         PeerId passenger = 0; // 0 = empty co-pilot seat
         bool ai = false;
+        bool groundVehicle = false; // H1 racer: car physics (no thrusters / pitch)
         float health = 500.0f;
         int hullVariant = 0; // ShipHulls catalog index
         glm::vec3 halfExtents{kShipHalfExtents};

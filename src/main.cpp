@@ -65,6 +65,11 @@ void loadProject(meat::EngineConfig& config, const std::string& dir) {
             config.rules.terrain = Terrain::Void;
             config.rules.environment = Environment::Space;
             config.rules.hemisphereAmbient = false;
+        } else if (t == "racer" || t == "race") {
+            config.rules.gameTemplate = Template::Racer;
+            config.rules.perspective = Perspective::Third;
+            config.rules.terrain = Terrain::Superflat;
+            config.rules.environment = Environment::Surface;
         } else {
             config.rules.gameTemplate = Template::Fps;
             config.rules.perspective = Perspective::First;
@@ -171,6 +176,11 @@ meat::EngineConfig parseArgs(int argc, char** argv) {
                     config.rules.terrain = Terrain::Void;
                     config.rules.environment = Environment::Space;
                     config.rules.hemisphereAmbient = false;
+                } else if (m == "racer" || m == "race") {
+                    config.rules.gameTemplate = Template::Racer;
+                    config.rules.perspective = Perspective::Third;
+                    config.rules.terrain = Terrain::Superflat;
+                    config.rules.environment = Environment::Surface;
                 } else {
                     config.rules.gameTemplate = Template::Fps;
                     config.rules.perspective = Perspective::First;

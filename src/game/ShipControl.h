@@ -110,6 +110,52 @@ inline float unpackShipPitch(std::uint16_t data) {
     return static_cast<float>(static_cast<std::int16_t>(data)) / 1000.0f;
 }
 
+// H1 Racer: ground car — W/S accel along yaw, A/D steer, stick to gravity-down.
+// Jump is a short hop; crouch is brake. No pitch flight.
+inline constexpr float kRacerAccel = 22.0f;
+inline constexpr float kRacerBrake = 28.0f;
+inline constexpr float kRacerSteer = 2.4f; // rad/s at full speed fraction
+inline constexpr float kRacerMaxSpeed = 28.0f;
+inline constexpr float kRacerLinearDamp = 0.96f;
+inline constexpr glm::vec3 kRacerHalfExtents{0.9f, 0.45f, 1.6f};
+inline constexpr glm::vec3 kRacerSeatOffset{0.0f, 0.35f, 0.1f};
+
+inline void integrateRacer(ShipPose& car, const PlayerCommand& cmd, float dt,
+                           glm::vec3 gravityAccel) {
+    // Steer first so accel applies along the new heading.
+    const float speed = glm::length(glm::vec2(car.vel.x, car.vel.z));
+    const float steerScale = glm::clamp(speed / 6.0f, 0.25f, 1.0f);
+    car.yaw += cmd.move.x * kRacerSteer * steerScale * dt;
+    car.pitch = 0.0f; // ground craft: no pitch
+
+    const float cy = std::cos(car.yaw), sy = std::sin(car.yaw);
+    const glm::vec3 forward(-sy, 0.0f, -cy); // -Z at yaw 0
+
+    glm::vec3 accel{0.0f};
+    if (cmd.move.y > 0.0f) accel += forward * (kRacerAccel * cmd.move.y);
+    if (cmd.move.y < 0.0f) accel += forward * (kRacerAccel * 0.55f * cmd.move.y); // reverse
+    if (cmd.crouch) {
+        // Brake toward zero on the ground plane.
+        const glm::vec3 horiz(car.vel.x, 0.0f, car.vel.z);
+        const float h = glm::length(horiz);
+        if (h > 0.1f) accel -= (horiz / h) * kRacerBrake;
+    }
+    // Light gravity + hop.
+    accel += gravityAccel;
+    if (cmd.jump && car.vel.y < 0.5f) car.vel.y = 5.5f;
+
+    car.vel += accel * dt;
+    car.vel.x *= std::pow(kRacerLinearDamp, dt * 60.0f);
+    car.vel.z *= std::pow(kRacerLinearDamp, dt * 60.0f);
+    const float planar = glm::length(glm::vec2(car.vel.x, car.vel.z));
+    if (planar > kRacerMaxSpeed) {
+        const float s = kRacerMaxSpeed / planar;
+        car.vel.x *= s;
+        car.vel.z *= s;
+    }
+    car.pos += car.vel * dt;
+}
+
 // AI traffic: steer toward a world-space target at cruise speed (deterministic).
 inline void integrateShipAi(ShipPose& ship, glm::vec3 target, float dt, float cruiseSpeed,
                             glm::vec3 gravityAccel) {

@@ -355,8 +355,14 @@ void RoomEditor::drawNewMapDialog(EditorContext& ctx) {
         m_newMapTerrain = 2;     // Void
         m_newMapEnvironment = 2; // Space
     }
+    if (ImGui::RadioButton("Racer", &m_newMapGenre, 3)) {
+        m_newMapTerrain = 1;     // Superflat
+        m_newMapEnvironment = 0; // Surface
+    }
     if (m_newMapGenre == 2)
         ImGui::TextDisabled("Space presets Void + Space env + ships.");
+    if (m_newMapGenre == 3)
+        ImGui::TextDisabled("Racer presets Superflat + surface car (E board, chase cam).");
 
     ImGui::Separator();
     ImGui::TextUnformatted("World template");

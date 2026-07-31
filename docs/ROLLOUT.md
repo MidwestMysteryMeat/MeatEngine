@@ -140,8 +140,8 @@ light → ship) without the bloat/missing pieces that don't fit a PSX voxel FPS.
 The engine must not force "FPS shooter." A project picks its genre/game-mode; the FPS/combat layer
 (guns, hotbar, hitscan, enemy NPCs) is a MODULE a game opts into, so a space ship-builder or an
 underwater explorer needn't ship guns. Composes with world templates (B) + environments (B3).
-- [~] **H1. Game templates (UE5-style)** ⭐ — FPS↔TPS perspective slice shipped (`template` /
-  `perspective` / over-shoulder cam). Racer + **Space ship (H4)** + module opt-in still open.
+- [~] **H1. Game templates (UE5-style)** ⭐ — FPS↔TPS, **Space (H4)**, **Racer** (ground car +
+  chase cam). Module opt-in / deeper racer track systems still open.
 - [x] **H2. Weapon fire modes** ⭐ — Semi / Auto / Burst with trigger-edge discipline + shotgun pellets.
 - [x] **H3. Ammo + magazines** — mag/reserve/reload + HUD; gated by `finiteAmmo`.
 - [~] **H4. Space ship template** ⭐ — Fab hulls, station/junkyard, ship auto-cannon, New Map

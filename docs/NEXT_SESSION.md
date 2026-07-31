@@ -35,7 +35,8 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
 - ~~**B3b — gravity volumes / zoned gravity**~~ ✅ (first slice) — `GravityField` with base + AABB
   volumes + radial orbital bodies; CharacterController samples full gravity vector each tick;
   Space env seeds habitat box + planetoid; editor-authored volumes / net sync of custom fields later.
-- **Racer template** (vehicle controller + chase cam) — the second template after TPS.
+- ~~**Racer template**~~ ✅ (slice 1) — `Template::Racer`, Superflat surface car, E board,
+  chase cam, client predict via `integrateRacer`. Open: track props, lap timer, AI racers.
 - ~~**H4 — Space ship template**~~ ✅ (slice 8) — Fab hulls + station/junkyard; ship cannon;
   New Map genre; AI patrol (lead aim); multi-seat; local-up; **EVA RCS** in low-g;
   **station dock gravity**; ship thrusters/strafe use gravity-local up; hull HP HUD.

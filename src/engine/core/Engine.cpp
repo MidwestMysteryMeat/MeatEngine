@@ -272,7 +272,8 @@ bool Engine::rebuildWorld(GameRules::Terrain terrain, GameRules::Environment env
     m_voxels.clearWorld();
 
     // Genre template may preset camera / hemi (Space prefers first-person cockpit + dark).
-    if (gameTemplate == GameRules::Template::Tps)
+    if (gameTemplate == GameRules::Template::Tps ||
+        gameTemplate == GameRules::Template::Racer)
         m_perspective = GameRules::Perspective::Third;
     else if (gameTemplate == GameRules::Template::Space) {
         m_perspective = GameRules::Perspective::First;
@@ -1071,7 +1072,7 @@ void Engine::render(float alpha) {
                 static_cast<GameRules::Environment>(environment < 0 || environment > 2 ? 0
                                                                                        : environment);
             const auto gt = static_cast<GameRules::Template>(
-                gameTemplate < 0 || gameTemplate > 2 ? 0 : gameTemplate);
+                gameTemplate < 0 || gameTemplate > 3 ? 0 : gameTemplate);
             return rebuildWorld(t, e, gt, seed);
         };
         if (m_server) {
@@ -1189,6 +1190,27 @@ void Engine::render(float alpha) {
         ImGui::Text("players %zu", remotes.size() + 1);
         ImGui::Text("pos %.1f %.1f %.1f", m_currPlayerPos.x, m_currPlayerPos.y,
                     m_currPlayerPos.z);
+        // Look-at ship readout: closest hull under the aim ray (own ship or traffic).
+        {
+            const glm::vec3 aimOrigin = m_currPlayerPos + m_player.up() * m_player.eyeHeight();
+            const glm::vec3 aimDir = viewForward(m_lastCmd.yaw, m_lastCmd.pitch);
+            float bestT = 80.0f;
+            const EntityState* aimed = nullptr;
+            for (const EntityState& e : m_client.entities()) {
+                if (e.archetype != static_cast<std::uint8_t>(EntityArchetype::Ship)) continue;
+                if (e.health <= 0.0f) continue;
+                const glm::vec3 to = e.pos - aimOrigin;
+                const float t = glm::dot(to, aimDir);
+                if (t < 0.5f || t > bestT) continue;
+                const glm::vec3 closest = aimOrigin + aimDir * t;
+                if (glm::length(e.pos - closest) > 3.5f) continue;
+                bestT = t;
+                aimed = &e;
+            }
+            if (aimed) {
+                ImGui::Text("TARGET ship %u  HULL %.0f  (%.0fm)", aimed->id, aimed->health, bestT);
+            }
+        }
         if (m_client.vehicleId() != 0) {
             float hullHp = -1.0f;
             for (const EntityState& e : m_client.entities()) {
@@ -1198,7 +1220,10 @@ void Engine::render(float alpha) {
                     break;
                 }
             }
-            if (m_client.vehicleRole() == 1) {
+            if (m_client.rules().gameTemplate == GameRules::Template::Racer) {
+                ImGui::Text("CAR %u  DRIVER", m_client.vehicleId());
+                ImGui::TextDisabled("E leave | WASD drive | Space hop | Ctrl brake");
+            } else if (m_client.vehicleRole() == 1) {
                 ImGui::Text("SHIP %u  PILOT  cannon (auto hardpoints)", m_client.vehicleId());
                 ImGui::TextDisabled("E leave | V cam | LMB fire | WASD+Space/Ctrl thrust");
             } else {
