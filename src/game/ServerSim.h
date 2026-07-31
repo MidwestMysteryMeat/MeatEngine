@@ -12,6 +12,7 @@
 #include "game/GameRules.h"
 #include "game/Inventory.h"
 #include "game/NavMesh.h"
+#include "game/ShipControl.h"
 #include "game/WorldGen.h"
 
 #include <nlohmann/json_fwd.hpp>
@@ -180,6 +181,9 @@ private:
         float pitch = 0.0f;
         PeerId pilot = 0; // 0 = empty seat
         float health = 500.0f;
+        int hullVariant = 0; // ShipHulls catalog index
+        glm::vec3 halfExtents{kShipHalfExtents};
+        glm::vec3 seatOffset{kShipSeatOffset}; // local seat relative to hull center
         PhysicsWorld::BodyHandle body = PhysicsWorld::kInvalidBody;
     };
 

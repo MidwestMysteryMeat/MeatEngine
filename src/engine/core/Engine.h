@@ -104,8 +104,17 @@ private:
     std::unordered_map<ChunkPos, MeshHandle> m_chunkMeshes;
     MeshHandle m_remotePlayerMesh = 0; // box proxy until character meshes land
     MeshHandle m_pickupMesh = 0;       // small bobbing cube for item pickups
-    MeshHandle m_shipMesh = 0;         // H4 oriented hull (centered box)
+    MeshHandle m_shipMesh = 0;         // fallback box if no FBX staged
     MaterialHandle m_shipMaterial{0};
+    // H4: per-hull GPU cache (cyber / star / lowpoly). mesh==0 means load failed.
+    struct ShipHullGpu {
+        MeshHandle mesh = 0;
+        MaterialHandle material{0};
+        glm::vec3 halfExtents{1.0f};
+        bool attempted = false;
+    };
+    std::array<ShipHullGpu, 8> m_shipHulls{};
+    const ShipHullGpu& shipHullGpu(int variant);
     struct PropInstance {
         MeshHandle mesh = 0;
         MaterialHandle material{0};

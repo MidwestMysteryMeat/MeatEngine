@@ -11,6 +11,15 @@ assets/models/*.glb
 assets/models/*.gltf
 assets/models/*.png
 assets/models/*.jpg
+# H4 Fab ship packs (CC-BY 4.0) — re-stage with tools/stage_ships.ps1; do not
+# commit multi-MB binaries. README + ATTRIBUTION rows stay tracked.
+assets/models/ships/**/*.fbx
+assets/models/ships/**/*.glb
+assets/models/ships/**/*.gltf
+assets/models/ships/**/*.bin
+assets/models/ships/**/*.png
+assets/models/ships/**/*.jpg
+assets/models/ships/**/*.jpeg
 .vs/
 .idea/
 .cache/

@@ -7,6 +7,7 @@
 #include "game/Environment.h"
 #include "game/Pathfinder.h"
 #include "game/ShipControl.h"
+#include "game/ShipHulls.h"
 #include "game/WeaponFire.h"
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -19,6 +20,7 @@
 #include <fstream>
 #include <system_error>
 #include <thread>
+
 
 namespace meat {
 namespace {
@@ -319,7 +321,7 @@ void ServerSim::ensureShipBody(Ship& ship) {
         m_physics.setBodyTransform(ship.body, ship.pos, shipOrientation(ship.yaw, ship.pitch));
         return;
     }
-    ship.body = m_physics.addKinematicBox(ship.pos, kShipHalfExtents);
+    ship.body = m_physics.addKinematicBox(ship.pos, ship.halfExtents);
     if (ship.body != PhysicsWorld::kInvalidBody)
         m_physics.setBodyTransform(ship.body, ship.pos, shipOrientation(ship.yaw, ship.pitch));
 }
@@ -331,19 +333,42 @@ void ServerSim::clearShipBody(Ship& ship) {
 }
 
 void ServerSim::spawnDemoShip() {
-    // H4: empty ships near the pad. Space template gets a small flight of three.
-    const int count = m_rules.gameTemplate == GameRules::Template::Space ? 3 : 1;
+    // H4: empty ships near the pad. Space template gets one of each CC-BY hull.
+    const bool space = m_rules.gameTemplate == GameRules::Template::Space;
+    const int count = space ? kShipHullCount : 1;
     for (int i = 0; i < count; ++i) {
         Ship ship;
         ship.id = m_nextEntityId++;
-        const float side = 6.0f + static_cast<float>(i) * 5.0f;
-        ship.pos = defaultSpawnPos() + glm::vec3(side, 1.8f, static_cast<float>(i) * 2.0f);
-        ship.yaw = -0.4f * static_cast<float>(i);
+        ship.hullVariant = i % kShipHullCount;
+        // Size collider from the real mesh when possible (same import as the client).
+        glm::vec3 half = kShipHalfExtents;
+        if (loadShipHull(ship.hullVariant, half)) ship.halfExtents = half;
+        else ship.halfExtents = kShipHalfExtents;
+        // Seat slightly above center, forward of midships (local -Z is forward).
+        ship.seatOffset =
+            glm::vec3(0.0f, ship.halfExtents.y * 0.25f, -ship.halfExtents.z * 0.2f);
+        // Park above the pad so longer hulls clear the ground; space out by length.
+        const float side = 8.0f + static_cast<float>(i) * (ship.halfExtents.x * 2.0f + 3.0f);
+        ship.pos = defaultSpawnPos() + glm::vec3(side, ship.halfExtents.y + 0.4f,
+                                                 static_cast<float>(i) * 2.5f);
+        ship.yaw = -0.35f * static_cast<float>(i);
         ship.pitch = 0.0f;
         ensureShipBody(ship);
         m_ships.push_back(ship);
-        log::info("server: ship {} at ({:.1f},{:.1f},{:.1f}) — Use (E) to board", ship.id,
-                  ship.pos.x, ship.pos.y, ship.pos.z);
+        log::info("server: ship {} hull={} half=({:.1f},{:.1f},{:.1f}) — Use (E) to board",
+                  ship.id, shipHullDefs()[static_cast<std::size_t>(ship.hullVariant)].id,
+                  ship.halfExtents.x, ship.halfExtents.y, ship.halfExtents.z);
+    }
+    // Space template: drop junkyard wreckage as a static prop landmark (optional asset).
+    if (space) {
+        std::string junk = kJunkyardStaged;
+        if (!std::filesystem::exists(junk)) junk = kJunkyardVault;
+        if (std::filesystem::exists(junk)) {
+            const glm::mat4 t =
+                glm::translate(glm::mat4(1.0f), defaultSpawnPos() + glm::vec3(-14.0f, 0.0f, 10.0f)) *
+                glm::scale(glm::mat4(1.0f), glm::vec3(0.01f));
+            addProp(nullptr, junk, t, 0);
+        }
     }
 }
 
@@ -374,7 +399,7 @@ void ServerSim::updateShips() {
         ship.pitch = pose.pitch;
         // Seat in local ship space so cockpit tracks pitch/yaw.
         const glm::vec3 seat =
-            ship.pos + shipOrientation(ship.yaw, ship.pitch) * kShipSeatOffset;
+            ship.pos + shipOrientation(ship.yaw, ship.pitch) * ship.seatOffset;
         pilot.controller.setState(seat, ship.vel);
     }
 }
@@ -391,8 +416,9 @@ bool ServerSim::tryBoardOrLeaveShip(Player& player) {
         if (ship) {
             const glm::quat q = shipOrientation(ship->yaw, ship->pitch);
             const glm::vec3 right = q * glm::vec3(1.0f, 0.0f, 0.0f);
+            const float leaveDist = std::max(kShipLeaveOffset, ship->halfExtents.x + 1.5f);
             const glm::vec3 leave =
-                ship->pos + right * kShipLeaveOffset + glm::vec3(0.0f, 0.5f, 0.0f);
+                ship->pos + right * leaveDist + glm::vec3(0.0f, 0.5f, 0.0f);
             ship->pilot = 0;
             player.pilotingShip = 0;
             ensureShipBody(*ship);
@@ -406,11 +432,13 @@ bool ServerSim::tryBoardOrLeaveShip(Player& player) {
 
     const glm::vec3 feet = player.controller.position();
     Ship* nearest = nullptr;
-    float best = kShipBoardRange;
+    float best = 1.0e9f;
     for (Ship& s : m_ships) {
         if (s.pilot != 0) continue;
+        const float reach =
+            std::max(kShipBoardRange, glm::length(glm::vec2(s.halfExtents.x, s.halfExtents.z)) + 1.5f);
         const float d = glm::length(s.pos - feet);
-        if (d < best) {
+        if (d < reach && d < best) {
             best = d;
             nearest = &s;
         }
@@ -428,7 +456,7 @@ bool ServerSim::tryBoardOrLeaveShip(Player& player) {
     player.pilotingShip = nearest->id;
     clearShipBody(*nearest);
     const glm::vec3 seat =
-        nearest->pos + shipOrientation(nearest->yaw, nearest->pitch) * kShipSeatOffset;
+        nearest->pos + shipOrientation(nearest->yaw, nearest->pitch) * nearest->seatOffset;
     player.controller.setState(seat, nearest->vel);
     log::info("server: player {} boarded ship {}", peer, nearest->id);
     return true;
@@ -1691,10 +1719,10 @@ void ServerSim::broadcastSnapshot(Transport& transport) {
     }
     for (const Ship& s : m_ships) {
         if (snap.entities.size() >= kMaxSnapshotEntities) break;
-        // anim = 255 when piloted so clients can tint/emphasize an occupied hull.
-        const auto anim = static_cast<std::uint8_t>(s.pilot != 0 ? 255 : 0);
+        // anim packs hull variant + occupied bit (see ShipHulls.h).
         snap.entities.push_back({s.id, static_cast<std::uint8_t>(EntityArchetype::Ship), s.pos,
-                                 s.yaw, anim, s.health, packShipPitch(s.pitch)});
+                                 s.yaw, packShipAnim(s.pilot != 0, s.hullVariant), s.health,
+                                 packShipPitch(s.pitch)});
     }
     // Threats first: if the entity cap ever bites, invisible-but-lethal NPCs and
     // rockets are far worse than an unrendered ammo box.

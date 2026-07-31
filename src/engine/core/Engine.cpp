@@ -7,6 +7,7 @@
 #include "game/EntityTypes.h"
 #include "game/Environment.h"
 #include "game/ShipControl.h"
+#include "game/ShipHulls.h"
 
 #include <GLFW/glfw3.h>
 #include <stb_image.h> // stbi_info: cheap header-probe validation for texture imports
@@ -92,6 +93,29 @@ ChunkMeshData makeCenteredBoxMesh(glm::vec3 half, std::uint16_t tile) {
 }
 } // namespace
 
+const Engine::ShipHullGpu& Engine::shipHullGpu(int variant) {
+    const int i = variant < 0 ? 0 : (variant >= static_cast<int>(m_shipHulls.size()) ? 0 : variant);
+    ShipHullGpu& slot = m_shipHulls[static_cast<std::size_t>(i)];
+    if (slot.attempted) return slot;
+    slot.attempted = true;
+    glm::vec3 half = kShipHalfExtents;
+    const auto model = loadShipHull(i, half);
+    if (!model) {
+        slot.halfExtents = kShipHalfExtents;
+        return slot;
+    }
+    slot.halfExtents = half;
+    slot.mesh = m_renderer.uploadChunkMesh(model->mesh);
+    MaterialDesc mat;
+    mat.tint = glm::vec3(0.92f, 0.94f, 0.98f);
+    mat.shininess = 40.0f;
+    if (!model->albedo.empty()) mat.albedo = m_renderer.loadTexture(model->albedo);
+    // Mild emissive so ships read in Space (dark ambient).
+    mat.emissive = glm::vec3(0.03f, 0.06f, 0.10f);
+    slot.material = m_renderer.createMaterial(mat);
+    return slot;
+}
+
 bool Engine::initClientSystems() {
     if (!m_window.init({})) return false;
     m_input.attach(m_window);
@@ -129,7 +153,7 @@ bool Engine::initClientSystems() {
                                    glm::vec3(1.0f, 0.96f, 0.88f));
     m_remotePlayerMesh = m_renderer.uploadChunkMesh(makeBoxMesh(0.35f, 1.8f, 2));
     m_pickupMesh = m_renderer.uploadChunkMesh(makeBoxMesh(0.15f, 0.3f, 3));
-    // H4: centered hull box, oriented with shipTransform each frame.
+    // H4: fallback box + pre-warm the CC-BY hull catalog (lazy loads on first use too).
     m_shipMesh = m_renderer.uploadChunkMesh(makeCenteredBoxMesh(kShipHalfExtents, 4));
     {
         MaterialDesc shipMat;
@@ -138,6 +162,7 @@ bool Engine::initClientSystems() {
         shipMat.shininess = 48.0f;
         m_shipMaterial = m_renderer.createMaterial(shipMat);
     }
+    for (int v = 0; v < kShipHullCount; ++v) (void)shipHullGpu(v);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -926,19 +951,25 @@ void Engine::render(float alpha) {
                            m_zombieWalkClip >= 0 ? m_zombieWalkClip : m_npcWalkClip,
                            e.anim / 255.0f, m_zombieMaterial);
             break;
-        case 9: { // Ship (H4): oriented hull mesh + thruster glow
+        case 9: { // Ship (H4): CC-BY hull mesh (or box fallback) + thruster glow
             const float pitch = unpackShipPitch(e.data);
+            const int variant = shipVariantFromAnim(e.anim);
+            const bool occupied = shipOccupiedFromAnim(e.anim);
             const glm::mat4 xform = shipTransform(e.pos, e.yaw, pitch);
-            if (m_shipMesh != 0)
+            const ShipHullGpu& hull = shipHullGpu(variant);
+            if (hull.mesh != 0)
+                m_renderer.submitMesh(hull.mesh, xform, hull.material);
+            else if (m_shipMesh != 0)
                 m_renderer.submitMesh(m_shipMesh, xform, m_shipMaterial);
             else
                 m_renderer.submitChunk(m_remotePlayerMesh, e.pos);
-            // Engine light slightly aft of center (local +Z is back).
+            // Engine light aft of center (local +Z is back); scale with hull length.
+            const float aft = hull.mesh != 0 ? hull.halfExtents.z * 0.85f : 1.6f;
             const glm::vec3 enginePos =
-                e.pos + shipOrientation(e.yaw, pitch) * glm::vec3(0.0f, 0.0f, 1.6f);
+                e.pos + shipOrientation(e.yaw, pitch) * glm::vec3(0.0f, 0.0f, aft);
             const glm::vec3 glow =
-                e.anim > 0 ? glm::vec3(0.25f, 0.9f, 1.0f) : glm::vec3(0.12f, 0.35f, 0.55f);
-            m_renderer.submitPointLight(enginePos, glow, e.anim > 0 ? 12.0f : 5.0f);
+                occupied ? glm::vec3(0.25f, 0.9f, 1.0f) : glm::vec3(0.12f, 0.35f, 0.55f);
+            m_renderer.submitPointLight(enginePos, glow, occupied ? 14.0f : 6.0f);
             break;
         }
         default:

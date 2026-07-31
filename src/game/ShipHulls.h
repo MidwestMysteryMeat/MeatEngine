@@ -1,0 +1,110 @@
+#pragma once
+#include "engine/asset/ModelLoader.h"
+#include "engine/core/Log.h"
+#include "game/ShipControl.h"
+
+#include <glm/glm.hpp>
+
+#include <array>
+#include <filesystem>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace meat {
+
+// H4 hull catalog — CC-BY 4.0 Fab placeholders staged under assets/models/ships/
+// (or resolved from G:\VaultCache when staged copies are missing).
+inline constexpr int kShipHullCount = 3;
+
+struct ShipHullDef {
+    const char* id;          // stable name
+    const char* stagedPath;  // project-relative preferred
+    const char* vaultPath;   // absolute fallback (local dev vault)
+    float targetLength;      // metres along longest axis after import
+    // Optional texture override when the FBX embeds no usable path (common for
+    // extracted Fab packs whose textures sit next to the mesh).
+    const char* stagedAlbedo;
+};
+
+inline const std::array<ShipHullDef, kShipHullCount>& shipHullDefs() {
+    static const std::array<ShipHullDef, kShipHullCount> kDefs = {{
+        {"cyber", "assets/models/ships/cyber_ship/ship.fbx",
+         "G:/VaultCache/FabLibrary/Floating_Cyber_Ship_JFG_-_Roblox_Showcase_Prop-64a45a1d/"
+         "fbx/floating-cyber-ship-jfg-_extracted/source/model.fbx",
+         6.5f, "assets/models/ships/cyber_ship/albedo.jpeg"},
+        {"star", "assets/models/ships/star_ship/ship.fbx",
+         "G:/VaultCache/FabLibrary/SpaceShip-14265e80/fbx/spaceship_extracted/source/"
+         "SpaceShip_extracted/SpaceShip.fbx",
+         8.0f, "assets/models/ships/star_ship/albedo.jpg"},
+        {"lowpoly", "assets/models/ships/lowpoly/scene.gltf",
+         "G:/VaultCache/FabLibrary/Lowpoly_Spaceship-69cc1137/gltf/converted/"
+         "lowpoly_spaceship_gltf_extracted/scene.gltf",
+         7.0f, "assets/models/ships/lowpoly/textures/freeble_baseColor.png"},
+    }};
+    return kDefs;
+}
+
+inline std::filesystem::path resolveShipHullPath(int variant) {
+    const auto& defs = shipHullDefs();
+    const int i = variant < 0 ? 0 : (variant >= kShipHullCount ? 0 : variant);
+    const ShipHullDef& d = defs[static_cast<std::size_t>(i)];
+    if (std::filesystem::exists(d.stagedPath)) return d.stagedPath;
+    if (std::filesystem::exists(d.vaultPath)) return d.vaultPath;
+    return d.stagedPath; // may fail at load; caller logs
+}
+
+// Load hull geometry sized to targetLength, centered (base on floor, XZ mid).
+// halfExtents is the post-import local AABB half-size for the kinematic collider.
+inline std::optional<StaticModel> loadShipHull(int variant, glm::vec3& outHalfExtents) {
+    const auto& defs = shipHullDefs();
+    const int i = variant < 0 ? 0 : (variant >= kShipHullCount ? 0 : variant);
+    const ShipHullDef& d = defs[static_cast<std::size_t>(i)];
+    const auto path = resolveShipHullPath(i);
+    if (!std::filesystem::exists(path)) {
+        log::warn("ship hull '{}': missing at '{}' (and vault fallback)", d.id, path.string());
+        outHalfExtents = kShipHalfExtents;
+        return std::nullopt;
+    }
+    // Probe raw size, then re-import at the scale that hits targetLength.
+    auto probe = loadStaticModel(path, {.scale = 1.0f, .center = false});
+    if (!probe) {
+        outHalfExtents = kShipHalfExtents;
+        return std::nullopt;
+    }
+    const glm::vec3 raw = probe->boundsMax - probe->boundsMin;
+    const float longest = std::max({raw.x, raw.y, raw.z, 0.01f});
+    const float scale = d.targetLength / longest;
+    auto model = loadStaticModel(path, {.scale = scale, .center = true});
+    if (!model) {
+        outHalfExtents = kShipHalfExtents;
+        return std::nullopt;
+    }
+    // Prefer staged albedo when Assimp didn't resolve the extracted pack's textures.
+    if (model->albedo.empty() && d.stagedAlbedo && std::filesystem::exists(d.stagedAlbedo))
+        model->albedo = d.stagedAlbedo;
+    const glm::vec3 size = model->boundsMax - model->boundsMin;
+    outHalfExtents = glm::max(size * 0.5f, glm::vec3(0.2f));
+    log::info("ship hull '{}': scale {:.4f}, half {:.2f}x{:.2f}x{:.2f}", d.id, scale,
+              outHalfExtents.x, outHalfExtents.y, outHalfExtents.z);
+    return model;
+}
+
+// EntityState.anim packing for ships: bit7 = occupied, low bits = hull variant.
+inline std::uint8_t packShipAnim(bool occupied, int variant) {
+    const auto v = static_cast<std::uint8_t>(variant < 0 ? 0 : variant & 0x7f);
+    return static_cast<std::uint8_t>((occupied ? 0x80u : 0u) | v);
+}
+inline int shipVariantFromAnim(std::uint8_t anim) { return static_cast<int>(anim & 0x7f); }
+inline bool shipOccupiedFromAnim(std::uint8_t anim) { return (anim & 0x80u) != 0; }
+
+// Decor props (station / junkyard) — vault or staged; optional.
+inline constexpr const char* kJunkyardStaged = "assets/models/ships/junkyard/set.fbx";
+inline constexpr const char* kJunkyardVault =
+    "G:/VaultCache/FabLibrary/SpaceShips_Junk_Yard_ASSET__part2_-81e5d377/fbx/"
+    "spaceships-junk-yard-ass_extracted/source/JunkYard2_SetTwo.fbx";
+inline constexpr const char* kStationVault =
+    "G:/VaultCache/FabLibrary/Spacestation_7_-_Procedural-bf84b4bd/gltf/converted/"
+    "spacestation_7_procedura_extracted/scene.gltf";
+
+} // namespace meat
