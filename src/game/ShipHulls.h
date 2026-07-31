@@ -14,12 +14,19 @@
 
 namespace meat {
 
-// H4 hull catalog — CC-BY 4.0 Fab placeholders staged under assets/models/ships/
+// H4 hull catalog — CC-BY 4.0 Fab free packs staged under assets/models/ships/
 // (or resolved from G:\VaultCache when staged copies are missing).
+// Authors (Fab seller names) — keep in sync with assets/ATTRIBUTION.md:
+//   cyber   → JamyzGenius  (Floating Cyber Ship JFG)
+//   star    → JazOone3D    (SpaceShip)
+//   lowpoly → ABJVNK       (Lowpoly Spaceship)
+// Decor: Sebastian Sosnowski (Junk Yard part2), Gerardo Justel (Spacestation 7).
 inline constexpr int kShipHullCount = 3;
 
 struct ShipHullDef {
     const char* id;          // stable name
+    const char* author;      // CC-BY credit (Fab user_seller_name)
+    const char* listing;     // Fab listing title
     const char* stagedPath;  // project-relative preferred
     const char* vaultPath;   // absolute fallback (local dev vault)
     float targetLength;      // metres along longest axis after import
@@ -30,15 +37,18 @@ struct ShipHullDef {
 
 inline const std::array<ShipHullDef, kShipHullCount>& shipHullDefs() {
     static const std::array<ShipHullDef, kShipHullCount> kDefs = {{
-        {"cyber", "assets/models/ships/cyber_ship/ship.fbx",
+        {"cyber", "JamyzGenius", "Floating Cyber Ship JFG - Roblox Showcase Prop",
+         "assets/models/ships/cyber_ship/ship.fbx",
          "G:/VaultCache/FabLibrary/Floating_Cyber_Ship_JFG_-_Roblox_Showcase_Prop-64a45a1d/"
          "fbx/floating-cyber-ship-jfg-_extracted/source/model.fbx",
          6.5f, "assets/models/ships/cyber_ship/albedo.jpeg"},
-        {"star", "assets/models/ships/star_ship/ship.fbx",
+        {"star", "JazOone3D", "SpaceShip",
+         "assets/models/ships/star_ship/ship.fbx",
          "G:/VaultCache/FabLibrary/SpaceShip-14265e80/fbx/spaceship_extracted/source/"
          "SpaceShip_extracted/SpaceShip.fbx",
          8.0f, "assets/models/ships/star_ship/albedo.jpg"},
-        {"lowpoly", "assets/models/ships/lowpoly/scene.gltf",
+        {"lowpoly", "ABJVNK", "Lowpoly Spaceship",
+         "assets/models/ships/lowpoly/scene.gltf",
          "G:/VaultCache/FabLibrary/Lowpoly_Spaceship-69cc1137/gltf/converted/"
          "lowpoly_spaceship_gltf_extracted/scene.gltf",
          7.0f, "assets/models/ships/lowpoly/textures/freeble_baseColor.png"},
@@ -86,8 +96,8 @@ inline std::optional<StaticModel> loadShipHull(int variant, glm::vec3& outHalfEx
         model->albedo = d.stagedAlbedo;
     const glm::vec3 size = model->boundsMax - model->boundsMin;
     outHalfExtents = glm::max(size * 0.5f, glm::vec3(0.2f));
-    log::info("ship hull '{}': scale {:.4f}, half {:.2f}x{:.2f}x{:.2f}", d.id, scale,
-              outHalfExtents.x, outHalfExtents.y, outHalfExtents.z);
+    log::info("ship hull '{}' by {}: scale {:.4f}, half {:.2f}x{:.2f}x{:.2f}", d.id, d.author,
+              scale, outHalfExtents.x, outHalfExtents.y, outHalfExtents.z);
     return model;
 }
 
@@ -100,10 +110,14 @@ inline int shipVariantFromAnim(std::uint8_t anim) { return static_cast<int>(anim
 inline bool shipOccupiedFromAnim(std::uint8_t anim) { return (anim & 0x80u) != 0; }
 
 // Decor props (station / junkyard) — vault or staged; optional.
+// junkyard → Sebastian Sosnowski (SpaceShips Junk Yard ASSET part2)
+// station  → Gerardo Justel (Spacestation 7 - Procedural)
+inline constexpr const char* kJunkyardAuthor = "Sebastian Sosnowski";
 inline constexpr const char* kJunkyardStaged = "assets/models/ships/junkyard/set.fbx";
 inline constexpr const char* kJunkyardVault =
     "G:/VaultCache/FabLibrary/SpaceShips_Junk_Yard_ASSET__part2_-81e5d377/fbx/"
     "spaceships-junk-yard-ass_extracted/source/JunkYard2_SetTwo.fbx";
+inline constexpr const char* kStationAuthor = "Gerardo Justel";
 inline constexpr const char* kStationStaged = "assets/models/ships/station/scene.gltf";
 inline constexpr const char* kStationVault =
     "G:/VaultCache/FabLibrary/Spacestation_7_-_Procedural-bf84b4bd/gltf/converted/"

@@ -334,20 +334,20 @@ void ServerSim::clearShipBody(Ship& ship) {
 
 void ServerSim::spawnSpaceDecor() {
     const glm::vec3 pad = defaultSpawnPos();
-    // Junkyard wreckage — small landmark near the pad.
+    // Junkyard wreckage — small landmark near the pad (© Sebastian Sosnowski, CC-BY 4.0).
     if (const std::string junk = resolveDecorPath(kJunkyardStaged, kJunkyardVault); !junk.empty()) {
         if (const auto t = decorTransform(junk, pad + glm::vec3(-16.0f, 0.0f, 12.0f), 14.0f, 0.6f)) {
             if (addProp(nullptr, junk, *t, 0))
-                log::info("server: space decor — junkyard wreck at pad offset");
+                log::info("server: space decor — junkyard wreck (© {})", kJunkyardAuthor);
         }
     }
-    // Spacestation — large distant landmark (vault ~31 MB; load once if present).
+    // Spacestation — large distant landmark (© Gerardo Justel, CC-BY 4.0; vault ~31 MB).
     if (const std::string station = resolveDecorPath(kStationStaged, kStationVault);
         !station.empty()) {
         if (const auto t =
                 decorTransform(station, pad + glm::vec3(0.0f, 8.0f, -70.0f), 55.0f, 0.2f)) {
             if (addProp(nullptr, station, *t, 0))
-                log::info("server: space decor — station landmark (~55 m)");
+                log::info("server: space decor — station landmark (© {})", kStationAuthor);
         } else {
             log::warn("server: station mesh at '{}' failed to load", station);
         }
@@ -377,9 +377,10 @@ void ServerSim::spawnDemoShip() {
         ship.pitch = 0.0f;
         ensureShipBody(ship);
         m_ships.push_back(ship);
-        log::info("server: ship {} hull={} half=({:.1f},{:.1f},{:.1f}) — Use (E) to board",
-                  ship.id, shipHullDefs()[static_cast<std::size_t>(ship.hullVariant)].id,
-                  ship.halfExtents.x, ship.halfExtents.y, ship.halfExtents.z);
+        const auto& hull = shipHullDefs()[static_cast<std::size_t>(ship.hullVariant)];
+        log::info("server: ship {} hull={} (© {}) half=({:.1f},{:.1f},{:.1f}) — Use (E) to board",
+                  ship.id, hull.id, hull.author, ship.halfExtents.x, ship.halfExtents.y,
+                  ship.halfExtents.z);
     }
     if (space) spawnSpaceDecor();
 }

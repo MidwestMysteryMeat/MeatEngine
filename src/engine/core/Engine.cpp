@@ -1161,6 +1161,8 @@ void Engine::render(float alpha) {
                         m_client.vehicleId());
         else
             ImGui::TextDisabled("near ship: E board");
+        // CC-BY requires naming authors when their art is shown (see assets/ATTRIBUTION.md).
+        ImGui::TextDisabled("ships: JamyzGenius / JazOone3D / ABJVNK  (CC-BY 4.0)");
         ImGui::Text("%.0f fps", ImGui::GetIO().Framerate);
         ImGui::End();
         drawInventoryUi();

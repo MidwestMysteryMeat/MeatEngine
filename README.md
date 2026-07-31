@@ -191,7 +191,8 @@ builds. Credit it as `MeatEngine by MysteryMeat`
 docs. The project and MysteryMeat names are not licensed for endorsement or promotion (§6).
 
 Third-party libraries stay under their own licenses ([THIRD_PARTY.md](THIRD_PARTY.md)).
-Bundled art/audio is CC-BY/CC0 with per-asset credits in
-[assets/ATTRIBUTION.md](assets/ATTRIBUTION.md) — those credits are required separately.
+Bundled art/audio is CC-BY/CC0 with **per-asset authors and titles** in
+[assets/ATTRIBUTION.md](assets/ATTRIBUTION.md) — those credits are required separately
+(e.g. H4 ships: JamyzGenius, JazOone3D, ABJVNK, Sebastian Sosnowski, Gerardo Justel).
 
 Previously MIT; relicensed to Apache-2.0 on 2026-07-30. Snapshots released under MIT stay MIT.

@@ -1,5 +1,12 @@
 # Stage CC-BY 4.0 Fab ship packs into assets/models/ships/ for H4.
 # Safe to re-run. Does not commit binaries.
+#
+# Authors (record in assets/ATTRIBUTION.md — required by CC-BY):
+#   cyber_ship  JamyzGenius          Floating Cyber Ship JFG
+#   star_ship   JazOone3D            SpaceShip
+#   lowpoly     ABJVNK               Lowpoly Spaceship
+#   junkyard    Sebastian Sosnowski  SpaceShips Junk Yard ASSET (part2)
+#   station     Gerardo Justel       Spacestation 7 - Procedural  (opt-in)
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 $dst = Join-Path $root "assets\models\ships"
