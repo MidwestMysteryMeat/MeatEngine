@@ -1255,9 +1255,11 @@ const NodeKind kPaletteKinds[] = {
     NodeKind::EventOnPlayerDeath, NodeKind::ActionLog,        NodeKind::ActionSetBlock,
     NodeKind::ActionSpawnPickup, NodeKind::GetPlayerCount,    NodeKind::GetItemId,
     NodeKind::Randi,             NodeKind::ConstInt,          NodeKind::ConstFloat,
-    NodeKind::ConstString,       NodeKind::Branch,            NodeKind::MathAdd,
-    NodeKind::MathGreater,       NodeKind::GetWorldObject,    NodeKind::HighlightObject,
-    NodeKind::PrintObject,
+    NodeKind::ConstString,       NodeKind::Branch,            NodeKind::Sequence,
+    NodeKind::MathAdd,           NodeKind::MathSubtract,      NodeKind::MathMultiply,
+    NodeKind::MathGreater,       NodeKind::MathEqual,         NodeKind::GetWorldObject,
+    NodeKind::GetPropPosition,   NodeKind::HighlightObject,   NodeKind::PrintObject,
+    NodeKind::GetBlock,
 };
 constexpr int kPaletteCount = static_cast<int>(sizeof(kPaletteKinds) / sizeof(kPaletteKinds[0]));
 
@@ -1545,8 +1547,10 @@ void RoomEditor::drawBlueprintDetails(EditorContext& ctx) {
             if (ImGui::InputInt("Count", &n->intD)) m_blueprintDirty = true;
     }
     if (n->kind == NodeKind::ConstFloat || n->kind == NodeKind::ActionSpawnPickup ||
-        n->kind == NodeKind::MathAdd) {
-        if (ImGui::InputFloat("Float", &n->floatA, 0.1f, 1.0f, "%.2f")) m_blueprintDirty = true;
+        n->kind == NodeKind::MathAdd || n->kind == NodeKind::HighlightObject) {
+        const char* flabel =
+            n->kind == NodeKind::HighlightObject ? "Duration (s)" : "Float";
+        if (ImGui::InputFloat(flabel, &n->floatA, 0.1f, 1.0f, "%.2f")) m_blueprintDirty = true;
     }
 
     if (n->kind == NodeKind::GetWorldObject) {

@@ -87,6 +87,24 @@ void ScriptHost::bind(ScriptApi api) {
         game.set_function("tick", [&a] { return static_cast<double>(a.tick()); });
     if (a.itemId)
         game.set_function("item_id", [&a](const std::string& n) { return a.itemId(n); });
+    if (a.highlightProp)
+        game.set_function("highlight_prop",
+                          [&a](int id, double seconds) {
+                              a.highlightProp(id, static_cast<float>(seconds));
+                          });
+    if (a.propPos)
+        game.set_function("prop_pos", [&a](int id, sol::this_state ts) -> sol::object {
+            float x = 0, y = 0, z = 0;
+            if (!a.propPos(id, x, y, z)) return sol::make_object(ts, sol::lua_nil);
+            sol::state_view lua(ts);
+            sol::table t = lua.create_table(3, 0);
+            t[1] = x;
+            t[2] = y;
+            t[3] = z;
+            return sol::make_object(ts, t);
+        });
+    if (a.propCount)
+        game.set_function("prop_count", [&a] { return a.propCount(); });
 }
 
 bool ScriptHost::loadDir(const std::string& dir) {

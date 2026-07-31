@@ -21,7 +21,8 @@ namespace meat {
 
 enum class MsgType : std::uint8_t {
     Hello = 1, Welcome, Command, Snapshot, VoxelOp, Inventory, BatchVoxelOp, DeltaSnapshot,
-    PlaceProp, PropAdded, RemoveProp, MoveProp
+    PlaceProp, PropAdded, RemoveProp, MoveProp,
+    ScriptFx // C6: server→client script visual FX (highlight prop, etc.)
 };
 
 struct HelloMsg {
@@ -122,6 +123,14 @@ struct MovePropMsg {
     glm::mat4 transform{1.0f};
 };
 
+// Server→client: blueprint/script visual FX. kind 0 = prop highlight (id = prop id).
+struct ScriptFxMsg {
+    std::uint8_t kind = 0; // 0 highlight prop
+    std::uint32_t id = 0;
+    float duration = 2.0f;
+    float r = 0.15f, g = 0.65f, b = 1.0f;
+};
+
 // Snapshots larger than this are rejected on decode (and clamped on encode) so
 // a hostile packet can never make us allocate an absurd player list.
 inline constexpr std::size_t kMaxSnapshotPlayers = 64;
@@ -154,6 +163,8 @@ void encode(const RemovePropMsg& msg, ByteWriter& w);
 bool decode(RemovePropMsg& msg, ByteReader& r);
 void encode(const MovePropMsg& msg, ByteWriter& w);
 bool decode(MovePropMsg& msg, ByteReader& r);
+void encode(const ScriptFxMsg& msg, ByteWriter& w);
+bool decode(ScriptFxMsg& msg, ByteReader& r);
 
 constexpr MsgType msgTypeOf(const HelloMsg&) { return MsgType::Hello; }
 constexpr MsgType msgTypeOf(const WelcomeMsg&) { return MsgType::Welcome; }
@@ -164,6 +175,7 @@ constexpr MsgType msgTypeOf(const PlacePropMsg&) { return MsgType::PlaceProp; }
 constexpr MsgType msgTypeOf(const PropAddedMsg&) { return MsgType::PropAdded; }
 constexpr MsgType msgTypeOf(const RemovePropMsg&) { return MsgType::RemoveProp; }
 constexpr MsgType msgTypeOf(const MovePropMsg&) { return MsgType::MoveProp; }
+constexpr MsgType msgTypeOf(const ScriptFxMsg&) { return MsgType::ScriptFx; }
 
 // nullopt if the packet is empty or the type byte is not a known MsgType.
 std::optional<MsgType> peekType(std::span<const std::byte> packet);

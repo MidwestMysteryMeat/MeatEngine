@@ -94,6 +94,38 @@ const GraphPinDesc kPrintObject[] = {
     {"then", PinKind::Exec, false},
     {"object", PinKind::Object, true},
 };
+const GraphPinDesc kGetPropPos[] = {
+    {"object", PinKind::Object, true},
+    {"x", PinKind::Float, false},
+    {"y", PinKind::Float, false},
+    {"z", PinKind::Float, false},
+};
+const GraphPinDesc kGetBlock[] = {
+    {"x", PinKind::Int, true},
+    {"y", PinKind::Int, true},
+    {"z", PinKind::Int, true},
+    {"block", PinKind::Int, false},
+};
+const GraphPinDesc kSequence[] = {
+    {"exec", PinKind::Exec, true},
+    {"then0", PinKind::Exec, false},
+    {"then1", PinKind::Exec, false},
+};
+const GraphPinDesc kMathSub[] = {
+    {"a", PinKind::Float, true},
+    {"b", PinKind::Float, true},
+    {"diff", PinKind::Float, false},
+};
+const GraphPinDesc kMathMul[] = {
+    {"a", PinKind::Float, true},
+    {"b", PinKind::Float, true},
+    {"prod", PinKind::Float, false},
+};
+const GraphPinDesc kMathEqual[] = {
+    {"a", PinKind::Float, true},
+    {"b", PinKind::Float, true},
+    {"eq", PinKind::Bool, false},
+};
 
 struct LayoutRef {
     const GraphPinDesc* pins;
@@ -131,6 +163,12 @@ LayoutRef layoutOf(NodeKind k) {
     case NodeKind::GetWorldObject: return {kGetWorldObject, 3};
     case NodeKind::HighlightObject: return {kHighlightObject, 3};
     case NodeKind::PrintObject: return {kPrintObject, 3};
+    case NodeKind::GetPropPosition: return {kGetPropPos, 4};
+    case NodeKind::GetBlock: return {kGetBlock, 4};
+    case NodeKind::Sequence: return {kSequence, 3};
+    case NodeKind::MathSubtract: return {kMathSub, 3};
+    case NodeKind::MathMultiply: return {kMathMul, 3};
+    case NodeKind::MathEqual: return {kMathEqual, 3};
     }
     return {kActionLog, 3};
 }
@@ -174,6 +212,12 @@ std::string kindToString(NodeKind k) {
     case NodeKind::GetWorldObject: return "GetWorldObject";
     case NodeKind::HighlightObject: return "HighlightObject";
     case NodeKind::PrintObject: return "PrintObject";
+    case NodeKind::GetPropPosition: return "GetPropPosition";
+    case NodeKind::GetBlock: return "GetBlock";
+    case NodeKind::Sequence: return "Sequence";
+    case NodeKind::MathSubtract: return "MathSubtract";
+    case NodeKind::MathMultiply: return "MathMultiply";
+    case NodeKind::MathEqual: return "MathEqual";
     }
     return "ActionLog";
 }
@@ -198,6 +242,12 @@ NodeKind kindFromString(const std::string& s) {
     if (s == "GetWorldObject") return NodeKind::GetWorldObject;
     if (s == "HighlightObject") return NodeKind::HighlightObject;
     if (s == "PrintObject") return NodeKind::PrintObject;
+    if (s == "GetPropPosition") return NodeKind::GetPropPosition;
+    if (s == "GetBlock") return NodeKind::GetBlock;
+    if (s == "Sequence") return NodeKind::Sequence;
+    if (s == "MathSubtract") return NodeKind::MathSubtract;
+    if (s == "MathMultiply") return NodeKind::MathMultiply;
+    if (s == "MathEqual") return NodeKind::MathEqual;
     return NodeKind::ActionLog;
 }
 
@@ -281,6 +331,39 @@ std::string emitDataExpr(EmitCtx& ctx, int nodeId, int outPin) {
         else
             r = escapeLuaString(n.strA.empty() ? "object" : n.strA);
         break;
+    case NodeKind::GetPropPosition: {
+        // Emit a local table lookup once per unique source; simple form per pin.
+        const std::string obj = emitInputExpr(ctx, n, 0, std::to_string(n.intA));
+        const char* key = outPin == 1 ? "1" : outPin == 2 ? "2" : "3";
+        r = "((function() local p=game.prop_pos(" + obj + "); return p and p[" + key +
+            "] or 0 end)())";
+        break;
+    }
+    case NodeKind::GetBlock: {
+        const std::string x = emitInputExpr(ctx, n, 0, std::to_string(n.intA));
+        const std::string y = emitInputExpr(ctx, n, 1, std::to_string(n.intB));
+        const std::string z = emitInputExpr(ctx, n, 2, std::to_string(n.intC));
+        r = "game.get_block(" + x + ", " + y + ", " + z + ")";
+        break;
+    }
+    case NodeKind::MathSubtract: {
+        const std::string a = emitInputExpr(ctx, n, 0, "0");
+        const std::string b = emitInputExpr(ctx, n, 1, "0");
+        r = "((" + a + ") - (" + b + "))";
+        break;
+    }
+    case NodeKind::MathMultiply: {
+        const std::string a = emitInputExpr(ctx, n, 0, "1");
+        const std::string b = emitInputExpr(ctx, n, 1, "1");
+        r = "((" + a + ") * (" + b + "))";
+        break;
+    }
+    case NodeKind::MathEqual: {
+        const std::string a = emitInputExpr(ctx, n, 0, "0");
+        const std::string b = emitInputExpr(ctx, n, 1, "0");
+        r = "((" + a + ") == (" + b + "))";
+        break;
+    }
     default:
         r = "0";
         break;
@@ -352,11 +435,29 @@ void emitExecChain(std::ostringstream& out, EmitCtx& ctx, int nodeId, int indent
         out << pad << "end\n";
         break;
     }
-    case NodeKind::HighlightObject:
+    case NodeKind::HighlightObject: {
+        const std::string obj = emitInputExpr(ctx, n, 2, std::to_string(n.intA));
+        const float dur = n.floatA > 0.05f ? n.floatA : 2.0f;
+        out << pad << "game.highlight_prop(" << obj << ", " << dur << ")\n";
+        nextExec(1);
+        break;
+    }
     case NodeKind::PrintObject: {
         const std::string obj = emitInputExpr(ctx, n, 2, std::to_string(n.intA));
         out << pad << "game.log(\"[blueprint] object \" .. tostring(" << obj << "))\n";
         nextExec(1);
+        break;
+    }
+    case NodeKind::Sequence: {
+        // Fan-out: run then0 then then1 (UE Sequence-lite, two outputs).
+        if (const GraphLink* L = ctx.g.findExecOut(nodeId, 1)) {
+            std::unordered_set<int> sub = path;
+            emitExecChain(out, ctx, L->toNode, indent, sub);
+        }
+        if (const GraphLink* L = ctx.g.findExecOut(nodeId, 2)) {
+            std::unordered_set<int> sub = path;
+            emitExecChain(out, ctx, L->toNode, indent, sub);
+        }
         break;
     }
     default:
@@ -415,6 +516,12 @@ const char* nodeKindName(NodeKind kind) {
     case NodeKind::GetWorldObject: return "Get World Object";
     case NodeKind::HighlightObject: return "Highlight Object";
     case NodeKind::PrintObject: return "Print Object";
+    case NodeKind::GetPropPosition: return "Get Prop Position";
+    case NodeKind::GetBlock: return "Get Block";
+    case NodeKind::Sequence: return "Sequence";
+    case NodeKind::MathSubtract: return "Subtract";
+    case NodeKind::MathMultiply: return "Multiply";
+    case NodeKind::MathEqual: return "Equal";
     }
     return "Node";
 }
@@ -427,10 +534,15 @@ const char* nodeKindCategory(NodeKind kind) {
     case NodeKind::ActionSpawnPickup:
     case NodeKind::HighlightObject:
     case NodeKind::PrintObject: return "Action";
-    case NodeKind::Branch: return "Flow";
+    case NodeKind::Branch:
+    case NodeKind::Sequence: return "Flow";
     case NodeKind::MathAdd:
-    case NodeKind::MathGreater: return "Math";
-    case NodeKind::GetWorldObject: return "Object";
+    case NodeKind::MathGreater:
+    case NodeKind::MathSubtract:
+    case NodeKind::MathMultiply:
+    case NodeKind::MathEqual: return "Math";
+    case NodeKind::GetWorldObject:
+    case NodeKind::GetPropPosition: return "Object";
     default: return "Data";
     }
 }
@@ -490,6 +602,12 @@ int NodeGraph::addNode(NodeKind kind, float x, float y) {
     if (kind == NodeKind::GetWorldObject) {
         n.strA = "None";
         n.intA = 0;
+    }
+    if (kind == NodeKind::HighlightObject) n.floatA = 2.0f;
+    if (kind == NodeKind::GetBlock) {
+        n.intA = 4;
+        n.intB = 8;
+        n.intC = 4;
     }
     nodes.push_back(n);
     return n.id;

@@ -154,6 +154,20 @@ void Client::pump(VoxelWorld& voxels, PhysicsWorld& physics, CharacterController
             }
             break;
         }
+        case MsgType::ScriptFx: {
+            ScriptFxMsg msg;
+            if (!decode(msg, reader)) break;
+            if (msg.kind == 0 && msg.id != 0) {
+                ScriptFx fx;
+                fx.propId = msg.id;
+                fx.remaining = std::max(0.1f, msg.duration);
+                fx.color = glm::vec3(msg.r, msg.g, msg.b);
+                // Replace existing highlight for the same prop.
+                std::erase_if(m_scriptFx, [&](const ScriptFx& f) { return f.propId == fx.propId; });
+                m_scriptFx.push_back(fx);
+            }
+            break;
+        }
         default:
             break;
         }
@@ -259,6 +273,11 @@ std::vector<PlayerState> Client::remoteViewStates() const {
         out.push_back(blended);
     }
     return out;
+}
+
+void Client::tickScriptFx(float dt) {
+    for (ScriptFx& fx : m_scriptFx) fx.remaining -= dt;
+    std::erase_if(m_scriptFx, [](const ScriptFx& f) { return f.remaining <= 0.0f; });
 }
 
 } // namespace meat

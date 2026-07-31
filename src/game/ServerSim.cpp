@@ -292,6 +292,45 @@ void ServerSim::setupScripting() {
         if (n == "shotgun") return m_defaultItems.shotgun;
         return 0;
     };
+    // C6: prop helpers for blueprints (Get World Object / Highlight Object).
+    api.highlightProp = [this](int propId, float seconds) {
+        if (propId <= 0) return;
+        const float dur = std::clamp(seconds, 0.1f, 30.0f);
+        bool found = false;
+        for (const WorldProp& p : m_props) {
+            if (static_cast<int>(p.id) == propId) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) return;
+        ScriptFxMsg fx;
+        fx.kind = 0;
+        fx.id = static_cast<std::uint32_t>(propId);
+        fx.duration = dur;
+        fx.r = 0.15f;
+        fx.g = 0.65f;
+        fx.b = 1.0f;
+        if (m_activeTransport) {
+            for (const auto& [peer, pl] : m_players) {
+                if (pl) m_activeTransport->send(peer, pack(fx), true);
+            }
+        }
+        log::info("[lua] highlight_prop {} for {:.1f}s", propId, dur);
+    };
+    api.propPos = [this](int propId, float& x, float& y, float& z) -> bool {
+        for (const WorldProp& p : m_props) {
+            if (static_cast<int>(p.id) == propId) {
+                const glm::vec3 pos = glm::vec3(p.transform[3]);
+                x = pos.x;
+                y = pos.y;
+                z = pos.z;
+                return true;
+            }
+        }
+        return false;
+    };
+    api.propCount = [this] { return static_cast<int>(m_props.size()); };
     m_scripts.bind(std::move(api));
     m_scripts.loadDir(m_scriptDir);
 }

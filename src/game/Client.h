@@ -72,6 +72,15 @@ public:
     float ownYaw() const { return m_ownYaw; }
     float ownPitch() const { return m_ownPitch; }
 
+    // C6 script FX (prop highlights from blueprints). Tick down remaining; Engine draws.
+    struct ScriptFx {
+        std::uint32_t propId = 0;
+        float remaining = 0.0f;
+        glm::vec3 color{0.15f, 0.65f, 1.0f};
+    };
+    void tickScriptFx(float dt);
+    const std::vector<ScriptFx>& scriptFx() const { return m_scriptFx; }
+
 private:
     void applySnapshot(const SnapshotMsg& snap, PhysicsWorld& physics,
                        CharacterController& player);
@@ -100,6 +109,7 @@ private:
     // Props reported by the server this frame, drained by the Engine each loop.
     std::vector<PropAddedMsg> m_newProps;
     std::vector<std::uint32_t> m_removedProps;
+    std::vector<ScriptFx> m_scriptFx;
     // Newest snapshot tick we hold; piggybacked to the server as the delta-baseline
     // ack on every CommandMsg. 0 until the first snapshot lands (server keyframes).
     std::uint64_t m_ackTick = 0;

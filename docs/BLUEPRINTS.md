@@ -28,10 +28,13 @@ The editor chrome uses a **UE5 Slate-inspired** dark theme (charcoal panels, blu
 |----------|--------|
 | Event | Event BeginPlay, Event Tick, Player Join/Death |
 | Action | Print String, Set Block, Spawn Pickup, Highlight/Print Object |
-| Data | Player Count, Item Id, Random Integer, Integer/Float/String |
-| Object | Get World Object (prop id + name; viewport highlight) |
-| Flow | Branch |
-| Math | Add, Greater |
+| Data | Player Count, Item Id, Random Integer, Integer/Float/String, Get Block |
+| Object | Get World Object, Get Prop Position (runtime `game.prop_pos`) |
+| Flow | Branch, Sequence |
+| Math | Add, Subtract, Multiply, Greater, Equal |
+
+**Runtime highlight:** `Highlight Object` emits `game.highlight_prop(id, seconds)` → server
+`ScriptFxMsg` → all clients show cyan prop markers (not editor-only).
 
 ## Design notes
 

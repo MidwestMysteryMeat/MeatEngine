@@ -686,6 +686,8 @@ void Engine::simulateClientTick(const PlayerCommand& frameCmd) {
     // ticks still send commands so the server integrates thrusters. Passengers
     // do not thruster-predict (vehicleRole == 2).
 
+    m_client.tickScriptFx(kFixedDt); // C6 blueprint highlight timers
+
     // Footsteps: paced by horizontal speed while grounded (on foot only).
     const glm::vec3 vel = m_player.velocity();
     const float speed = glm::length(glm::vec2(vel.x, vel.z));
@@ -1048,6 +1050,27 @@ void Engine::render(float alpha) {
     for (const EditorProp& prop : m_editorProps) { // editor-placed decoration meshes
         const EditorPropMesh& pm = editorPropMesh(prop.assetPath);
         if (pm.mesh != 0) m_renderer.submitMesh(pm.mesh, prop.transform, pm.material);
+    }
+
+    // C6: blueprint/script prop highlights (server ScriptFx → all clients).
+    for (const Client::ScriptFx& fx : m_client.scriptFx()) {
+        const EditorProp* prop = nullptr;
+        for (const EditorProp& p : m_editorProps) {
+            if (p.id == fx.propId) {
+                prop = &p;
+                break;
+            }
+        }
+        if (!prop) continue;
+        const glm::vec3 center = glm::vec3(prop->transform[3]);
+        const float pulse = 0.55f + 0.45f * std::abs(std::sin(fx.remaining * 8.0f));
+        const glm::vec3 col = fx.color * pulse;
+        constexpr float r = 1.2f;
+        m_renderer.submitPointLight(center + glm::vec3(r, 0.5f, r), col, 4.0f);
+        m_renderer.submitPointLight(center + glm::vec3(-r, 0.5f, r), col, 4.0f);
+        m_renderer.submitPointLight(center + glm::vec3(r, 0.5f, -r), col, 4.0f);
+        m_renderer.submitPointLight(center + glm::vec3(-r, 0.5f, -r), col, 4.0f);
+        m_renderer.submitPointLight(center + glm::vec3(0.0f, 1.5f, 0.0f), col * 1.2f, 5.0f);
     }
 
     for (const EditorLight& light : m_editorLights) { // placed lights are world lights

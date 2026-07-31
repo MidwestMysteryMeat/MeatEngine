@@ -20,6 +20,11 @@ struct ScriptApi {
     std::function<std::uint64_t()> tick;
     // Named item ids the default game exposes, so scripts don't hardcode wire ids.
     std::function<int(const std::string&)> itemId;        // "ammo9mm" → id, 0 if unknown
+    // C6 object helpers (world props / blueprint Get World Object).
+    std::function<void(int propId, float seconds)> highlightProp; // networked cyan pulse
+    // Returns true and writes x,y,z when prop id exists.
+    std::function<bool(int propId, float& x, float& y, float& z)> propPos;
+    std::function<int()> propCount;
 };
 
 // Embeds Lua (sol2) with a sandboxed standard library. Loads scripts from a

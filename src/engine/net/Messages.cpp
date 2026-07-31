@@ -228,15 +228,29 @@ bool decode(MovePropMsg& msg, ByteReader& r) {
     return r.read(msg.id) && readMat4(r, msg.transform);
 }
 
+void encode(const ScriptFxMsg& msg, ByteWriter& w) {
+    w.write(msg.kind);
+    w.write(msg.id);
+    w.write(msg.duration);
+    w.write(msg.r);
+    w.write(msg.g);
+    w.write(msg.b);
+}
+
+bool decode(ScriptFxMsg& msg, ByteReader& r) {
+    return r.read(msg.kind) && r.read(msg.id) && r.read(msg.duration) && r.read(msg.r) &&
+           r.read(msg.g) && r.read(msg.b);
+}
+
 std::optional<MsgType> peekType(std::span<const std::byte> packet) {
     if (packet.empty()) {
         return std::nullopt;
     }
     const auto raw = static_cast<std::uint8_t>(packet.front());
-    // MoveProp is the last enumerator — new message types must extend this bound
+    // ScriptFx is the last enumerator — new message types must extend this bound
     // or unpack()/peekType reject them as unknown.
     if (raw < static_cast<std::uint8_t>(MsgType::Hello) ||
-        raw > static_cast<std::uint8_t>(MsgType::MoveProp)) {
+        raw > static_cast<std::uint8_t>(MsgType::ScriptFx)) {
         return std::nullopt;
     }
     return static_cast<MsgType>(raw);

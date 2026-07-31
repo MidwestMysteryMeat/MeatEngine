@@ -34,8 +34,15 @@ enum class NodeKind : std::uint8_t {
     MathGreater,
     // Object / world (editor highlight + prop id into scripts)
     GetWorldObject,   // pure: objectId + name from strA/intA (world prop id)
-    HighlightObject,  // action: log + editor selects/highlights prop by id
+    HighlightObject,  // action: game.highlight_prop (networked cyan pulse)
     PrintObject,      // action: log object id/name
+    GetPropPosition,  // pure: x,y,z from prop id via game.prop_pos
+    GetBlock,         // pure: game.get_block
+    // Flow / math extras
+    Sequence,         // exec in → then0, then1 (fan-out)
+    MathSubtract,
+    MathMultiply,
+    MathEqual,
 };
 
 enum class PinKind : std::uint8_t {
