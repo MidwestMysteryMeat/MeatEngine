@@ -40,6 +40,10 @@ target_link_libraries(MeatEngine PRIVATE
     ozz_animation
     ozz_animation_offline
     ozz_geometry
+    enkiTS
+    EnTT::EnTT
+    Bitsery::bitsery
+    fastnoiselite
 )
 
 if(MSVC)

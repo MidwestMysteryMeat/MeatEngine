@@ -104,6 +104,30 @@ FetchContent_Declare(ozz
     GIT_REPOSITORY https://github.com/guillaumeblanc/ozz-animation
     GIT_TAG 0.16.0 GIT_SHALLOW ON)
 
+# ---- enkiTS (zlib): task scheduler for parallel chunk meshing / worldgen ----
+set(ENKITS_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(ENKITS_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(enkits
+    GIT_REPOSITORY https://github.com/dougbinks/enkiTS
+    GIT_TAG v1.11 GIT_SHALLOW ON)
+
+# ---- EnTT (MIT): sparse-set ECS, adopted incrementally behind the registry --
+FetchContent_Declare(entt
+    GIT_REPOSITORY https://github.com/skypjack/entt
+    GIT_TAG v3.13.2 GIT_SHALLOW ON)
+
+# ---- bitsery (MIT): bit-packing/quantization for delta snapshots ------------
+set(BITSERY_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(BITSERY_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(bitsery
+    GIT_REPOSITORY https://github.com/fraillt/bitsery
+    GIT_TAG v5.2.4 GIT_SHALLOW ON)
+
+# ---- FastNoiseLite (MIT): single-header noise for worldgen ------------------
+FetchContent_Declare(fastnoiselite
+    GIT_REPOSITORY https://github.com/Auburn/FastNoiseLite
+    GIT_TAG v1.1.1 GIT_SHALLOW ON)
+
 # ---- Header-only: stb, miniaudio, json --------------------------------------
 FetchContent_Declare(stb_src
     GIT_REPOSITORY https://github.com/nothings/stb
@@ -118,7 +142,15 @@ FetchContent_Declare(nlohmann_json
 
 FetchContent_MakeAvailable(glfw glad glm assimp joltphysics lua_src sol2
                            imgui_src imguizmo_src enet stb_src miniaudio_src nlohmann_json
-                           recastnavigation ozz)
+                           recastnavigation ozz enkits entt bitsery)
+
+# FastNoiseLite is a single header; skip its root CMake (non-lib targets) and expose the dir.
+FetchContent_GetProperties(fastnoiselite)
+if(NOT fastnoiselite_POPULATED)
+    FetchContent_Populate(fastnoiselite)
+endif()
+add_library(fastnoiselite INTERFACE)
+target_include_directories(fastnoiselite INTERFACE ${fastnoiselite_SOURCE_DIR}/Cpp)
 
 # ENet's CMakeLists predates usage-requirement style; export its include dir.
 target_include_directories(enet PUBLIC ${enet_SOURCE_DIR}/include)
