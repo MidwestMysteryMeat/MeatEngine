@@ -134,6 +134,16 @@ std::vector<RawLocal> sampleClipRawTrs(const SkeletalModel& model, const AnimCli
 // Forward pass over the topologically ordered bones: parents are always
 // resolved before their children, so one loop composes every global.
 Pose resolve(const SkeletalModel& model, const std::vector<glm::mat4>& locals) {
+    return resolveLocals(model, locals, nullptr);
+}
+
+} // namespace
+
+// Public resolve: skinning matrices (+ optional model-space globals for IK). rootInverse
+// (GlobalInverseTransform) cancels the scene-root transform Assimp bakes into every offset
+// matrix — without it the whole rig inherits the FBX unit scale (~100x) and shatters.
+Pose resolveLocals(const SkeletalModel& model, const std::vector<glm::mat4>& locals,
+                   std::vector<glm::mat4>* outGlobals) {
     const std::size_t count = model.bones.size();
     std::vector<glm::mat4> globals(count);
     Pose pose;
@@ -143,15 +153,11 @@ Pose resolve(const SkeletalModel& model, const std::vector<glm::mat4>& locals) {
         const glm::mat4& parentGlobal =
             bone.parent >= 0 ? globals[static_cast<std::size_t>(bone.parent)] : glm::mat4(1.0f);
         globals[b] = parentGlobal * bone.pre * locals[b];
-        // rootInverse (GlobalInverseTransform) cancels the scene-root transform
-        // that Assimp bakes into every offset matrix — without it the whole rig
-        // inherits the FBX unit scale (~100x) and shatters.
         pose.skinningMatrices[b] = model.rootInverse * globals[b] * bone.offset;
     }
+    if (outGlobals) *outGlobals = std::move(globals);
     return pose;
 }
-
-} // namespace
 
 Pose samplePose(const SkeletalModel& model, const AnimClip& clip, float timeSeconds) {
     // Identical result to the old inline body; the per-bone local math now lives in
@@ -187,8 +193,8 @@ Trs blendTrs(const Trs& a, const Trs& b, float w) {
 // Y~100. At w=0 this is bit-identical to samplePose(clipA) (blendTrs returns a; the reconciliation
 // line matches sampleLocalMatrices exactly), so the clean single-clip path and the blend agree.
 // w clamps 0→A, 1→B; a 1D blend space passes the same phase to both.
-Pose blendPose(const SkeletalModel& model, const AnimClip& clipA, float tA,
-               const AnimClip& clipB, float tB, float w) {
+std::vector<glm::mat4> blendLocalMatrices(const SkeletalModel& model, const AnimClip& clipA,
+                                          float tA, const AnimClip& clipB, float tB, float w) {
     w = glm::clamp(w, 0.0f, 1.0f);
     const std::vector<RawLocal> a = sampleClipRawTrs(model, clipA, tA);
     const std::vector<RawLocal> b = sampleClipRawTrs(model, clipB, tB);
@@ -206,7 +212,12 @@ Pose blendPose(const SkeletalModel& model, const AnimClip& clipA, float tA,
             locals[i] = bone.localBind;
         }
     }
-    return resolve(model, locals);
+    return locals;
+}
+
+Pose blendPose(const SkeletalModel& model, const AnimClip& clipA, float tA,
+               const AnimClip& clipB, float tB, float w) {
+    return resolve(model, blendLocalMatrices(model, clipA, tA, clipB, tB, w));
 }
 
 Pose bindPose(const SkeletalModel& model) {

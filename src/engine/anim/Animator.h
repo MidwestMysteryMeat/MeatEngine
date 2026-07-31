@@ -38,6 +38,16 @@ Trs blendTrs(const Trs& a, const Trs& b, float w);
 Pose blendPose(const SkeletalModel& model, const AnimClip& clipA, float tA,
                const AnimClip& clipB, float tB, float w);
 
+// The per-bone LOCAL matrices of a two-clip blend (blendPose's body minus the resolve). Exposed
+// so a post-pass (e.g. foot IK) can edit joint locals before the final resolve.
+std::vector<glm::mat4> blendLocalMatrices(const SkeletalModel& model, const AnimClip& clipA,
+                                          float tA, const AnimClip& clipB, float tB, float w);
+
+// Resolve per-bone locals to skinning matrices; if outGlobals is non-null it also receives each
+// bone's model-space global transform (needed by IK, which works in model space).
+Pose resolveLocals(const SkeletalModel& model, const std::vector<glm::mat4>& locals,
+                   std::vector<glm::mat4>* outGlobals);
+
 // Sample a clip at an absolute time (seconds since the clip started; wraps by
 // duration, so a monotonically growing accumulator loops for free). Bones the
 // clip has no track for hold their bind-pose local transform. PURE function:

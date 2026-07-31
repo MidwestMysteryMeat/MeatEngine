@@ -429,6 +429,11 @@ void Engine::loadNpcActor() {
         } else {
             log::warn("humanoid facing: no foot/toe bones found — yaw offset stays 0");
         }
+
+        // Two-bone foot-IK leg chains (hip/knee/ankle + knee hinge axis + sole offset).
+        m_footIkRig = buildFootIkRig(mdl, m_npcActor->transform);
+        log::info("foot IK: legs {} (soleOffset {:.3f})",
+                  m_footIkRig.valid() ? "found" : "MISSING", m_footIkRig.soleOffset);
     }
 }
 
@@ -564,33 +569,51 @@ void Engine::render(float alpha) {
                                     MaterialHandle material) {
         if (m_npcActor && m_npcActor->mesh != 0) {
             const float t = m_npcActor->time + 0.37f * static_cast<float>(id % 13);
+            const float w = glm::clamp(walkWeight, 0.0f, 1.0f);
+            // Whole-body drop so the planted foot stays on the floor through the walk cycle.
+            float footY = 0.0f;
+            if (idleClip >= 0 && walkClip >= 0)
+                footY = glm::mix(footYAt(idleClip, t), footYAt(walkClip, t), w);
+            else if (m_npcActor->hasRealClip)
+                footY = footYAt(m_npcActor->clipIndex, t);
+            const glm::mat4 xform = glm::translate(glm::mat4(1.0f), pos - glm::vec3(0, footY, 0)) *
+                                    glm::rotate(glm::mat4(1.0f), yaw + kHumanoidYawOffset,
+                                                glm::vec3(0, 1, 0)) *
+                                    m_npcActor->transform;
             Pose pose;
             if (idleClip >= 0 && walkClip >= 0) {
-                // Idle↔walk blend by the server's AUTHORITATIVE walk weight (EntityState.anim).
-                // Deriving speed client-side from interpolated positions read ~0 (interp smooths
-                // per-frame deltas to nothing) and froze every NPC in the idle pose.
-                const float w = glm::clamp(walkWeight, 0.0f, 1.0f);
-                pose = blendPose(m_npcActor->model, m_npcActor->model.clips[idleClip], t,
-                                 m_npcActor->model.clips[walkClip], t, w);
+                // Idle↔walk blend by the server's AUTHORITATIVE walk weight (EntityState.anim);
+                // client-derived speed read ~0 (interp) and froze NPCs in idle.
+                std::vector<glm::mat4> locals =
+                    blendLocalMatrices(m_npcActor->model, m_npcActor->model.clips[idleClip], t,
+                                       m_npcActor->model.clips[walkClip], t, w);
+                // Two-bone foot IK plants each foot on the terrain under it (steps/slopes). No-op on
+                // flat ground (each foot is already at/above its target), so no regression there.
+                if (m_footIkRig.valid()) {
+                    std::vector<glm::mat4> globals;
+                    resolveLocals(m_npcActor->model, locals, &globals);
+                    const glm::vec3 fwd(-std::sin(yaw), 0.0f, -std::cos(yaw)); // facing = knee pole
+                    const auto groundY = [&](float wx, float wz) -> float {
+                        const int vx = static_cast<int>(std::floor(wx / kVoxelSize));
+                        const int vz = static_cast<int>(std::floor(wz / kVoxelSize));
+                        const int vy0 = static_cast<int>(std::floor(pos.y / kVoxelSize));
+                        for (int vy = vy0 + 1; vy >= vy0 - 4; --vy)
+                            if (m_voxels.blockRegistry()
+                                    .get(m_voxels.blockAt(glm::ivec3(vx, vy, vz)))
+                                    .solid)
+                                return static_cast<float>(vy + 1) * kVoxelSize;
+                        return pos.y;
+                    };
+                    applyFootIk(m_npcActor->model, m_footIkRig, locals, globals, xform, groundY, fwd,
+                                1.0f);
+                }
+                pose = resolveLocals(m_npcActor->model, locals, nullptr);
             } else if (m_npcActor->hasRealClip) {
                 pose = samplePose(m_npcActor->model,
                                   m_npcActor->model.clips[m_npcActor->clipIndex], t);
             } else {
                 pose = idlePose(m_npcActor->model, t);
             }
-            // Drop the pose so its lowest point sits at the entity's feet — keeps the planted foot
-            // grounded through the walk cycle instead of the whole body floating on airborne frames.
-            float footY = 0.0f;
-            if (idleClip >= 0 && walkClip >= 0) {
-                const float w = glm::clamp(walkWeight, 0.0f, 1.0f);
-                footY = glm::mix(footYAt(idleClip, t), footYAt(walkClip, t), w);
-            } else if (m_npcActor->hasRealClip) {
-                footY = footYAt(m_npcActor->clipIndex, t);
-            }
-            const glm::mat4 xform = glm::translate(glm::mat4(1.0f), pos - glm::vec3(0, footY, 0)) *
-                                    glm::rotate(glm::mat4(1.0f), yaw + kHumanoidYawOffset,
-                                                glm::vec3(0, 1, 0)) *
-                                    m_npcActor->transform;
             m_renderer.submitSkinned(m_npcActor->mesh, xform, pose,
                                      material != MaterialHandle::Invalid ? material
                                                                          : m_npcActor->material);

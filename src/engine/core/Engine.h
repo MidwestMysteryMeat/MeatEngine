@@ -4,6 +4,7 @@
 #include "engine/core/EventBus.h"
 #include "engine/core/JobQueue.h"
 #include "engine/core/TickRate.h"
+#include "engine/anim/FootIk.h"
 #include "engine/asset/SkeletalModel.h"
 #include "engine/audio/AudioEngine.h"
 #include "engine/net/EnetTransport.h"
@@ -140,6 +141,7 @@ private:
     // Yaw correction so the rig faces its movement/target direction. Derived deterministically at
     // load from the bind-pose foot->toe direction (feet point forward), not guessed from shots.
     float m_humanoidYawOffset = 0.0f;
+    FootIkRig m_footIkRig; // two-bone foot IK leg chains (planted feet on terrain); valid if legs found
     // Previous entity positions (client-side), to derive each humanoid's speed for the
     // idle↔walk blend weight without a server-side anim-state byte.
     std::unordered_map<std::uint32_t, glm::vec3> m_entityPrevPos;
