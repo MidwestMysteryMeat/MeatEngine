@@ -33,6 +33,9 @@ public:
     PhysicsWorld& operator=(const PhysicsWorld&) = delete;
 
     bool init();
+    // World gravity in m/s² along -Y (e.g. -18 surface, -6 underwater, -1.5 space). Applied from
+    // the world's Environment preset; safe to call after init(). No-op before init().
+    void setGravity(float gravityY);
     void step(float fixedDt); // one PhysicsSystem::Update, 1 collision step
 
     // Builds a static MeshShape from the render mesh. Vertex positions are

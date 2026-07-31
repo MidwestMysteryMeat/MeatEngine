@@ -159,6 +159,8 @@ void CharacterController::update(const PlayerCommand& cmd, float fixedDt, Physic
     im.eyeHeight += (targetEye - im.eyeHeight) * std::min(1.0f, t.eyeLerpRate * fixedDt);
 }
 
+void CharacterController::setGravity(float gravityY) { m_impl->tuning.gravity = gravityY; }
+
 glm::vec3 CharacterController::position() const {
     if (!m_impl->character)
         return glm::vec3(0.0f);

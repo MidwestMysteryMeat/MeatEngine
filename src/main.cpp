@@ -41,6 +41,13 @@ void loadProject(meat::EngineConfig& config, const std::string& dir) {
                                : t == "void"     ? Terrain::Void
                                                  : Terrain::Normal;
     }
+    if (j.contains("environment")) {
+        using Environment = meat::GameRules::Environment;
+        const std::string e = j["environment"].get<std::string>();
+        config.rules.environment = e == "underwater" ? Environment::Underwater
+                                   : e == "space"     ? Environment::Space
+                                                      : Environment::Surface;
+    }
     config.rules.finiteAmmo = j.value("finiteAmmo", config.rules.finiteAmmo);
     config.rules.minedBlockDrops = j.value("minedBlockDrops", config.rules.minedBlockDrops);
     config.rules.penetration = j.value("penetration", config.rules.penetration);
@@ -109,6 +116,14 @@ meat::EngineConfig parseArgs(int argc, char** argv) {
                 config.rules.terrain = m == "superflat" ? Terrain::Superflat
                                        : m == "void"     ? Terrain::Void
                                                          : Terrain::Normal;
+            }
+        } else if (arg == "--env") {
+            using Environment = meat::GameRules::Environment;
+            if (const char* e = next()) {
+                const std::string m = e;
+                config.rules.environment = m == "underwater" ? Environment::Underwater
+                                           : m == "space"     ? Environment::Space
+                                                              : Environment::Surface;
             }
         } else {
             meat::log::warn("unknown argument '{}'", arg);

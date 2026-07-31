@@ -17,6 +17,15 @@ struct GameRules {
     // canvas (place everything yourself). Travels to clients packed in the flags byte (bits 5-6).
     enum class Terrain : std::uint8_t { Normal = 0, Superflat = 1, Void = 2 };
     Terrain terrain = Terrain::Normal;
+    // World ENVIRONMENT preset — composes with terrain to define the *feel* of a world by
+    // driving gravity + fog + ambient light together (see game/Environment.h for the values).
+    // Surface = the default earthy world; Underwater = buoyant + thick blue fog; Space = floaty +
+    // black void, no fog. Applied from config before world gen, same as voxelSize. NOT yet packed
+    // into flagsByte (no free bits) — networked-join clients still default to Surface; sending it
+    // in Welcome is a documented follow-up. For --play/--editor/--project the server and client
+    // share one config, so it is already consistent there.
+    enum class Environment : std::uint8_t { Surface = 0, Underwater = 1, Space = 2 };
+    Environment environment = Environment::Surface;
     bool finiteAmmo = true;      // guns consume ammo items
     bool minedBlockDrops = true; // broken blocks enter the breaker's inventory
     bool penetration = true;     // bullets spend budget passing through materials

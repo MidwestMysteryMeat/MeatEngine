@@ -129,6 +129,12 @@ bool PhysicsWorld::init() {
     return true;
 }
 
+void PhysicsWorld::setGravity(float gravityY) {
+    if (!m_impl->system)
+        return;
+    m_impl->system->SetGravity(JPH::Vec3(0.0f, gravityY, 0.0f));
+}
+
 void PhysicsWorld::step(float fixedDt) {
     if (!m_impl->system)
         return;

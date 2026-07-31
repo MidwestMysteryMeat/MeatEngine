@@ -3,6 +3,7 @@
 #include "engine/core/ViewMath.h"
 #include "engine/net/DeltaSnapshot.h"
 #include "game/DungeonGen.h"
+#include "game/Environment.h"
 #include "game/Pathfinder.h"
 
 #include <nlohmann/json.hpp>
@@ -43,6 +44,9 @@ float raySegmentDistance(glm::vec3 ro, glm::vec3 rd, float range, glm::vec3 a, g
 bool ServerSim::init(std::uint32_t worldSeed) {
     m_seed = worldSeed;
     if (!m_physics.init()) return false;
+    // World Environment preset drives authoritative gravity (fog/ambient are client-only). Player
+    // controllers pick the same value up as they spawn (see tick()).
+    m_physics.setGravity(envSettings(m_rules.environment).gravity);
     m_jobs.start(std::thread::hardware_concurrency());
 
     m_palette = registerDefaultBlocks(m_voxels.blockRegistry());
@@ -946,6 +950,7 @@ void ServerSim::tick(Transport& transport) {
         if (!player->spawned) {
             if (!player->controller.init(m_physics, player->spawnOverride.value_or(kSpawnPos)))
                 continue;
+            player->controller.setGravity(envSettings(m_rules.environment).gravity);
             player->spawned = true;
         }
         player->controller.update(player->lastCmd, kFixedDtServer, m_physics);

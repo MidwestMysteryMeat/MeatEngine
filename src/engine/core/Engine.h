@@ -66,6 +66,7 @@ private:
     void startHosting(const EngineConfig& config); // beacon + master heartbeat
     void stopHosting();
     void setupClientWorld();                    // after Welcome: seed-matched mirror
+    void applyEnvironment(const GameRules& rules); // world preset → gravity + fog + ambient
     int runDedicated(const EngineConfig& config);
     void simulateClientTick(const PlayerCommand& frameCmd);
     void render(float alpha);

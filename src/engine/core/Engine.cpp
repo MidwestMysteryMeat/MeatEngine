@@ -4,6 +4,7 @@
 #include "engine/anim/Animator.h"
 #include "engine/asset/ModelLoader.h"
 #include "engine/net/HttpTiny.h"
+#include "game/Environment.h"
 
 #include <GLFW/glfw3.h>
 #include <stb_image.h> // stbi_info: cheap header-probe validation for texture imports
@@ -141,6 +142,20 @@ bool Engine::initNetwork(const EngineConfig& config) {
     }
     m_client.attach(*m_clientTransport, "player");
     return true;
+}
+
+void Engine::applyEnvironment(const GameRules& rules) {
+    const EnvSettings env = envSettings(rules.environment);
+    // Client mirror physics + the local prediction body match the server's authoritative gravity so
+    // predicted falls line up with reconciled ones. setGravity on the controller only writes tuning,
+    // so it holds through the later m_player.init() in setupClientWorld().
+    m_physics.setGravity(env.gravity);
+    m_player.setGravity(env.gravity);
+    // Fog + ambient are purely visual (client-only): the void of space, the murk of deep water.
+    m_renderer.psx.fogColor = env.fogColor;
+    m_renderer.psx.fogStart = env.fogStart;
+    m_renderer.psx.fogEnd = env.fogEnd;
+    m_renderer.setAmbientLight(env.ambient);
 }
 
 void Engine::setupClientWorld() {
@@ -1139,6 +1154,11 @@ int Engine::run(const EngineConfig& configIn) {
         log::error("engine init failed");
         return 1;
     }
+    // World Environment preset (gravity + fog + ambient). For --play/--editor/--project the client
+    // shares config.rules with the in-process server, so both apply identical gravity. A networked
+    // client that joins a remote server still defaults to Surface until the preset travels in Welcome
+    // (documented follow-up).
+    applyEnvironment(config.rules);
     m_animBooth = config.animBooth;
     m_animModel = config.animModel;
     m_animClip = config.animClip;

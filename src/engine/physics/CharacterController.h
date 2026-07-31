@@ -43,6 +43,11 @@ public:
 
     void update(const PlayerCommand& cmd, float fixedDt, PhysicsWorld& world);
 
+    // Sets the fall gravity (m/s², negative = down) to match the world's Environment preset. Only
+    // touches tuning, so it is valid before or after init(). Keeps prediction (client) in step with
+    // the authoritative controller (server) when both apply the same environment.
+    void setGravity(float gravityY);
+
     glm::vec3 position() const; // feet (capsule bottom), meters
     glm::vec3 velocity() const; // m/s
     // Authoritative correction (net reconciliation / spawn): teleport, no sweep.
