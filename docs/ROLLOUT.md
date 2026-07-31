@@ -94,8 +94,9 @@ light → ship) without the bloat/missing pieces that don't fit a PSX voxel FPS.
   outliner** of placed instances. This is the core "fill the map" loop and the highest-usability win.
 - [ ] **C4. Import/export** — import FBX/OBJ/PNG into the project (bake, see D3); export map/prefab.
   OSS: ImGuiFileDialog.
-- [ ] **C5. Inspectors** — material, entity/prefab, block/atlas, and **environment settings** (drives
-  B3). Struct-reflection via Boost.PFR (BSL-1.0) → auto widgets + JSON.
+- [~] **C5. Inspectors** — first slice: Room Designer **Details** panel (world rules snapshot,
+  prop location drag + graph actions, light/volume, import path). Still open: materials, blocks,
+  Boost.PFR auto widgets.
 - [~] **C6. Node scripting / Node graphs + live coding** ⭐ — first slices shipped: imnodes graph in
   Room Designer (events/actions/data/flow/math/object) → JSON + sandboxed Lua (`zz_nodegraph.lua`) +
   Save+Compile live reload; UE-style open node / object highlight. Still open: more game API nodes,

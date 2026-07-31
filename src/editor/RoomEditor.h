@@ -57,6 +57,8 @@ private:
 
     // C9 Output Log — UE-style severity-filtered message browser.
     void drawOutputLog();
+    // C5 lite — World Settings + selection inspector (UE Details-style).
+    void drawDetailsPanel(EditorContext& ctx);
 
     // C6 Node Graph (visual scripting) — imnodes graph that compiles to sandboxed Lua.
     void drawNodeGraph(EditorContext& ctx);
@@ -197,6 +199,10 @@ private:
     char m_logSearch[128] = {};
     bool m_logAutoScroll = true;
     int m_logLastCount = 0; // for auto-scroll when new lines arrive
+
+    // --- Details (C5) ------------------------------------------------------
+    bool m_detailsOpen = true;
+    bool m_editorBootLogged = false;
 };
 
 } // namespace meat

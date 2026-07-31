@@ -116,6 +116,10 @@ void RoomEditor::update(EditorContext& ctx, float dt) {
         applyEditorTheme();
         m_themed = true;
     }
+    if (!m_editorBootLogged) {
+        m_editorBootLogged = true;
+        log::info("editor: Room Designer ready — Output Log, Node Graph, Details available");
+    }
     m_previewLights = 0;
     ctx.buildBlock = m_buildBlock; // ctx is rebuilt per frame; the editor owns persistence
     if (m_statusTtl > 0.0f && (m_statusTtl -= dt) <= 0.0f) m_status.clear();
@@ -143,6 +147,7 @@ void RoomEditor::update(EditorContext& ctx, float dt) {
     drawNodeGraph(ctx);
     drawNodeGraphDetails(ctx);
     drawOutputLog();
+    drawDetailsPanel(ctx);
     updateObjectHighlight(ctx);
     if (!m_flying) drawGizmo(ctx, view, proj);
 
@@ -386,6 +391,11 @@ void RoomEditor::drawTopBar(EditorContext& ctx) {
         m_outputLogOpen = !m_outputLogOpen;
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("C9 — engine / script / graph messages (warnings & errors)");
+    ImGui::SameLine();
+    if (ImGui::Button(m_detailsOpen ? "Details##hide" : "Details##show"))
+        m_detailsOpen = !m_detailsOpen;
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("C5 — world settings + selection inspector");
     if (ctx.setHemisphereAmbient) {
         bool hemi = ctx.hemisphereAmbient;
         if (ImGui::Checkbox("hemisphere ambient", &hemi)) ctx.setHemisphereAmbient(hemi);
@@ -549,76 +559,7 @@ void RoomEditor::drawOutliner(EditorContext& ctx) {
     }
     if (ctx.lights.empty() && ctx.seedVolumes.empty() && ctx.props.empty())
         ImGui::TextDisabled("(empty)");
-
-    if (m_selKind == Selection::Light && m_selIndex >= 0 &&
-        m_selIndex < static_cast<int>(ctx.lights.size())) {
-        ImGui::Separator();
-        ImGui::Text("Properties");
-        EditorLight& light = ctx.lights[static_cast<std::size_t>(m_selIndex)];
-        const char* const types[] = {"point", "spot"};
-        ImGui::Combo("type", &light.type, types, 2);
-        ImGui::ColorEdit3("color", glm::value_ptr(light.color));
-        ImGui::DragFloat("radius", &light.radius, 0.1f, 0.5f, 64.0f);
-        if (light.type == 1) {
-            ImGui::SliderFloat("angle", &light.angle, 0.05f, 1.4f, "%.2f rad");
-            if (ImGui::Button("dir = camera fwd")) light.dir = ctx.camera.forward();
-        }
-        if (ImGui::Button("Delete")) {
-            ctx.lights.erase(ctx.lights.begin() + m_selIndex);
-            m_selKind = Selection::None;
-            m_selIndex = -1;
-        }
-    } else if (m_selKind == Selection::Volume && m_selIndex >= 0 &&
-               m_selIndex < static_cast<int>(ctx.seedVolumes.size())) {
-        ImGui::Separator();
-        ImGui::Text("Properties");
-        SeedVolume& sv = ctx.seedVolumes[static_cast<std::size_t>(m_selIndex)];
-        int seed = static_cast<int>(sv.seed);
-        if (ImGui::InputInt("seed", &seed)) sv.seed = static_cast<std::uint32_t>(seed);
-        ImGui::Text("min %d %d %d  max %d %d %d", sv.min.x, sv.min.y, sv.min.z, sv.max.x,
-                    sv.max.y, sv.max.z);
-        if (ImGui::Button("Delete")) {
-            ctx.seedVolumes.erase(ctx.seedVolumes.begin() + m_selIndex);
-            m_selKind = Selection::None;
-            m_selIndex = -1;
-        }
-    } else if (m_selKind == Selection::Prop && m_selIndex >= 0 &&
-               m_selIndex < static_cast<int>(ctx.props.size())) {
-        ImGui::Separator();
-        ImGui::Text("Details"); // UE-style section label
-        EditorProp& prop = ctx.props[static_cast<std::size_t>(m_selIndex)];
-        ImGui::TextDisabled("%s", prop.assetPath.c_str());
-        ImGui::Text("Id  %u", prop.id);
-        const glm::vec3 pos = glm::vec3(prop.transform[3]);
-        ImGui::Text("pos %.1f %.1f %.1f", pos.x, pos.y, pos.z);
-        ImGui::Text("gizmo");
-        ImGui::SameLine();
-        ImGui::RadioButton("move", &m_propGizmoOp, 0);
-        ImGui::SameLine();
-        ImGui::RadioButton("rotate", &m_propGizmoOp, 1);
-        ImGui::SameLine();
-        ImGui::RadioButton("scale", &m_propGizmoOp, 2);
-        // Bridge to Node Graph: create Get World Object + open/focus graph.
-        if (ImGui::Button("Create Graph Node")) {
-            m_nodeGraphOpen = true;
-            createObjectNodeFromSelection(ctx);
-        }
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Add Get World Object for this prop and open Details");
-        ImGui::SameLine();
-        if (ImGui::Button("Highlight")) {
-            m_graphHighlightPropId = prop.id;
-            m_graphHighlightPulse = 2.5f;
-            m_nodeGraphOpen = true;
-        }
-        if (ImGui::Button("Delete")) {
-            // Server-authoritative: request remove; echo drops it from ctx.props.
-            if (prop.id != 0 && ctx.requestRemoveProp) ctx.requestRemoveProp(prop.id);
-            m_selKind = Selection::None;
-            m_selIndex = -1;
-            m_propGizmoDirty = false;
-        }
-    }
+    ImGui::TextDisabled("Selection properties → Details panel");
     ImGui::End();
 }
 
@@ -917,12 +858,21 @@ void RoomEditor::doImport(EditorContext& ctx, const std::string& sourcePath) {
     if (sourcePath.empty()) return;
     if (!ctx.importAsset) {
         setImportStatus("import unavailable");
+        log::error("import: importAsset callback unavailable");
+        m_outputLogOpen = true;
         return;
     }
     const std::string result = ctx.importAsset(sourcePath);
     if (result.empty()) return; // not attempted
     setImportStatus(result);
-    if (result.rfind("imported", 0) == 0) m_dirCache.clear();
+    if (result.rfind("imported", 0) == 0) {
+        m_dirCache.clear();
+        m_contentScanned = false;
+        log::info("import: {}", result);
+    } else {
+        log::warn("import: {}", result);
+        m_outputLogOpen = true;
+    }
 }
 
 void RoomEditor::setImportStatus(std::string text) {
@@ -1369,6 +1319,7 @@ bool RoomEditor::saveAndCompileNodeGraph(EditorContext& ctx) {
         m_graphStatus = "failed to write graph JSON";
         m_graphStatusTtl = 4.0f;
         log::error("node graph: failed to write {}", kGraphPath);
+        m_outputLogOpen = true;
         return false;
     }
     const std::string lua = emitGraphLua(m_nodeGraph);
@@ -1376,6 +1327,7 @@ bool RoomEditor::saveAndCompileNodeGraph(EditorContext& ctx) {
         m_graphStatus = "failed to write generated Lua";
         m_graphStatusTtl = 4.0f;
         log::error("node graph: failed to write {}", kEmitLuaPath);
+        m_outputLogOpen = true;
         return false;
     }
     m_nodeGraphDirty = false;
@@ -1845,6 +1797,146 @@ void RoomEditor::drawNodeGraph(EditorContext& ctx) {
     if (ImNodes::IsLinkDestroyed(&destroyed)) {
         m_nodeGraph.removeLink(destroyed);
         m_nodeGraphDirty = true;
+    }
+
+    ImGui::End();
+}
+
+// ===== Details (C5 lite) ===================================================
+
+void RoomEditor::drawDetailsPanel(EditorContext& ctx) {
+    if (!m_detailsOpen) return;
+
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos({vp->Pos.x + vp->Size.x - 340.0f, vp->Pos.y + 420.0f},
+                            ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({320.0f, 320.0f}, ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Details", &m_detailsOpen)) {
+        ImGui::End();
+        return;
+    }
+
+    // --- World (read-only snapshot of host rules; change via New Map) --------
+    if (ImGui::CollapsingHeader("World", ImGuiTreeNodeFlags_DefaultOpen)) {
+        static const char* kTerrain[] = {"Normal", "Superflat", "Void"};
+        static const char* kEnv[] = {"Surface", "Underwater", "Space"};
+        static const char* kGenre[] = {"FPS", "TPS", "Space", "Racer"};
+        const int t = std::clamp(ctx.currentTerrain, 0, 2);
+        const int e = std::clamp(ctx.currentEnvironment, 0, 2);
+        const int g = std::clamp(ctx.currentGameTemplate, 0, 3);
+        ImGui::Text("Terrain");
+        ImGui::SameLine(110);
+        ImGui::TextDisabled("%s", kTerrain[t]);
+        ImGui::Text("Environment");
+        ImGui::SameLine(110);
+        ImGui::TextDisabled("%s", kEnv[e]);
+        ImGui::Text("Template");
+        ImGui::SameLine(110);
+        ImGui::TextDisabled("%s", kGenre[g]);
+        ImGui::Text("Seed");
+        ImGui::SameLine(110);
+        ImGui::TextDisabled("%u", ctx.currentSeed);
+        ImGui::Text("Hemi ambient");
+        ImGui::SameLine(110);
+        ImGui::TextDisabled("%s", ctx.hemisphereAmbient ? "on" : "off");
+        if (ImGui::SmallButton("New Map...")) {
+            m_newMapOpen = true;
+            m_newMapGenre = ctx.currentGameTemplate;
+            m_newMapTerrain = ctx.currentTerrain;
+            m_newMapEnvironment = ctx.currentEnvironment;
+            m_newMapSeed = static_cast<int>(ctx.currentSeed);
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("host/SP only");
+    }
+
+    // --- Selection ----------------------------------------------------------
+    if (ImGui::CollapsingHeader("Selection", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (m_selKind == Selection::Light && m_selIndex >= 0 &&
+            m_selIndex < static_cast<int>(ctx.lights.size())) {
+            EditorLight& light = ctx.lights[static_cast<std::size_t>(m_selIndex)];
+            ImGui::TextUnformatted("Light");
+            const char* const types[] = {"point", "spot"};
+            ImGui::Combo("type", &light.type, types, 2);
+            ImGui::ColorEdit3("color", glm::value_ptr(light.color));
+            ImGui::DragFloat("radius", &light.radius, 0.1f, 0.5f, 64.0f);
+            if (light.type == 1) {
+                ImGui::SliderFloat("angle", &light.angle, 0.05f, 1.4f, "%.2f rad");
+                if (ImGui::Button("dir = camera fwd")) light.dir = ctx.camera.forward();
+            }
+            if (ImGui::Button("Delete Light")) {
+                ctx.lights.erase(ctx.lights.begin() + m_selIndex);
+                m_selKind = Selection::None;
+                m_selIndex = -1;
+            }
+        } else if (m_selKind == Selection::Volume && m_selIndex >= 0 &&
+                   m_selIndex < static_cast<int>(ctx.seedVolumes.size())) {
+            SeedVolume& sv = ctx.seedVolumes[static_cast<std::size_t>(m_selIndex)];
+            ImGui::TextUnformatted("Seed Volume");
+            int seed = static_cast<int>(sv.seed);
+            if (ImGui::InputInt("seed", &seed)) sv.seed = static_cast<std::uint32_t>(seed);
+            ImGui::Text("min %d %d %d", sv.min.x, sv.min.y, sv.min.z);
+            ImGui::Text("max %d %d %d", sv.max.x, sv.max.y, sv.max.z);
+            if (ImGui::Button("Delete Volume")) {
+                ctx.seedVolumes.erase(ctx.seedVolumes.begin() + m_selIndex);
+                m_selKind = Selection::None;
+                m_selIndex = -1;
+            }
+        } else if (m_selKind == Selection::Prop && m_selIndex >= 0 &&
+                   m_selIndex < static_cast<int>(ctx.props.size())) {
+            EditorProp& prop = ctx.props[static_cast<std::size_t>(m_selIndex)];
+            ImGui::TextUnformatted("Prop");
+            ImGui::TextDisabled("%s", prop.assetPath.c_str());
+            ImGui::Text("Id");
+            ImGui::SameLine(80);
+            ImGui::Text("%u", prop.id);
+
+            glm::vec3 pos = glm::vec3(prop.transform[3]);
+            if (ImGui::DragFloat3("Location", &pos.x, 0.05f)) {
+                prop.transform[3] = glm::vec4(pos, 1.0f);
+                m_propGizmoDirty = true;
+                if (prop.id != 0 && ctx.requestMoveProp)
+                    ctx.requestMoveProp(prop.id, prop.transform);
+            }
+            ImGui::Text("Gizmo");
+            ImGui::SameLine();
+            ImGui::RadioButton("Move", &m_propGizmoOp, 0);
+            ImGui::SameLine();
+            ImGui::RadioButton("Rotate", &m_propGizmoOp, 1);
+            ImGui::SameLine();
+            ImGui::RadioButton("Scale", &m_propGizmoOp, 2);
+
+            if (ImGui::Button("Create Graph Node")) {
+                m_nodeGraphOpen = true;
+                createObjectNodeFromSelection(ctx);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Highlight")) {
+                m_graphHighlightPropId = prop.id;
+                m_graphHighlightPulse = 2.5f;
+                log::info("details: highlight prop {} ({})", prop.id, prop.assetPath);
+            }
+            if (ImGui::Button("Delete Prop")) {
+                if (prop.id != 0 && ctx.requestRemoveProp) ctx.requestRemoveProp(prop.id);
+                m_selKind = Selection::None;
+                m_selIndex = -1;
+                m_propGizmoDirty = false;
+            }
+        } else {
+            ImGui::TextDisabled("Nothing selected — pick a prop, light, or volume in the Outliner.");
+        }
+    }
+
+    // --- Import shortcut ----------------------------------------------------
+    if (ImGui::CollapsingHeader("Import Asset")) {
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputTextWithHint("##import", "paste full path to .fbx/.obj/.png …", m_importPath,
+                                 sizeof(m_importPath));
+        if (ImGui::Button("Import")) doImport(ctx, m_importPath);
+        ImGui::SameLine();
+        ImGui::TextDisabled("or drop file on window");
+        if (!m_importStatus.empty())
+            ImGui::TextWrapped("%s", m_importStatus.c_str());
     }
 
     ImGui::End();
