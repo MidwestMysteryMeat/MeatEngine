@@ -56,7 +56,7 @@ A game built on MeatEngine{template_note}.
     MeatEngine.exe --project . --server       # dedicated server
 
 ## Layout
-- game.json    — name, seed, template, and rules
+- game.json    — name, seed, rules; map defaults under `"world": { template, terrain, environment }`
 - scripts/     — Lua gameplay (edit main.lua; save reloads on next launch)
 - assets/      — your textures/models/sounds (optional; engine assets are the fallback)
 
@@ -70,29 +70,43 @@ must be credited if you ship H4 hulls).
 
 
 def template_rules(kind: str) -> dict:
+    """Return game.json fields including B5 nested world defaults."""
     if kind == "tps":
-        return {
+        world = {
             "template": "tps",
             "perspective": "third",
             "terrain": "normal",
             "environment": "surface",
         }
-    if kind == "space":
-        return {
+        extra = {}
+    elif kind == "space":
+        world = {
             "template": "space",
             "perspective": "first",
             "terrain": "void",
             "environment": "space",
             "hemisphereAmbient": False,
-            "finiteAmmo": True,
-            "minedBlockDrops": False,
         }
-    return {
-        "template": "fps",
-        "perspective": "first",
-        "terrain": "normal",
-        "environment": "surface",
-    }
+        extra = {"finiteAmmo": True, "minedBlockDrops": False}
+    elif kind == "racer":
+        world = {
+            "template": "racer",
+            "perspective": "third",
+            "terrain": "superflat",
+            "environment": "surface",
+        }
+        extra = {}
+    else:
+        world = {
+            "template": "fps",
+            "perspective": "first",
+            "terrain": "normal",
+            "environment": "surface",
+        }
+        extra = {}
+    out = {"world": world}
+    out.update(extra)
+    return out
 
 
 def main() -> None:
@@ -101,7 +115,7 @@ def main() -> None:
     ap.add_argument("--dir", default=".")
     ap.add_argument(
         "--template",
-        choices=("fps", "tps", "space"),
+        choices=("fps", "tps", "space", "racer"),
         default="fps",
         help="game genre preset (default: fps)",
     )
@@ -129,6 +143,7 @@ def main() -> None:
         "fps": "",
         "tps": " (third-person template)",
         "space": " (space ship template — Void + Space env, ships on pad)",
+        "racer": " (racer template — superflat track pad)",
     }[args.template]
 
     (root / "game.json").write_text(json.dumps(game, indent=2), encoding="utf-8")

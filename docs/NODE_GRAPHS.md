@@ -18,10 +18,14 @@ server-authoritative Lua.
    - Selecting / opening an object node **highlights** the prop in the viewport (cyan markers)
 4. Wire **Event** nodes to **Action** nodes; use **Data** / **Math** / **Object** pins.
 5. **Compile** / **Save**:
-   - Graph JSON → `scripts/graphs/main.graph.json`
+   - Graph JSON → `scripts/graphs/<stem>.graph.json` (default stem `main`)
    - Generated Lua → `scripts/zz_nodegraph.lua` (loads last alphabetically)
    - Host/SP: scripts hot-reload immediately
    - Legacy load still accepts `scripts/blueprints/main.graph.json` if present
+6. **C6-c multi-graph tabs** — switch stems along the top of the Node Graph window, or
+   type a name and **+ Graph**. Only the **active** graph is compiled to runtime Lua
+   (one set of `on_init` / `on_tick` hooks). Switch tabs to author alternate logic without
+   losing files.
 
 The editor chrome uses a **dark Slate-inspired** theme (charcoal panels, blue selection).
 
@@ -67,6 +71,7 @@ The editor chrome uses a **dark Slate-inspired** theme (charcoal panels, blue se
 ## Open follow-ups
 
 - ~~**C6-b high-value API nodes**~~ ✅ — announce, damage player, tick/prop count/health.
-- Multi-graph tabs, debug "watch" pins, subgraphs (C6-c), ImGuiColorTextEdit for Lua path.
+- ~~**C6-c multi-graph tabs**~~ ✅ — multiple `.graph.json` files; one active runtime compile.
+- Still open: debug **watch** pins, **subgraphs**, merge multiple live graphs, ImGuiColorTextEdit.
 - ~~**Output Log browser (C9)**~~ ✅ — open **Output Log** in Room Designer (severity filters,
   search, clear). Node Graph compile posts success/fail there.

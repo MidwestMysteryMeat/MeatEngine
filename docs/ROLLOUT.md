@@ -80,7 +80,8 @@ blank / …), but spanning voxel AND non-voxel AND themed worlds. Physics is alr
   Still open: net sync of custom fields to pure clients, capsule reorient to local "up".
 - [x] **B4. "New Map" dialog** (editor) — template (Landscape / Superflat / Void) + environment +
   seed → `reseedWorld` (host/SP). Mesh template still open (B2).
-- [ ] **B5. `game.json` `world: {template, environment}`** so a project ships its map choice; no C++.
+- [x] **B5. `game.json` `world: {template, environment}`** — nested `world` object (overrides
+  top-level map keys); `docs/GAME_JSON.md`; `new_project.py` scaffolds with `world`.
 
 ## Pillar C — Editor: a usable, UE5-inspired creation suite (USABILITY FIRST)
 The through-line is **usability** — UE5's ergonomics (New Map → drag assets in → tweak → script →
@@ -162,8 +163,8 @@ Human feel-playtests (mouse feel, combat cadence, editor ergonomics), and real L
 > Note: C1–C3, B1/B3/B4, A1/A3, C6 (first slices), H1/H2/H3/H4 (first slices), E1 are largely **shipped**;
 > older “C3 first” ordering below is historical.
 
-**Now:** ~~C9 / C6 reliability / C5 / A2 / C6-b / B3b-e~~ ✅ → **C6-c subgraphs/watches** →
-**B5 game.json** / **B2 MeshLevel** → **C7 packaging** → **F / D** as scale demands.
+**Now:** ~~C9 / C6 / C5 / A2 / B3b-e / B5 / C6-c multi-graph~~ ✅ → **C6-c watches/subgraphs** →
+**B2 MeshLevel** → **C7 packaging** → **F / D** as scale demands.
 
-Rationale: creation suite + Space gravity authoring landed; next is **graph power** (subgraphs),
-then **generality** (mesh levels) and **scale** (net/ECS).
+Rationale: projects ship map defaults via `game.json` world; graphs support multi-file authoring;
+next is **subgraphs/watches**, then **generality** (mesh levels) and **scale** (net/ECS).

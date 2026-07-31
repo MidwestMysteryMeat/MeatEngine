@@ -11,6 +11,73 @@
 
 namespace {
 
+// Apply genre template presets (camera + default terrain/env). Explicit
+// terrain/environment/perspective fields applied after this still win.
+void applyTemplatePreset(meat::EngineConfig& config, const std::string& t) {
+    using Perspective = meat::GameRules::Perspective;
+    using Template = meat::GameRules::Template;
+    using Terrain = meat::GameRules::Terrain;
+    using Environment = meat::GameRules::Environment;
+    if (t == "tps" || t == "third") {
+        config.rules.gameTemplate = Template::Tps;
+        config.rules.perspective = Perspective::Third;
+    } else if (t == "space" || t == "spaceship") {
+        config.rules.gameTemplate = Template::Space;
+        config.rules.perspective = Perspective::First;
+        config.rules.terrain = Terrain::Void;
+        config.rules.environment = Environment::Space;
+        config.rules.hemisphereAmbient = false;
+    } else if (t == "racer" || t == "race") {
+        config.rules.gameTemplate = Template::Racer;
+        config.rules.perspective = Perspective::Third;
+        config.rules.terrain = Terrain::Superflat;
+        config.rules.environment = Environment::Surface;
+    } else {
+        config.rules.gameTemplate = Template::Fps;
+        config.rules.perspective = Perspective::First;
+    }
+}
+
+void applyTerrainString(meat::EngineConfig& config, const std::string& t) {
+    using Terrain = meat::GameRules::Terrain;
+    config.rules.terrain = t == "superflat" ? Terrain::Superflat
+                           : t == "void"     ? Terrain::Void
+                                             : Terrain::Normal;
+}
+
+void applyEnvironmentString(meat::EngineConfig& config, const std::string& e) {
+    using Environment = meat::GameRules::Environment;
+    config.rules.environment = e == "underwater" ? Environment::Underwater
+                               : e == "space"     ? Environment::Space
+                                                  : Environment::Surface;
+}
+
+void applyPerspectiveString(meat::EngineConfig& config, const std::string& p) {
+    using Perspective = meat::GameRules::Perspective;
+    config.rules.perspective = (p == "third" || p == "tps") ? Perspective::Third
+                                                            : Perspective::First;
+}
+
+// B5: nested "world" object and/or top-level map keys. Nested world wins when
+// both are present so projects can group map defaults cleanly.
+void applyWorldFields(meat::EngineConfig& config, const nlohmann::json& j) {
+    // Template first (presets), then explicit overrides.
+    if (j.contains("template") && j["template"].is_string())
+        applyTemplatePreset(config, j["template"].get<std::string>());
+    if (j.contains("terrain") && j["terrain"].is_string())
+        applyTerrainString(config, j["terrain"].get<std::string>());
+    if (j.contains("environment") && j["environment"].is_string())
+        applyEnvironmentString(config, j["environment"].get<std::string>());
+    if (j.contains("perspective") && j["perspective"].is_string())
+        applyPerspectiveString(config, j["perspective"].get<std::string>());
+    if (j.contains("seed") && j["seed"].is_number_unsigned())
+        config.seed = j["seed"].get<std::uint32_t>();
+    else if (j.contains("seed") && j["seed"].is_number_integer())
+        config.seed = static_cast<std::uint32_t>(j["seed"].get<std::int64_t>());
+    if (j.contains("hemisphereAmbient") && j["hemisphereAmbient"].is_boolean())
+        config.rules.hemisphereAmbient = j["hemisphereAmbient"].get<bool>();
+}
+
 // A game project is a folder with game.json (name/seed/rules) + scripts/ +
 // optional assets/. Loading one lets a dev ship a game without touching C++.
 void loadProject(meat::EngineConfig& config, const std::string& dir) {
@@ -34,61 +101,25 @@ void loadProject(meat::EngineConfig& config, const std::string& dir) {
                                       : m == "weapons" ? Model::WeaponSlots
                                                        : Model::HotbarBackpack;
     }
-    if (j.contains("terrain")) {
-        using Terrain = meat::GameRules::Terrain;
-        const std::string t = j["terrain"].get<std::string>();
-        config.rules.terrain = t == "superflat" ? Terrain::Superflat
-                               : t == "void"     ? Terrain::Void
-                                                 : Terrain::Normal;
-    }
-    if (j.contains("environment")) {
-        using Environment = meat::GameRules::Environment;
-        const std::string e = j["environment"].get<std::string>();
-        config.rules.environment = e == "underwater" ? Environment::Underwater
-                                   : e == "space"     ? Environment::Space
-                                                      : Environment::Surface;
-    }
-    // Game template (H1/H4): presets camera + world for the genre.
-    // Explicit "perspective"/"terrain"/"environment" override when also present.
-    if (j.contains("template")) {
-        using Perspective = meat::GameRules::Perspective;
-        using Template = meat::GameRules::Template;
-        using Terrain = meat::GameRules::Terrain;
-        using Environment = meat::GameRules::Environment;
-        const std::string t = j["template"].get<std::string>();
-        if (t == "tps" || t == "third") {
-            config.rules.gameTemplate = Template::Tps;
-            config.rules.perspective = Perspective::Third;
-        } else if (t == "space" || t == "spaceship") {
-            config.rules.gameTemplate = Template::Space;
-            config.rules.perspective = Perspective::First;
-            config.rules.terrain = Terrain::Void;
-            config.rules.environment = Environment::Space;
-            config.rules.hemisphereAmbient = false;
-        } else if (t == "racer" || t == "race") {
-            config.rules.gameTemplate = Template::Racer;
-            config.rules.perspective = Perspective::Third;
-            config.rules.terrain = Terrain::Superflat;
-            config.rules.environment = Environment::Surface;
-        } else {
-            config.rules.gameTemplate = Template::Fps;
-            config.rules.perspective = Perspective::First;
-        }
-    }
-    if (j.contains("perspective")) {
-        using Perspective = meat::GameRules::Perspective;
-        const std::string p = j["perspective"].get<std::string>();
-        config.rules.perspective = (p == "third" || p == "tps") ? Perspective::Third
-                                                                : Perspective::First;
-    }
-    if (j.contains("hemisphereAmbient"))
-        config.rules.hemisphereAmbient = j["hemisphereAmbient"].get<bool>();
+    // Top-level map keys (legacy / still supported), then nested world overrides.
+    applyWorldFields(config, j);
+    if (j.contains("world") && j["world"].is_object()) applyWorldFields(config, j["world"]);
+
     config.rules.finiteAmmo = j.value("finiteAmmo", config.rules.finiteAmmo);
     config.rules.minedBlockDrops = j.value("minedBlockDrops", config.rules.minedBlockDrops);
     config.rules.penetration = j.value("penetration", config.rules.penetration);
     config.rules.blockDamage = j.value("blockDamage", config.rules.blockDamage);
     config.rules.voxelSize = j.value("voxelSize", config.rules.voxelSize);
-    meat::log::info("loaded project '{}' (seed {})", config.serverName, config.seed);
+
+    static const char* kTpl[] = {"fps", "tps", "space", "racer"};
+    static const char* kTer[] = {"normal", "superflat", "void"};
+    static const char* kEnv[] = {"surface", "underwater", "space"};
+    const int ti = static_cast<int>(config.rules.gameTemplate);
+    const int te = static_cast<int>(config.rules.terrain);
+    const int en = static_cast<int>(config.rules.environment);
+    meat::log::info("loaded project '{}' seed={} template={} terrain={} env={}",
+                    config.serverName, config.seed, kTpl[ti < 0 || ti > 3 ? 0 : ti],
+                    kTer[te < 0 || te > 2 ? 0 : te], kEnv[en < 0 || en > 2 ? 0 : en]);
 }
 
 meat::EngineConfig parseArgs(int argc, char** argv) {
@@ -145,54 +176,13 @@ meat::EngineConfig parseArgs(int argc, char** argv) {
         } else if (arg == "--voxelsize") {
             if (const char* v = next()) config.rules.voxelSize = std::strtof(v, nullptr);
         } else if (arg == "--terrain") {
-            using Terrain = meat::GameRules::Terrain;
-            if (const char* t = next()) {
-                const std::string m = t;
-                config.rules.terrain = m == "superflat" ? Terrain::Superflat
-                                       : m == "void"     ? Terrain::Void
-                                                         : Terrain::Normal;
-            }
+            if (const char* t = next()) applyTerrainString(config, t);
         } else if (arg == "--env") {
-            using Environment = meat::GameRules::Environment;
-            if (const char* e = next()) {
-                const std::string m = e;
-                config.rules.environment = m == "underwater" ? Environment::Underwater
-                                           : m == "space"     ? Environment::Space
-                                                              : Environment::Surface;
-            }
+            if (const char* e = next()) applyEnvironmentString(config, e);
         } else if (arg == "--template") {
-            using Perspective = meat::GameRules::Perspective;
-            using Template = meat::GameRules::Template;
-            using Terrain = meat::GameRules::Terrain;
-            using Environment = meat::GameRules::Environment;
-            if (const char* t = next()) {
-                const std::string m = t;
-                if (m == "tps" || m == "third") {
-                    config.rules.gameTemplate = Template::Tps;
-                    config.rules.perspective = Perspective::Third;
-                } else if (m == "space" || m == "spaceship") {
-                    config.rules.gameTemplate = Template::Space;
-                    config.rules.perspective = Perspective::First;
-                    config.rules.terrain = Terrain::Void;
-                    config.rules.environment = Environment::Space;
-                    config.rules.hemisphereAmbient = false;
-                } else if (m == "racer" || m == "race") {
-                    config.rules.gameTemplate = Template::Racer;
-                    config.rules.perspective = Perspective::Third;
-                    config.rules.terrain = Terrain::Superflat;
-                    config.rules.environment = Environment::Surface;
-                } else {
-                    config.rules.gameTemplate = Template::Fps;
-                    config.rules.perspective = Perspective::First;
-                }
-            }
+            if (const char* t = next()) applyTemplatePreset(config, t);
         } else if (arg == "--perspective") {
-            using Perspective = meat::GameRules::Perspective;
-            if (const char* p = next()) {
-                const std::string m = p;
-                config.rules.perspective = (m == "third" || m == "tps") ? Perspective::Third
-                                                                        : Perspective::First;
-            }
+            if (const char* p = next()) applyPerspectiveString(config, p);
         } else {
             meat::log::warn("unknown argument '{}'", arg);
         }

@@ -1265,12 +1265,12 @@ void RoomEditor::placeSelectedProp(EditorContext& ctx) {
 // ===== Node Graph (C6 visual scripting — not "Blueprints"; UE trademark) ====
 
 namespace {
-constexpr const char* kGraphPath = "scripts/graphs/main.graph.json";
 // Legacy path still accepted on load if the new one is missing.
 constexpr const char* kGraphPathLegacy = "scripts/blueprints/main.graph.json";
 // Load last alphabetically so hand-written example.lua does not stomp it.
 constexpr const char* kEmitLuaPath = "scripts/zz_nodegraph.lua";
 constexpr const char* kEmitLuaPathLegacy = "scripts/zz_blueprint.lua";
+constexpr const char* kGraphsDir = "scripts/graphs";
 
 const NodeKind kPaletteKinds[] = {
     NodeKind::EventOnInit,       NodeKind::EventOnTick,       NodeKind::EventOnPlayerJoin,
@@ -1330,18 +1330,56 @@ void RoomEditor::ensureNodeGraphContext() {
     ImNodes::GetIO().EmulateThreeButtonMouse.Modifier = &ImGui::GetIO().KeyAlt;
 }
 
+std::string RoomEditor::sanitizeGraphStem(const std::string& raw) const {
+    std::string s;
+    s.reserve(raw.size());
+    for (char c : raw) {
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+            c == '_' || c == '-')
+            s.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    }
+    if (s.empty()) s = "graph";
+    if (s.size() > 40) s.resize(40);
+    return s;
+}
+
+std::string RoomEditor::graphJsonPath() const {
+    return std::string(kGraphsDir) + "/" + m_graphStem + ".graph.json";
+}
+
+void RoomEditor::refreshGraphList(EditorContext& ctx) {
+    m_graphList.clear();
+    if (!ctx.listFiles) return;
+    const std::vector<std::string> files = ctx.listFiles(kGraphsDir);
+    for (const std::string& f : files) {
+        // Expect "name.graph.json" (listFiles returns leaf names).
+        constexpr const char* suf = ".graph.json";
+        const std::size_t n = std::strlen(suf);
+        if (f.size() <= n) continue;
+        if (f.compare(f.size() - n, n, suf) != 0) continue;
+        m_graphList.push_back(f.substr(0, f.size() - n));
+    }
+    std::sort(m_graphList.begin(), m_graphList.end());
+    if (m_graphList.empty()) m_graphList.push_back("main");
+    // Keep active stem in the list.
+    if (std::find(m_graphList.begin(), m_graphList.end(), m_graphStem) == m_graphList.end())
+        m_graphList.push_back(m_graphStem);
+}
+
 void RoomEditor::loadOrSeedNodeGraph(EditorContext& ctx) {
     if (m_nodeGraphLoaded) return;
     m_nodeGraphLoaded = true;
+    refreshGraphList(ctx);
     bool ok = false;
     std::string loadedFrom;
     if (ctx.readFile) {
-        std::string text = ctx.readFile(kGraphPath);
+        const std::string path = graphJsonPath();
+        std::string text = ctx.readFile(path);
         if (!text.empty()) {
             ok = loadGraphJson(m_nodeGraph, text);
-            if (ok) loadedFrom = kGraphPath;
+            if (ok) loadedFrom = path;
         }
-        if (!ok) {
+        if (!ok && m_graphStem == "main") {
             // Pre-rename projects used scripts/blueprints/ (avoid "Blueprints" branding).
             text = ctx.readFile(kGraphPathLegacy);
             if (!text.empty()) {
@@ -1353,15 +1391,48 @@ void RoomEditor::loadOrSeedNodeGraph(EditorContext& ctx) {
     m_graphPlacedIds.clear();
     if (!ok) {
         m_nodeGraph = NodeGraph::makeExample();
+        m_nodeGraph.name = m_graphStem;
         m_nodeGraphDirty = true;
-        m_graphStatus = "seeded example node graph";
+        m_graphStatus = "seeded example graph '" + m_graphStem + "'";
         m_graphStatusTtl = 4.0f;
     } else {
+        m_nodeGraph.name = m_graphStem;
         m_graphStatus = "loaded " + loadedFrom;
         m_graphStatusTtl = 3.0f;
         if (loadedFrom == kGraphPathLegacy) m_nodeGraphDirty = true; // re-save under new path
     }
     (void)kEmitLuaPathLegacy;
+}
+
+bool RoomEditor::switchNodeGraph(EditorContext& ctx, const std::string& stem) {
+    const std::string want = sanitizeGraphStem(stem);
+    if (want == m_graphStem) return true;
+    if (m_nodeGraphDirty) {
+        if (!saveAndCompileNodeGraph(ctx)) return false;
+    }
+    m_graphStem = want;
+    m_nodeGraphLoaded = false;
+    m_graphPlacedIds.clear();
+    loadOrSeedNodeGraph(ctx);
+    return true;
+}
+
+bool RoomEditor::createNodeGraph(EditorContext& ctx, const std::string& stem) {
+    const std::string want = sanitizeGraphStem(stem);
+    if (m_nodeGraphDirty && !saveAndCompileNodeGraph(ctx)) return false;
+    m_graphStem = want;
+    m_nodeGraph = NodeGraph::makeExample();
+    m_nodeGraph.name = want;
+    m_nodeGraphDirty = true;
+    m_nodeGraphLoaded = true;
+    m_graphPlacedIds.clear();
+    refreshGraphList(ctx);
+    if (std::find(m_graphList.begin(), m_graphList.end(), want) == m_graphList.end())
+        m_graphList.push_back(want);
+    m_graphStatus = "created graph '" + want + "' (save to compile)";
+    m_graphStatusTtl = 4.0f;
+    log::info("node graph: created '{}'", want);
+    return true;
 }
 
 bool RoomEditor::saveAndCompileNodeGraph(EditorContext& ctx) {
@@ -1377,14 +1448,17 @@ bool RoomEditor::saveAndCompileNodeGraph(EditorContext& ctx) {
         n.posX = p.x;
         n.posY = p.y;
     }
+    m_nodeGraph.name = m_graphStem;
+    const std::string path = graphJsonPath();
     const std::string json = saveGraphJson(m_nodeGraph);
-    if (!ctx.writeFile(kGraphPath, json)) {
+    if (!ctx.writeFile(path, json)) {
         m_graphStatus = "failed to write graph JSON";
         m_graphStatusTtl = 4.0f;
-        log::error("node graph: failed to write {}", kGraphPath);
+        log::error("node graph: failed to write {}", path);
         m_outputLogOpen = true;
         return false;
     }
+    // Active graph only → runtime hooks (multi-graph authoring; one live at a time).
     const std::string lua = emitGraphLua(m_nodeGraph);
     if (!ctx.writeFile(kEmitLuaPath, lua)) {
         m_graphStatus = "failed to write generated Lua";
@@ -1394,16 +1468,17 @@ bool RoomEditor::saveAndCompileNodeGraph(EditorContext& ctx) {
         return false;
     }
     m_nodeGraphDirty = false;
+    refreshGraphList(ctx);
     bool reloaded = false;
     if (ctx.reloadScripts) reloaded = ctx.reloadScripts();
-    m_graphStatus = reloaded ? "saved + compiled + scripts reloaded"
-                          : "saved + compiled (reload skipped / host only)";
+    m_graphStatus = reloaded ? ("'" + m_graphStem + "' saved + compiled + reloaded")
+                             : ("'" + m_graphStem + "' saved + compiled (host reload only)");
     m_graphStatusTtl = 5.0f;
     if (reloaded)
-        log::info("node graph: compiled {} ({} nodes) + scripts reloaded", kEmitLuaPath,
+        log::info("node graph: '{}' → {} ({} nodes) + scripts reloaded", m_graphStem, kEmitLuaPath,
                   m_nodeGraph.nodes.size());
     else
-        log::warn("node graph: compiled {} but script reload skipped (host/SP only)",
+        log::warn("node graph: '{}' → {} but script reload skipped (host/SP only)", m_graphStem,
                   kEmitLuaPath);
     return true;
 }
@@ -1671,6 +1746,25 @@ void RoomEditor::drawNodeGraph(EditorContext& ctx) {
         return;
     }
 
+    // C6-c multi-graph tabs (authoring); only the active graph compiles to runtime Lua.
+    refreshGraphList(ctx);
+    for (const std::string& stem : m_graphList) {
+        const bool active = stem == m_graphStem;
+        if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.35f, 0.65f, 1.0f));
+        if (ImGui::SmallButton(stem.c_str())) switchNodeGraph(ctx, stem);
+        if (active) ImGui::PopStyleColor();
+        ImGui::SameLine();
+    }
+    ImGui::SetNextItemWidth(100.0f);
+    ImGui::InputTextWithHint("##newgraph", "new name", m_graphNewName, sizeof(m_graphNewName));
+    ImGui::SameLine();
+    if (ImGui::SmallButton("+ Graph") && m_graphNewName[0] != '\0') {
+        createNodeGraph(ctx, m_graphNewName);
+        m_graphNewName[0] = '\0';
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("active → zz_nodegraph.lua");
+
     // Toolbar strip (UE Graph editor style).
     if (ImGui::Button("Compile")) saveAndCompileNodeGraph(ctx);
     ImGui::SameLine();
@@ -1697,6 +1791,7 @@ void RoomEditor::drawNodeGraph(EditorContext& ctx) {
     ImGui::SameLine();
     if (ImGui::Button("Reset Graph")) {
         m_nodeGraph = NodeGraph::makeExample();
+        m_nodeGraph.name = m_graphStem;
         m_graphPlacedIds.clear();
         m_graphOpenNodeId = 0;
         m_nodeGraphDirty = true;
@@ -1710,7 +1805,7 @@ void RoomEditor::drawNodeGraph(EditorContext& ctx) {
         ImGui::TextColored({0.4f, 0.85f, 0.55f, 1.0f}, "%s", m_graphStatus.c_str());
     }
     ImGui::TextDisabled("RMB empty graph: place node  |  Double-click node: open Details  |  "
-                        "Ctrl+drag link detach  |  Outliner: Create Graph Node");
+                        "Ctrl+drag link detach  |  multi-graph tabs: one live at a time");
 
     ImNodes::BeginNodeEditor();
     for (GraphNode& n : m_nodeGraph.nodes) {

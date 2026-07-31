@@ -75,6 +75,12 @@ private:
     void ensureNodeGraphContext();
     void loadOrSeedNodeGraph(EditorContext& ctx);
     bool saveAndCompileNodeGraph(EditorContext& ctx);
+    // C6-c multi-graph: list / switch / create graphs under scripts/graphs/.
+    void refreshGraphList(EditorContext& ctx);
+    bool switchNodeGraph(EditorContext& ctx, const std::string& stem);
+    bool createNodeGraph(EditorContext& ctx, const std::string& stem);
+    std::string graphJsonPath() const;
+    std::string sanitizeGraphStem(const std::string& raw) const;
 
     // Content browser: a flat, cached, type-grouped listing of the project's
     // assets with per-file sizes. Unlike the Assets tree (which lazily lists via
@@ -193,6 +199,11 @@ private:
     std::string m_graphStatus;
     float m_graphStatusTtl = 0.0f;
     int m_graphAddKind = 0; // palette index for "Add node"
+    // C6-c: active graph stem (file scripts/graphs/<stem>.graph.json). Runtime always
+    // emits scripts/zz_nodegraph.lua from the active graph only.
+    std::string m_graphStem = "main";
+    std::vector<std::string> m_graphList; // stems found under scripts/graphs/
+    char m_graphNewName[48] = {};
     // Node ids that already received SetNodeGridSpacePos (imnodes owns drag after).
     std::vector<int> m_graphPlacedIds;
     // Double-click / Open opens a Details panel for this node id (0 = none).

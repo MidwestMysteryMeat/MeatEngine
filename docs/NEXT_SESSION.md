@@ -65,8 +65,10 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
 4. ~~**C5 lite / C4 import path**~~ ✅ — Details panel (world + selection + import); import logs.
 5. ~~**A2 sun shadows**~~ ✅ — sun depth map + PCF; editor toggle.
 6. **C6-c subgraphs / multi-graph / watches** — after reliability.
-7. ~~**B3b editor gravity volumes**~~ ✅ — **B5 game.json** / **B2 MeshLevel** — as capacity allows.
-8. H4/H1 polish, C7 packaging, F/D pillars — later (see full plan).
+7. ~~**B3b editor gravity volumes**~~ ✅
+8. ~~**B5 game.json world**~~ ✅ — nested `world` object; see [GAME_JSON.md](GAME_JSON.md).
+9. ~~**C6-c multi-graph tabs**~~ ✅ — still open: watches / subgraphs.
+10. **B2 MeshLevel** / C7 packaging / F/D — later (see full plan).
 
 ## Cleanup / debt from last sprint
 - **ARCHITECTURE.md is stale** — still frames delta-compression, navmesh, torch-light, ozz as
