@@ -71,11 +71,10 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
 10. ~~**B2 MeshLevel first slice**~~ ✅ — `world.meshLevel` + triangle colliders.
 11. ~~**C7 packaging**~~ ✅ — `tools/package.ps1` launchers + zip.
 12. ~~**B2 multi-mesh + C2/C3 drag-place**~~ ✅ — `meshLevels[]`, content drag-to-viewport.
-13. **F netcode** / **D OSS** / ARCHITECTURE reconcile / real asset thumbnails — as needed.
+13. ~~**ARCHITECTURE reconcile + B3-sky**~~ ✅ — status banner + key sections; procedural sky.
+14. **F netcode** / **D OSS** / real asset thumbnails / water plane — as needed.
 
 ## Cleanup / debt from last sprint
-- **ARCHITECTURE.md is stale** — still frames delta-compression, navmesh, torch-light, ozz as
-  "planned" when shipped; do a reconciliation pass (design contract, so review carefully).
-- **Root `ROADMAP.md`** duplicates `docs/ROLLOUT.md` — retire or cross-link to a single source.
-- **E1 foot-slide** ("too fluid") — tie walk-clip playback to move speed (Torque3D pattern); the last
-  open item from the animation overhaul.
+- ~~**ARCHITECTURE.md is stale**~~ ✅ (partial) — top status + layout + lighting + nodegraph/AI notes.
+- **Root `ROADMAP.md`** still historical; points at ROLLOUT/NEXT_SESSION.
+- **E1 foot-slide** — verify shipped; re-open only if feel regresses.

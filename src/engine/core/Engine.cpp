@@ -257,6 +257,12 @@ void Engine::applyEnvironment(const GameRules& rules) {
     m_renderer.psx.fogColor = env.fogColor;
     m_renderer.psx.fogStart = env.fogStart;
     m_renderer.psx.fogEnd = env.fogEnd;
+    // B3-sky: procedural gradient driven by environment preset.
+    m_renderer.psx.sky = true;
+    m_renderer.psx.skyZenith = env.skyZenith;
+    m_renderer.psx.skyHorizon = env.skyHorizon;
+    m_renderer.psx.skyGround = env.skyGround;
+    m_renderer.psx.skyStars = env.skyStars;
     m_renderer.setAmbientLight(env.ambient);
     // A3: hemisphere ambient — form-defining fill not gated by torch light. Toggleable so the
     // dark PSX-night look stays available (game.json / F7 / New Map "hemisphere ambient").

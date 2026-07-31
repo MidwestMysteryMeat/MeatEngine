@@ -62,7 +62,7 @@ bool Renderer::init(Window& window) {
     if (!m_chunkShader.load(kShaderDir, "chunk") || !m_meshShader.load(kShaderDir, "mesh") ||
         !m_skinnedShader.load(kShaderDir, "skinned") ||
         !m_spriteShader.load(kShaderDir, "sprite") || !m_resolveShader.load(kShaderDir, "resolve") ||
-        !m_shadowShader.load(kShaderDir, "shadow")) {
+        !m_shadowShader.load(kShaderDir, "shadow") || !m_skyShader.load(kShaderDir, "sky")) {
         return false;
     }
     if (!m_crosshairProgram.compile(kCrosshairVert, kCrosshairFrag, "crosshair")) {
@@ -97,6 +97,7 @@ void Renderer::reloadShaders() {
     m_spriteShader.reload();
     m_resolveShader.reload();
     m_shadowShader.reload();
+    m_skyShader.reload();
 }
 
 bool Renderer::captureScreenshot(const std::filesystem::path& path) {
@@ -334,6 +335,12 @@ void Renderer::beginFrame(const Camera& camera, float alpha) {
     m_frame.camPos = glm::vec4(camera.pos, 1.0f);
     m_frame.fogParams = glm::vec4(psx.fogStart, psx.fogEnd, psx.fog ? 1.0f : 0.0f, 0.0f);
     m_frame.fogColor = glm::vec4(psx.fogColor, 1.0f);
+    // B3-sky camera basis.
+    m_camForward = camera.forward();
+    m_camRight = glm::normalize(glm::cross(m_camForward, glm::vec3(0.0f, 1.0f, 0.0f)));
+    if (glm::length(m_camRight) < 1e-4f) m_camRight = glm::vec3(1.0f, 0.0f, 0.0f);
+    m_camUp = glm::normalize(glm::cross(m_camRight, m_camForward));
+    m_camFovY = camera.fovY;
     m_pointCount = 0;
     m_spotCount = 0;
     m_frame.lightCounts = glm::ivec4(0);
@@ -548,7 +555,33 @@ void Renderer::bindShadowUniforms(const GlShaderProgram& prog) const {
     if (m_shadowDepth) glBindTextureUnit(1, m_shadowDepth.id());
 }
 
+void Renderer::drawSkyPass() {
+    if (!psx.sky) return;
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+    glUseProgram(m_skyShader.id());
+    const GlShaderProgram& sky = m_skyShader.program();
+    const float aspect = static_cast<float>(m_fbSize.x) / static_cast<float>(std::max(1, m_fbSize.y));
+    sky.setUniform("uCamForward", m_camForward);
+    sky.setUniform("uCamRight", m_camRight);
+    sky.setUniform("uCamUp", m_camUp);
+    sky.setUniform("uTanHalfFov", std::tan(m_camFovY * 0.5f));
+    sky.setUniform("uAspect", aspect);
+    sky.setUniform("uZenith", psx.skyZenith);
+    sky.setUniform("uHorizon", psx.skyHorizon);
+    sky.setUniform("uGround", psx.skyGround);
+    sky.setUniform("uStars", psx.skyStars ? 1 : 0);
+    glBindVertexArray(m_fullscreenVao.id());
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glBindVertexArray(0);
+    glDepthMask(GL_TRUE);
+    glEnable(GL_DEPTH_TEST);
+}
+
 void Renderer::flushScenePasses() {
+    // B3-sky first (depth off) so fog/clear still tint empty space under geometry.
+    drawSkyPass();
+
     // Chunk pass: one shader, one atlas, per-draw translation.
     if (!m_chunkDraws.empty()) {
         const auto atlasIt = m_textures.find(m_atlas);

@@ -57,7 +57,7 @@ Scoring: **creator value** × **engine leverage** × **dependency readiness** �
 | # | ID | Item | Why | Size | Deps |
 |---|-----|------|-----|------|------|
 | 9 | **A2** | **Directional sun shadow map** ✅ | Shipped: depth pass + PCF; skinned casters later. | M | A1 done |
-| 10 | **B3-sky** | **Skybox / simple water plane** | Environment presets still fog-only; Space/Underwater read better with sky/water. | M | B3 |
+| 10 | **B3-sky** | **Sky gradient / water plane** | Gradient + stars ✅; water plane still open. | M | B3 |
 | 11 | **H4-p** | **Ship systems polish** | Dock latch, shield/HP UX, hangar — only if Space is the showcase game. | M | H4 |
 | 12 | **H1-r** | **Racer track mesh + server laps** | Fun genre sibling; lower than ship/log unless racing is the pitch. | M | Racer skeleton |
 

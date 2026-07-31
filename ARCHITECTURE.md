@@ -11,6 +11,13 @@ C++20, OpenGL 4.5 core, CMake + FetchContent.
 This file is the **contract**. Code that doesn't match the signatures, ownership rules,
 or threading rules here is wrong even if it works.
 
+> **Status note (2026-07):** Many sections below still say "planned" for systems that have
+> shipped. Prefer [docs/ROLLOUT.md](docs/ROLLOUT.md) and [docs/NEXT_SESSION.md](docs/NEXT_SESSION.md)
+> for what is done vs open. Shipped since early draft includes: delta snapshots, navmesh (Recast),
+> ozz skeletal anim, torch/block light on chunks, A1 AO + A2 sun shadows + A3 hemi, B3 envs +
+> GravityField, B2 MeshLevel, C5 Details / C6 Node Graph / C7 package / C9 Output Log, H4 ships,
+> Racer template, ScriptFx. UPnP/Steam/full GAS/in-engine modeler remain planned.
+
 ## Units & coordinates
 
 - Right-handed, **Y-up**, meters. -Z is "forward" at yaw 0 (OpenGL convention).
@@ -26,19 +33,19 @@ or threading rules here is wrong even if it works.
 ## Directory layout
 
 ```
-src/engine/core/       Engine spine: loop, time, jobs, log, entity registry, events
+src/engine/core/       Engine spine: loop, time, jobs, log (ring + watches), entity registry, events
 src/engine/platform/   Window (GLFW), Input (raw mouse), PlayerCommand sampling
 src/engine/voxel/      Blocks, chunks, meshing, DDA raycast, streaming, edit ops
-src/engine/render/     GL wrappers, forward renderer, PSX pipeline, camera, HUD
-src/engine/physics/    Jolt wrapper: world, chunk colliders, character controller
-src/engine/anim/       Skeletal animation (canonical Mixamo-named skeleton)
+src/engine/render/     GL wrappers, forward PSX renderer, AO/hemi/sun shadows, sky gradient
+src/engine/physics/    Jolt: chunks, props, triangle MeshLevel, CharacterController, GravityField
+src/engine/level/      MeshLevel (static multi-mesh maps)
+src/engine/anim/       Skeletal animation (ozz + Mixamo-named skeleton)
 src/engine/asset/      Assimp model loading (FBX/OBJ/GLB), textures (stb), audio (miniaudio)
-src/engine/script/     Lua (sol2) host + bindings
-src/engine/save/       Save/load (meta.json + chunks.bin)
-src/engine/net/        Transport (loopback + ENet UDP), messages, snapshots, replication
-src/game/              Gameplay: player, weapons, inventory, items, enemies, dungeon gen
+src/engine/script/     Lua (sol2) host + NodeGraph compile-to-Lua
+src/engine/net/        Transport (loopback + ENet), messages, delta snapshots, LAN/master
+src/game/              ServerSim/Client, weapons, inventory, ships, racer, dungeon, navmesh
 src/editor/            Room Designer. NOTHING in src/engine or src/game includes this.
-tools/                 autorig CLI, asset staging/audit scripts (Python)
+tools/                 package.ps1, new_project.py, master_server, autorig
 assets/                shaders/, textures/, models/, scripts/ (Lua), ATTRIBUTION.md
 ```
 
@@ -256,12 +263,10 @@ Shaders live in `assets/shaders/*.{vert,frag}`, hot-reloadable (F6).
 2. ✓ Point lights (≤32) and spot lights (≤8), per-frame submits — animation
    (flicker/pulse) is gameplay-side by re-submitting with varying color each frame.
 3. ✓ Emissive materials (glow that ignores incoming light; feeds PSX bloom-less look).
-4. Voxel light levels — torch-style flood-fill light baked into `VoxelVertex` at mesh
-   time (Minecraft model). The mesher gains a light nibble; planned with the editor's
-   placeable lights so hand-built rooms light correctly. NOT yet implemented.
-5. Single directional shadow map — post-slice polish, off by default (PSX-era games
-   didn't have it; blob shadows under characters are more period-correct).
-6. Editor preview lights = the same point/spot submits, live-edited.
+4. ✓ Voxel block-light flood-fill baked into vertices (torch-style); AO (A1) in mesher.
+5. ✓ Directional sun shadow map (A2 PCF); skinned casters deferred.
+6. ✓ Hemisphere ambient (A3); ✓ procedural sky gradient + optional stars (B3-sky).
+7. Editor preview lights = the same point/spot submits, live-edited.
 
 ### physics/
 ```cpp
@@ -459,17 +464,11 @@ The voxel world makes AAA destruction tech almost free — the plan leans into i
   RPG, frag grenade, claymore, medkit — one of each archetype so every code path has a
   proving item and devs have templates to copy.
 
-### editor/nodegraph — planned (visual node scripting — NOT YET BUILT)
-The original spec listed a node editor as a non-goal; it's now a wanted feature.
-Design: an ImGui node-graph panel where a dev wires **event nodes** (onTick, onHit,
-onUse, onEnter) → **action nodes** (spawn, setBlock, damage, applyEffect, playSound,
-if/branch, math) into a graph saved per project as JSON. The graph does NOT interpret
-at runtime — it **compiles to Lua** (the existing sandboxed ScriptHost), so nodes and
-handwritten Lua share one execution path and one capability surface. This keeps the
-engine from carrying a second VM, lets power users drop from nodes to code, and means
-node scripts inherit the instruction-budget/sandbox hardening for free. Library for the
-canvas: ImNodes (MIT) or hand-rolled. Compilation is a straightforward topological walk
-emitting Lua statements. Slots into the editor as another panel (Phase 8.5 pattern).
+### editor/nodegraph — ✓ shipped (Node Graph visual scripting)
+ImNodes panel in Room Designer: events / actions / data / flow / math / object nodes compile
+to sandboxed Lua (`scripts/zz_nodegraph.lua`). Multi-graph tabs, Call Subgraph, Watches,
+Output Log on compile errors. JSON under `scripts/graphs/`. Not branded "Blueprints".
+Still open: ImGuiColorTextEdit for hand Lua, merge multiple live event graphs.
 
 ### game/authoring — planned (make weapons/abilities/items without code)
 Two tiers over the same data, so a designer never has to touch C++ and rarely Lua:
@@ -534,17 +533,13 @@ A general modeling layer so games build their own props/weapons without external
 - Parts and assemblies live in the project data dir; the asset browser imports part
   models (FBX/OBJ/GLB or voxel-modeled), the authoring UI wires sockets and modifiers.
 
-### game/entities on the wire — planned (unblocks AI, pickups, turrets, projectiles)
-`SnapshotMsg` grows an `entities` vector alongside players:
-`EntityState { EntityId id; u8 archetype; vec3 pos; float yaw; u8 anim; float health; }`.
-Server owns entity logic; clients interpolate exactly like remote players (same 100 ms
-buffer code, generalized). Archetype tables (client-side) map to render proxies — box
-today, models/sprites after the asset phase. This single wire change unblocks: ground
-item pickups, projectiles, turrets, companions, and PvE enemies. Reliable spawn/despawn
-events; unreliable state in snapshots; interest management (only entities near the
-player) when counts grow.
+### game/entities on the wire — ✓ shipped (pickups, NPCs, ships, projectiles)
+`SnapshotMsg` carries entities; archetypes include pickups, NPCs, ships, etc. Interest
+management (F1) still open for large counts.
 
-### game/ai + navigation — planned
+### game/ai + navigation — ✓ first slices shipped
+- Recast/Detour navmesh + voxel A* pathfinder for NPCs; dungeon AI exists.
+- **Still open:** full destruction-aware nav rebuild, larger-scale AI.
 - **v1: voxel-native navigation.** 3D A* / hierarchical flood-fill directly on the voxel
   grid (walkable = solid below + 2 air above), with jump/drop links. Destruction
   integrates natively: a wall breached by gunfire is instantly pathable — AI flows

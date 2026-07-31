@@ -73,7 +73,7 @@ blank / …), but spanning voxel AND non-voxel AND themed worlds. Physics is alr
   `meshLevel` / **`meshLevels[]`** with pos/yaw/scale. Still open: full Level interface,
   disable voxel meshing entirely.
 - [x] **B3. Environment presets** — Surface / Underwater / Space drive gravity + fog + ambient
-  (+ hemi lobes). Skybox/water plane still open.
+  (+ hemi lobes). **B3-sky** procedural gradient + Space stars. Water plane still open.
 - [x] **B3b. Gravity volumes / zoned gravity** ⭐ — `GravityField` + CharacterController sampling;
   Space habitat/station/planetoid defaults; **B3b-e** editor **Gravity** tool places AABB volumes
   (priority + vector), saved in `saves/editor_extras.json`, applied to client + host server field.

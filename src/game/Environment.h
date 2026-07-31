@@ -20,6 +20,11 @@ struct EnvSettings {
     // Applied OUTSIDE the voxel block-light gate so form stays readable without torches.
     glm::vec3 hemiGround{0.08f, 0.07f, 0.06f};
     float hemiStrength = 0.0f;
+    // B3-sky procedural gradient (zenith / horizon / ground).
+    glm::vec3 skyZenith{0.28f, 0.42f, 0.68f};
+    glm::vec3 skyHorizon{0.55f, 0.62f, 0.72f};
+    glm::vec3 skyGround{0.12f, 0.11f, 0.10f};
+    bool skyStars = false;
 };
 
 // Maps an Environment preset to its settings. Single source of truth for the presets so server

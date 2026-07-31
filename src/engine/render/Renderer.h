@@ -29,6 +29,12 @@ struct PsxOptions {
     bool sunShadows = true;
     int shadowMapSize = 2048; // square depth map resolution
     float shadowExtent = 48.0f; // ortho half-size around camera (metres)
+    // B3-sky: procedural gradient backdrop (no cubemap). Off keeps clear = fogColor only.
+    bool sky = true;
+    glm::vec3 skyZenith{0.28f, 0.42f, 0.68f};
+    glm::vec3 skyHorizon{0.55f, 0.62f, 0.72f};
+    glm::vec3 skyGround{0.12f, 0.11f, 0.10f};
+    bool skyStars = false; // sparse procedural stars (Space)
 };
 
 using MeshHandle = std::uint32_t;        // 0 = invalid
@@ -164,6 +170,7 @@ private:
     void ensureShadowMap();
     void renderShadowMap();
     void bindShadowUniforms(const GlShaderProgram& prog) const;
+    void drawSkyPass();
     void flushScenePasses();
     void drawCrosshairPass(glm::ivec2 targetSize);
     void resolveToBackbuffer();
@@ -176,7 +183,13 @@ private:
     Shader m_spriteShader;
     Shader m_resolveShader;
     Shader m_shadowShader; // A2 depth-only sun pass
+    Shader m_skyShader;    // B3-sky gradient backdrop
     GlShaderProgram m_crosshairProgram; // trivial, source embedded in Renderer.cpp
+    // Camera basis for sky (set in beginFrame).
+    glm::vec3 m_camForward{0, 0, -1};
+    glm::vec3 m_camRight{1, 0, 0};
+    glm::vec3 m_camUp{0, 1, 0};
+    float m_camFovY = glm::radians(70.0f);
 
     GlBuffer m_frameUbo;
     FrameUbo m_frame{};
