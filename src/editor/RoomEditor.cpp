@@ -2159,6 +2159,25 @@ void RoomEditor::drawDetailsPanel(EditorContext& ctx) {
             ImGui::SameLine();
             ImGui::RadioButton("Scale", &m_propGizmoOp, 2);
 
+            // C5: material fields (tint / shininess / emissive) for the prop asset.
+            if (ImGui::TreeNode("Material")) {
+                MaterialDesc mat{};
+                MaterialHandle mh = MaterialHandle::Invalid;
+                if (ctx.propMaterialHandle) mh = ctx.propMaterialHandle(prop.assetPath);
+                if (mh != MaterialHandle::Invalid && ctx.renderer.getMaterial(mh, mat)) {
+                    bool dirty = false;
+                    dirty |= ImGui::ColorEdit3("tint", glm::value_ptr(mat.tint));
+                    dirty |= ImGui::DragFloat("shininess", &mat.shininess, 0.5f, 1.0f, 256.0f);
+                    dirty |= ImGui::ColorEdit3("emissive", glm::value_ptr(mat.emissive));
+                    ImGui::TextDisabled("albedo tex  %u", static_cast<unsigned>(mat.albedo));
+                    ImGui::TextDisabled("shared by all instances of this asset");
+                    if (dirty) ctx.renderer.setMaterial(mh, mat);
+                } else {
+                    ImGui::TextDisabled("no material (mesh failed to load?)");
+                }
+                ImGui::TreePop();
+            }
+
             if (ImGui::Button("Create Graph Node")) {
                 m_nodeGraphOpen = true;
                 createObjectNodeFromSelection(ctx);
@@ -2178,6 +2197,49 @@ void RoomEditor::drawDetailsPanel(EditorContext& ctx) {
         } else {
             ImGui::TextDisabled(
                 "Nothing selected — pick a prop, light, seed, or gravity volume in the Outliner.");
+        }
+    }
+
+    // --- Blocks (C5) --------------------------------------------------------
+    if (ImGui::CollapsingHeader("Blocks", ImGuiTreeNodeFlags_DefaultOpen)) {
+        const BlockRegistry& reg = ctx.voxels.blockRegistry();
+        const int n = static_cast<int>(reg.count());
+        ImGui::TextDisabled("build brush + registry (read-only defs)");
+        if (n == 0) {
+            ImGui::TextDisabled("no blocks registered");
+        } else {
+            int build = static_cast<int>(m_buildBlock);
+            for (int id = 1; id <= n; ++id) {
+                const BlockDef& def = reg.get(static_cast<BlockId>(id));
+                ImGui::PushID(id);
+                if (ImGui::RadioButton(def.name.c_str(), &build, id)) {
+                    m_buildBlock = static_cast<BlockId>(id);
+                    ctx.buildBlock = m_buildBlock;
+                }
+                ImGui::SameLine(120);
+                ImGui::TextDisabled("id %d", id);
+                if (build == id) {
+                    ImGui::Indent();
+                    ImGui::Text("solid %s", def.solid ? "yes" : "no");
+                    ImGui::Text("hp %.0f   pen %.0f", def.hp, def.penCost);
+                    ImGui::Text("light emit %u", static_cast<unsigned>(def.lightEmission));
+                    ImGui::Text("faceTex +X%u -X%u +Y%u -Y%u +Z%u -Z%u",
+                                def.faceTex[0], def.faceTex[1], def.faceTex[2], def.faceTex[3],
+                                def.faceTex[4], def.faceTex[5]);
+                    ImGui::Unindent();
+                }
+                ImGui::PopID();
+            }
+            m_buildBlock = static_cast<BlockId>(build);
+            ctx.buildBlock = m_buildBlock;
+        }
+        // Hovered voxel under brush (if any ray hit was last stored — show client pick).
+        if (const auto hit = ctx.voxels.raycast(ctx.camera.pos, ctx.camera.forward(), 12.0f)) {
+            const BlockDef& look = reg.get(hit->block);
+            ImGui::Separator();
+            ImGui::Text("look-at voxel %d %d %d", hit->voxel.x, hit->voxel.y, hit->voxel.z);
+            ImGui::Text("block %s (id %u)", look.name.c_str(),
+                        static_cast<unsigned>(hit->block));
         }
     }
 

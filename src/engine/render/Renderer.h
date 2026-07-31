@@ -83,6 +83,9 @@ public:
                                         const std::string& label);
     void setAtlas(TextureHandle atlas); // block atlas sampled by every chunk draw
     MaterialHandle createMaterial(const MaterialDesc& desc);
+    // C5: live material inspect/edit (Details panel). Returns false if handle unknown.
+    bool getMaterial(MaterialHandle handle, MaterialDesc& out) const;
+    bool setMaterial(MaterialHandle handle, const MaterialDesc& desc);
 
     void beginFrame(const Camera& camera, float alpha);
     void submitChunk(MeshHandle mesh, glm::vec3 originWorld);

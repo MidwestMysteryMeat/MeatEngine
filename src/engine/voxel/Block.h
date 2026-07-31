@@ -43,6 +43,9 @@ public:
     // For validating remote data before it reaches get()'s assert.
     bool isValid(BlockId id) const { return static_cast<std::size_t>(id) <= m_defs.size(); }
 
+    // Number of registered solid types (ids 1..count). Air is not counted.
+    std::size_t count() const { return m_defs.size(); }
+
 private:
     static const BlockDef& airDef() {
         static const BlockDef air{"air", {}, false};

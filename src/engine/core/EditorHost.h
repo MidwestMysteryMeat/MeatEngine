@@ -96,6 +96,9 @@ struct EditorContext {
     // or "rejected: <reason>"). Empty return = not attempted.
     std::function<std::string(const std::string& sourcePath)> importAsset;
     BlockId buildBlock = 1; // what brushes place
+    // C5: shared material for a prop asset path (all instances of that mesh). Empty handle
+    // or missing callbacks → Details shows material as unavailable.
+    std::function<MaterialHandle(const std::string& assetPath)> propMaterialHandle;
 };
 
 class IEditor {

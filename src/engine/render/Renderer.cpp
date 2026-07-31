@@ -312,6 +312,20 @@ MaterialHandle Renderer::createMaterial(const MaterialDesc& desc) {
     return handle;
 }
 
+bool Renderer::getMaterial(MaterialHandle handle, MaterialDesc& out) const {
+    const auto it = m_materials.find(handle);
+    if (it == m_materials.end()) return false;
+    out = it->second;
+    return true;
+}
+
+bool Renderer::setMaterial(MaterialHandle handle, const MaterialDesc& desc) {
+    const auto it = m_materials.find(handle);
+    if (it == m_materials.end()) return false;
+    it->second = desc;
+    return true;
+}
+
 void Renderer::beginFrame(const Camera& camera, float alpha) {
     (void)alpha; // callers pass interpolated transforms; kept for contract parity
 

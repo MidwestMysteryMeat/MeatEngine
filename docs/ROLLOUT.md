@@ -92,9 +92,9 @@ light → ship) without the bloat/missing pieces that don't fit a PSX voxel FPS.
   viewport places prop (raycast); ImGuizmo + outliner. Still open: drag materials/textures.
 - [ ] **C4. Import/export** — import FBX/OBJ/PNG into the project (bake, see D3); export map/prefab.
   OSS: ImGuiFileDialog.
-- [~] **C5. Inspectors** — first slice: Room Designer **Details** panel (world rules snapshot,
-  prop location drag + graph actions, light/volume, import path). Still open: materials, blocks,
-  Boost.PFR auto widgets.
+- [~] **C5. Inspectors** — Details: world + selection + **material** (tint/shininess/emissive on
+  prop asset) + **blocks** (registry fields, build brush pick, look-at voxel). Still open:
+  Boost.PFR auto widgets / per-instance material save.
 - [~] **C6. Node scripting / Node graphs + live coding** ⭐ — first slices shipped: imnodes graph in
   Room Designer (events/actions/data/flow/math/object) → JSON + sandboxed Lua (`zz_nodegraph.lua`) +
   Save+Compile live reload; multi-graph, watches, Call Subgraph. Still open: ImGuiColorTextEdit;

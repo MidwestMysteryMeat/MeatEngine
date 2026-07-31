@@ -1209,6 +1209,10 @@ void Engine::render(float alpha) {
             r.hemisphereAmbient = on;
             applyEnvironment(r);
         };
+        // C5: Details material fields for selected prop (per-asset shared material).
+        ctx.propMaterialHandle = [this](const std::string& asset) {
+            return editorPropMesh(asset).material;
+        };
         ctx.listFiles = [](const std::string& dir) {
             std::vector<std::string> out;
             std::error_code ec;
