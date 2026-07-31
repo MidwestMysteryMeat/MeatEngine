@@ -143,6 +143,11 @@ const GraphPinDesc kActionAnnounce[] = {
     {"then", PinKind::Exec, false},
     {"msg", PinKind::String, true},
 };
+const GraphPinDesc kActionWatch[] = {
+    {"exec", PinKind::Exec, true},
+    {"then", PinKind::Exec, false},
+    {"value", PinKind::Float, true}, // Int/Object also wire via pinsCompatible
+};
 
 struct LayoutRef {
     const GraphPinDesc* pins;
@@ -155,6 +160,11 @@ bool pinsCompatible(PinKind a, PinKind b) {
     if ((a == PinKind::Object && b == PinKind::Int) || (a == PinKind::Int && b == PinKind::Object))
         return true;
     if ((a == PinKind::Float && b == PinKind::Int) || (a == PinKind::Int && b == PinKind::Float))
+        return true;
+    // Watch / log accept numeric or object ids as "value".
+    if ((a == PinKind::Float && b == PinKind::Object) || (a == PinKind::Object && b == PinKind::Float))
+        return true;
+    if ((a == PinKind::Float && b == PinKind::Bool) || (a == PinKind::Bool && b == PinKind::Float))
         return true;
     return false;
 }
@@ -191,6 +201,7 @@ LayoutRef layoutOf(NodeKind k) {
     case NodeKind::GetPlayerHealth: return {kGetPlayerHealth, 2};
     case NodeKind::ActionDamagePlayer: return {kActionDamagePlayer, 4};
     case NodeKind::ActionAnnounce: return {kActionAnnounce, 3};
+    case NodeKind::ActionWatch: return {kActionWatch, 3};
     }
     return {kActionLog, 3};
 }
@@ -245,6 +256,7 @@ std::string kindToString(NodeKind k) {
     case NodeKind::GetPlayerHealth: return "GetPlayerHealth";
     case NodeKind::ActionDamagePlayer: return "ActionDamagePlayer";
     case NodeKind::ActionAnnounce: return "ActionAnnounce";
+    case NodeKind::ActionWatch: return "ActionWatch";
     }
     return "ActionLog";
 }
@@ -280,6 +292,7 @@ NodeKind kindFromString(const std::string& s) {
     if (s == "GetPlayerHealth") return NodeKind::GetPlayerHealth;
     if (s == "ActionDamagePlayer") return NodeKind::ActionDamagePlayer;
     if (s == "ActionAnnounce") return NodeKind::ActionAnnounce;
+    if (s == "ActionWatch") return NodeKind::ActionWatch;
     return NodeKind::ActionLog;
 }
 
@@ -518,6 +531,14 @@ void emitExecChain(std::ostringstream& out, EmitCtx& ctx, int nodeId, int indent
         nextExec(1);
         break;
     }
+    case NodeKind::ActionWatch: {
+        const std::string label = escapeLuaString(n.strA.empty() ? "value" : n.strA);
+        const std::string val =
+            emitInputExpr(ctx, n, 2, std::to_string(n.floatA != 0.0f ? n.floatA : static_cast<float>(n.intA)));
+        out << pad << "game.watch(" << label << ", " << val << ")\n";
+        nextExec(1);
+        break;
+    }
     default:
         // Pure / event nodes shouldn't be on an exec chain as targets except events' then.
         nextExec(0);
@@ -585,6 +606,7 @@ const char* nodeKindName(NodeKind kind) {
     case NodeKind::GetPlayerHealth: return "Get Player Health";
     case NodeKind::ActionDamagePlayer: return "Damage Player";
     case NodeKind::ActionAnnounce: return "Announce";
+    case NodeKind::ActionWatch: return "Watch";
     }
     return "Node";
 }
@@ -598,7 +620,8 @@ const char* nodeKindCategory(NodeKind kind) {
     case NodeKind::HighlightObject:
     case NodeKind::PrintObject:
     case NodeKind::ActionDamagePlayer:
-    case NodeKind::ActionAnnounce: return "Action";
+    case NodeKind::ActionAnnounce:
+    case NodeKind::ActionWatch: return "Action";
     case NodeKind::Branch:
     case NodeKind::Sequence: return "Flow";
     case NodeKind::MathAdd:
@@ -680,6 +703,10 @@ int NodeGraph::addNode(NodeKind kind, float x, float y) {
     }
     if (kind == NodeKind::ActionAnnounce) n.strA = "Hello world";
     if (kind == NodeKind::GetPlayerHealth) n.intA = 0;
+    if (kind == NodeKind::ActionWatch) {
+        n.strA = "value";
+        n.floatA = 0.0f;
+    }
     nodes.push_back(n);
     return n.id;
 }

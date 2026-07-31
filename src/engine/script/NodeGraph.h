@@ -50,6 +50,8 @@ enum class NodeKind : std::uint8_t {
     GetPlayerHealth,  // pure: game.player_health(peer)
     ActionDamagePlayer, // action: game.damage_player(peer, amount)
     ActionAnnounce,   // action: game.announce(msg) — HUD toast all clients
+    // C6-c: live debug watch (game.watch + editor Watches panel)
+    ActionWatch,      // action: game.watch(label, value)
 };
 
 enum class PinKind : std::uint8_t {

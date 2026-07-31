@@ -163,8 +163,7 @@ Human feel-playtests (mouse feel, combat cadence, editor ergonomics), and real L
 > Note: C1–C3, B1/B3/B4, A1/A3, C6 (first slices), H1/H2/H3/H4 (first slices), E1 are largely **shipped**;
 > older “C3 first” ordering below is historical.
 
-**Now:** ~~C9 / C6 / C5 / A2 / B3b-e / B5 / C6-c multi-graph~~ ✅ → **C6-c watches/subgraphs** →
+**Now:** ~~C9 / C6 suite / A2 / B3b-e / B5 / multi-graph / watches~~ ✅ → **C6-c subgraphs** or
 **B2 MeshLevel** → **C7 packaging** → **F / D** as scale demands.
 
-Rationale: projects ship map defaults via `game.json` world; graphs support multi-file authoring;
-next is **subgraphs/watches**, then **generality** (mesh levels) and **scale** (net/ECS).
+Rationale: creation suite loop is solid; next large cuts are **mesh levels** or **subgraphs**.

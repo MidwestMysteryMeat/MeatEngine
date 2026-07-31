@@ -149,6 +149,7 @@ void RoomEditor::update(EditorContext& ctx, float dt) {
     drawNodeGraph(ctx);
     drawNodeGraphDetails(ctx);
     drawOutputLog();
+    drawWatchesPanel();
     drawDetailsPanel(ctx);
     updateObjectHighlight(ctx);
     if (!m_flying) drawGizmo(ctx, view, proj);
@@ -402,6 +403,11 @@ void RoomEditor::drawTopBar(EditorContext& ctx) {
         m_outputLogOpen = !m_outputLogOpen;
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("C9 — engine / script / graph messages (warnings & errors)");
+    ImGui::SameLine();
+    if (ImGui::Button(m_watchesOpen ? "Watches##hide" : "Watches##show"))
+        m_watchesOpen = !m_watchesOpen;
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("C6-c — live game.watch / Action Watch values (host/SP)");
     ImGui::SameLine();
     if (ImGui::Button(m_detailsOpen ? "Details##hide" : "Details##show"))
         m_detailsOpen = !m_detailsOpen;
@@ -1276,6 +1282,7 @@ const NodeKind kPaletteKinds[] = {
     NodeKind::EventOnInit,       NodeKind::EventOnTick,       NodeKind::EventOnPlayerJoin,
     NodeKind::EventOnPlayerDeath, NodeKind::ActionLog,        NodeKind::ActionSetBlock,
     NodeKind::ActionSpawnPickup, NodeKind::ActionAnnounce,    NodeKind::ActionDamagePlayer,
+    NodeKind::ActionWatch,
     NodeKind::GetPlayerCount,    NodeKind::GetItemId,         NodeKind::GetTick,
     NodeKind::GetPropCount,      NodeKind::GetPlayerHealth,   NodeKind::Randi,
     NodeKind::ConstInt,          NodeKind::ConstFloat,        NodeKind::ConstString,
@@ -1648,7 +1655,7 @@ void RoomEditor::drawNodeGraphDetails(EditorContext& ctx) {
     // Category-specific property editors (UE Details panel feel).
     if (n->kind == NodeKind::ActionLog || n->kind == NodeKind::ConstString ||
         n->kind == NodeKind::GetItemId || n->kind == NodeKind::GetWorldObject ||
-        n->kind == NodeKind::ActionAnnounce) {
+        n->kind == NodeKind::ActionAnnounce || n->kind == NodeKind::ActionWatch) {
         char buf[160];
         std::snprintf(buf, sizeof(buf), "%s", n->strA.c_str());
         if (ImGui::InputText("String", buf, sizeof(buf))) {
@@ -1677,11 +1684,15 @@ void RoomEditor::drawNodeGraphDetails(EditorContext& ctx) {
     }
     if (n->kind == NodeKind::ConstFloat || n->kind == NodeKind::ActionSpawnPickup ||
         n->kind == NodeKind::MathAdd || n->kind == NodeKind::HighlightObject ||
-        n->kind == NodeKind::ActionDamagePlayer) {
-        const char* flabel = n->kind == NodeKind::HighlightObject ? "Duration (s)"
+        n->kind == NodeKind::ActionDamagePlayer || n->kind == NodeKind::ActionWatch) {
+        const char* flabel = n->kind == NodeKind::HighlightObject       ? "Duration (s)"
                              : n->kind == NodeKind::ActionDamagePlayer ? "Damage"
+                             : n->kind == NodeKind::ActionWatch        ? "Default value"
                                                                        : "Float";
         if (ImGui::InputFloat(flabel, &n->floatA, 0.1f, 1.0f, "%.2f")) m_nodeGraphDirty = true;
+    }
+    if (n->kind == NodeKind::ActionWatch) {
+        ImGui::TextDisabled("Label = String field; wire value pin from Tick data.");
     }
 
     if (n->kind == NodeKind::GetWorldObject) {
@@ -2214,6 +2225,51 @@ void RoomEditor::drawOutputLog() {
     m_logLastCount = count;
 
     ImGui::EndChild();
+    ImGui::End();
+}
+
+// ===== Watches (C6-c) ======================================================
+
+void RoomEditor::drawWatchesPanel() {
+    if (!m_watchesOpen) return;
+
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos({vp->Pos.x + vp->Size.x - 320.0f, vp->Pos.y + 120.0f},
+                            ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({300.0f, 260.0f}, ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Watches", &m_watchesOpen)) {
+        ImGui::End();
+        return;
+    }
+
+    ImGui::TextDisabled("game.watch / Action Watch (host/SP)");
+    if (ImGui::Button("Clear watches")) log::clearWatches();
+    ImGui::SameLine();
+    ImGui::TextDisabled("also filter Output Log: [watch]");
+    ImGui::Separator();
+
+    const std::vector<log::WatchEntry> watches = log::snapshotWatches();
+    if (watches.empty()) {
+        ImGui::TextDisabled(
+            "(empty — place a Watch node on Event Tick, Compile, run host/SP)");
+    } else {
+        if (ImGui::BeginTable("##watches", 2,
+                              ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV |
+                                  ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY,
+                              ImVec2(0, 0))) {
+            ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+            ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableHeadersRow();
+            for (const log::WatchEntry& w : watches) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::TextUnformatted(w.name.c_str());
+                ImGui::TableSetColumnIndex(1);
+                ImGui::TextColored(ImVec4(0.55f, 0.9f, 0.65f, 1.0f), "%s", w.value.c_str());
+            }
+            ImGui::EndTable();
+        }
+    }
     ImGui::End();
 }
 

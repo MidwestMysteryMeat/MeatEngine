@@ -12,6 +12,7 @@
 #endif
 
 #include <filesystem>
+#include <string>
 
 namespace meat {
 
@@ -115,6 +116,35 @@ void ScriptHost::bind(ScriptApi api) {
     if (a.playerHealth)
         game.set_function("player_health",
                           [&a](int peer) { return static_cast<double>(a.playerHealth(peer)); });
+    if (a.watch)
+        game.set_function("watch", [&a](const std::string& name, sol::object val) {
+            std::string s;
+            if (!val.valid() || val.is<sol::lua_nil_t>()) {
+                s = "nil";
+            } else if (val.is<bool>()) {
+                s = val.as<bool>() ? "true" : "false";
+            } else if (val.is<double>()) {
+                s = std::to_string(val.as<double>());
+            } else if (val.is<int>()) {
+                s = std::to_string(val.as<int>());
+            } else if (val.is<std::string>()) {
+                s = val.as<std::string>();
+            } else {
+                // Fallback: ask Lua for tostring via the object's state.
+                sol::state_view lua(val.lua_state());
+                sol::protected_function ts = lua["tostring"];
+                if (ts.valid()) {
+                    sol::protected_function_result r = ts(val);
+                    if (r.valid() && r.get_type() == sol::type::string)
+                        s = r.get<std::string>();
+                    else
+                        s = "?";
+                } else {
+                    s = "?";
+                }
+            }
+            a.watch(name.empty() ? "value" : name, s);
+        });
 }
 
 bool ScriptHost::loadDir(const std::string& dir) {

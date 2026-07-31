@@ -67,6 +67,8 @@ private:
 
     // C9 Output Log — UE-style severity-filtered message browser.
     void drawOutputLog();
+    // C6-c Watches — last game.watch / Action Watch values (host/SP).
+    void drawWatchesPanel();
     // C5 lite — World Settings + selection inspector (UE Details-style).
     void drawDetailsPanel(EditorContext& ctx);
 
@@ -223,6 +225,9 @@ private:
     char m_logSearch[128] = {};
     bool m_logAutoScroll = true;
     int m_logLastCount = 0; // for auto-scroll when new lines arrive
+
+    // --- Watches (C6-c) ----------------------------------------------------
+    bool m_watchesOpen = true;
 
     // --- Details (C5) ------------------------------------------------------
     bool m_detailsOpen = true;

@@ -387,6 +387,11 @@ void ServerSim::setupScripting() {
         if (it == m_players.end() || !it->second) return 0.0f;
         return it->second->health;
     };
+    // C6-c watches: update live table + a log line (filter Output Log with [watch]).
+    api.watch = [](const std::string& name, const std::string& value) {
+        log::setWatch(name, value);
+        log::info("[watch] {} = {}", name, value);
+    };
     m_scripts.bind(std::move(api));
     m_scripts.loadDir(m_scriptDir);
 }

@@ -29,6 +29,17 @@ void clearHistory();
 std::vector<Entry> snapshotHistory();
 std::size_t historySize();
 
+// C6-c watch table: last value per name (node graph game.watch / Action Watch).
+// Host/SP only useful in-editor (same process as the server script host).
+struct WatchEntry {
+    std::string name;
+    std::string value;
+    double timeSec = 0.0;
+};
+void setWatch(std::string_view name, std::string_view value);
+void clearWatches();
+std::vector<WatchEntry> snapshotWatches();
+
 inline const char* levelTag(Level level) {
     switch (level) {
     case Level::Info: return "Log";

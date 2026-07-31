@@ -34,7 +34,7 @@ The editor chrome uses a **dark Slate-inspired** theme (charcoal panels, blue se
 | Category | Nodes |
 |----------|--------|
 | Event | Event BeginPlay, Event Tick, Player Join/Death |
-| Action | Print String, Set Block, Spawn Pickup, Highlight/Print Object, **Announce**, **Damage Player** |
+| Action | Print String, Set Block, Spawn Pickup, Highlight/Print Object, **Announce**, **Damage Player**, **Watch** |
 | Data | Player Count, Item Id, Random Integer, Integer/Float/String, Get Block, **Get Tick**, **Get Prop Count**, **Get Player Health** |
 | Object | Get World Object, Get Prop Position (runtime `game.prop_pos`) |
 | Flow | Branch, Sequence |
@@ -46,6 +46,10 @@ The editor chrome uses a **dark Slate-inspired** theme (charcoal panels, blue se
 **Announce:** `game.announce(msg)` → `ScriptFxMsg` kind 1 → yellow HUD toast on all clients + Output Log.
 
 **Damage Player:** `game.damage_player(peer, amount)` — lethal hits respawn + fire `on_player_death`.
+
+**Watch:** `game.watch(label, value)` — updates the **Watches** panel (Room Designer bar) and
+logs `[watch] label = value` to Output Log. Host/SP only for the live table (same process as
+the script host). Wire any float/int/object into the value pin; label is the node's String field.
 
 ## Design notes
 
@@ -72,6 +76,7 @@ The editor chrome uses a **dark Slate-inspired** theme (charcoal panels, blue se
 
 - ~~**C6-b high-value API nodes**~~ ✅ — announce, damage player, tick/prop count/health.
 - ~~**C6-c multi-graph tabs**~~ ✅ — multiple `.graph.json` files; one active runtime compile.
-- Still open: debug **watch** pins, **subgraphs**, merge multiple live graphs, ImGuiColorTextEdit.
+- ~~**C6-c Watch node + Watches panel**~~ ✅ — `game.watch` + live table.
+- Still open: **subgraphs**, merge multiple live graphs, ImGuiColorTextEdit.
 - ~~**Output Log browser (C9)**~~ ✅ — open **Output Log** in Room Designer (severity filters,
   search, clear). Node Graph compile posts success/fail there.

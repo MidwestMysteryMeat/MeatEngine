@@ -32,6 +32,8 @@ struct ScriptApi {
     std::function<void(const std::string&)> announce;
     // Current health of a peer (0 if unknown / disconnected).
     std::function<float(int peerId)> playerHealth;
+    // C6-c: named watch value for the editor Watches panel (+ optional log line).
+    std::function<void(const std::string& name, const std::string& value)> watch;
 };
 
 // Embeds Lua (sol2) with a sandboxed standard library. Loads scripts from a

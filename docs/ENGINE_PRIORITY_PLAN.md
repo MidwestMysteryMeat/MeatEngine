@@ -50,7 +50,7 @@ Scoring: **creator value** × **engine leverage** × **dependency readiness** �
 | 5 | **C5** | **Inspectors (prop/env/material lite)** | UE Details-panel depth for selected prop/env/rules. Outliner already exists; needs richer fields. | M | C3 done |
 | 6 | **C4** | **Import polish + path UX** | Paste-path import exists; file dialog (ImGuiFileDialog MIT) + clearer reject reasons. | S–M | C1 |
 | 7 | **B3b-e** | **Editor gravity volumes** ✅ | Gravity tool + extras save + host apply. Net Welcome sync later. | M | GravityField done |
-| 8 | **C6-c** | **Subgraphs / multi-graph / watches** | Multi-graph tabs ✅; watches + subgraphs still open. | L | C6-a, C9 |
+| 8 | **C6-c** | **Subgraphs / multi-graph / watches** | Multi-graph + watches ✅; subgraphs still open. | L | C6-a, C9 |
 
 ### P2 — Visual & world payoff (player-facing quality)
 
@@ -176,7 +176,7 @@ Use this as the working list until the next research pass:
 7. ~~**A2 — Sun shadow map**~~ ✅  
 8. ~~**B3b-e — Editor gravity volumes**~~ ✅  
 9. ~~**B5 — game.json world defaults**~~ ✅  
-10. ~~**C6-c multi-graph tabs**~~ ✅ — watches / subgraphs remaining  
+10. ~~**C6-c multi-graph + watches**~~ ✅ — subgraphs remaining  
 11. **B2 — MeshLevel**  
 12. **C7 — Packaging**  
 13. **H4/H1 polish** (if showcase genre needs it)  
