@@ -11,7 +11,7 @@ human/risk-deferred work remains.
 | 1 | B3-water | Underwater water plane | ✅ shipped (shader tint quad) |
 | 2 | A6 | Blob shadows under feet | ✅ shipped (projected discs) |
 | 3 | C8 | Lite profiler panel (F3) | ✅ shipped |
-| 4 | A2-s | Skinned shadow casters | open |
+| 4 | A2-s | Skinned shadow casters | ✅ shipped (`shadow_skinned.*`) |
 | 5 | C5+ | Details material/block fields | open |
 | 6 | B3b-net | Gravity volumes net sync | open |
 | 7 | ARCH | Deeper ARCHITECTURE reconcile | open |

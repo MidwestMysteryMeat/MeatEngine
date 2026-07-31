@@ -52,8 +52,8 @@ The single biggest visual lift. Do in this order:
   clean-room). New `ao` vertex attrib; shader multiplies lighting by it.
 - [x] **A2. Directional (sun) shadow map** — one depth pass from the sun + 3×3 PCF in chunk/mesh/
   skinned frags (`shadow.vert`/`shadow.frag`, `Renderer::renderShadowMap`). Ortho around camera,
-  front-face cull casters, border=lit. Skinned **casters** deferred (v1 receivers only). Editor
-  toolbar toggle. Later: LiSPSM/PSSM / skinned casters.
+  front-face cull casters, border=lit. **A2-s skinned casters** (`shadow_skinned.*` + bone palette).
+  Editor toolbar toggle. Later: LiSPSM/PSSM.
 - [x] **A3. Better ambient / hemisphere term** — sky/ground hemi outside the torch gate; toggleable
   (F7 / game.json / editor) so dark PSX-night remains available.
 - [ ] **A4. SSAO (optional)** — screen-space contact AO in the resolve chain. OSS: McNopper (MIT) /

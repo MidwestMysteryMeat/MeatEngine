@@ -62,8 +62,9 @@ bool Renderer::init(Window& window) {
     if (!m_chunkShader.load(kShaderDir, "chunk") || !m_meshShader.load(kShaderDir, "mesh") ||
         !m_skinnedShader.load(kShaderDir, "skinned") ||
         !m_spriteShader.load(kShaderDir, "sprite") || !m_resolveShader.load(kShaderDir, "resolve") ||
-        !m_shadowShader.load(kShaderDir, "shadow") || !m_skyShader.load(kShaderDir, "sky") ||
-        !m_waterShader.load(kShaderDir, "water")) {
+        !m_shadowShader.load(kShaderDir, "shadow") ||
+        !m_shadowSkinnedShader.load(kShaderDir, "shadow_skinned") ||
+        !m_skyShader.load(kShaderDir, "sky") || !m_waterShader.load(kShaderDir, "water")) {
         return false;
     }
     if (!m_crosshairProgram.compile(kCrosshairVert, kCrosshairFrag, "crosshair")) {
@@ -98,6 +99,7 @@ void Renderer::reloadShaders() {
     m_spriteShader.reload();
     m_resolveShader.reload();
     m_shadowShader.reload();
+    m_shadowSkinnedShader.reload();
     m_skyShader.reload();
     m_waterShader.reload();
 }
@@ -544,7 +546,24 @@ void Renderer::renderShadowMap() {
         glBindVertexArray(meshIt->second.vao.id());
         glDrawElements(GL_TRIANGLES, meshIt->second.indexCount, GL_UNSIGNED_INT, nullptr);
     }
-    // Skinned casters skipped in v1 (need bone palette in shadow.vert); receivers still work.
+
+    // A2-s: skinned casters — same bone palette path as the lit skinned pass.
+    if (!m_skinnedDraws.empty()) {
+        glUseProgram(m_shadowSkinnedShader.id());
+        const GlShaderProgram& skSh = m_shadowSkinnedShader.program();
+        skSh.setUniform("uLightVP", m_lightVP);
+        const GLint bonesLoc = glGetUniformLocation(m_shadowSkinnedShader.id(), "uBones");
+        for (const SkinnedDraw& draw : m_skinnedDraws) {
+            const auto meshIt = m_skinnedMeshes.find(draw.mesh);
+            if (meshIt == m_skinnedMeshes.end() || draw.bones.empty()) continue;
+            skSh.setUniform("uModel", draw.transform);
+            glProgramUniformMatrix4fv(m_shadowSkinnedShader.id(), bonesLoc,
+                                      static_cast<GLsizei>(draw.bones.size()), GL_FALSE,
+                                      glm::value_ptr(draw.bones[0]));
+            glBindVertexArray(meshIt->second.vao.id());
+            glDrawElements(GL_TRIANGLES, meshIt->second.indexCount, GL_UNSIGNED_INT, nullptr);
+        }
+    }
 
     glCullFace(GL_BACK);
     glDisable(GL_CULL_FACE);

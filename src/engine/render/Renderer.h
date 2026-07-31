@@ -189,9 +189,10 @@ private:
     Shader m_skinnedShader;
     Shader m_spriteShader;
     Shader m_resolveShader;
-    Shader m_shadowShader; // A2 depth-only sun pass
-    Shader m_skyShader;    // B3-sky gradient backdrop
-    Shader m_waterShader;  // B3 water plane (alpha tint quad)
+    Shader m_shadowShader;        // A2 depth-only sun pass (static)
+    Shader m_shadowSkinnedShader; // A2-s skinned casters (bone palette)
+    Shader m_skyShader;           // B3-sky gradient backdrop
+    Shader m_waterShader;         // B3 water plane (alpha tint quad)
     GlShaderProgram m_crosshairProgram; // trivial, source embedded in Renderer.cpp
     // Camera basis for sky (set in beginFrame).
     glm::vec3 m_camForward{0, 0, -1};

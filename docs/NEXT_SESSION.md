@@ -76,8 +76,9 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
 15. ~~**A6 blob shadows**~~ ✅ — thin dark discs under local/remote/NPC feet.
 16. ~~**C8 lite profiler**~~ ✅ — F3 panel (FPS, frameDt, chunk/entity/prop counts).
 17. **Scheduled open queue** — see [OPEN_SCHEDULE.md](OPEN_SCHEDULE.md) (30m durable).
-18. Next fires: skinned casters (A2-s), Details materials (C5+), gravity net sync (B3b-net), ARCH.
-19. Deferred: F netcode / D1 mesher / D4 EnTT / human playtests.
+18. ~~**A2-s skinned shadow casters**~~ ✅ — `shadow_skinned` depth pass uses bone palette.
+19. Next fires: Details materials (C5+), gravity net sync (B3b-net), ARCH reconcile.
+20. Deferred: F netcode / D1 mesher / D4 EnTT / human playtests.
 
 ## Cleanup / debt from last sprint
 - ~~**ARCHITECTURE.md is stale**~~ ✅ (partial) — top status + layout + lighting + nodegraph/AI notes.
