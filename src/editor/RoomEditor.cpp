@@ -154,6 +154,35 @@ void RoomEditor::update(EditorContext& ctx, float dt) {
     updateObjectHighlight(ctx);
     if (!m_flying) drawGizmo(ctx, view, proj);
 
+    // C2/C3: drag a model tile from Content Browser onto the 3D view to place.
+    // Transparent overlay only while a drag is active so normal LMB tools still work.
+    if (ImGui::GetDragDropPayload() != nullptr) {
+        ImGui::SetNextWindowPos(vp->WorkPos);
+        ImGui::SetNextWindowSize(vp->WorkSize);
+        ImGui::SetNextWindowBgAlpha(0.0f);
+        ImGui::Begin("##viewport_drop", nullptr,
+                     ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                         ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
+                         ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav |
+                         ImGuiWindowFlags_NoBringToFrontOnFocus |
+                         ImGuiWindowFlags_NoFocusOnAppearing);
+        ImGui::InvisibleButton("##vdrop_area", vp->WorkSize);
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload =
+                    ImGui::AcceptDragDropPayload("MEAT_ASSET_MODEL")) {
+                const char* path = static_cast<const char*>(payload->Data);
+                if (path && path[0]) {
+                    m_contentSelected =
+                        (std::strncmp(path, "assets/", 7) == 0) ? path + 7 : path;
+                    placeSelectedProp(ctx);
+                    setStatus(std::string("placed ") + path);
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+        ImGui::End();
+    }
+
     // Picking ray: camera center while flying, otherwise unproject the cursor.
     glm::vec3 rayDir = ctx.camera.forward();
     if (!m_flying) {
@@ -1198,9 +1227,28 @@ void RoomEditor::drawContentBrowser(EditorContext& ctx) {
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, col);
         const bool clicked = ImGui::Button(kAssetKindTags[k], ImVec2(tile, tile));
         ImGui::PopStyleColor(3);
+        // C2: selection outline (UE Content Browser highlight).
+        if (selected) {
+            const ImVec2 mn = ImGui::GetItemRectMin();
+            const ImVec2 mx = ImGui::GetItemRectMax();
+            ImGui::GetWindowDrawList()->AddRect(
+                mn, mx, IM_COL32(0, 140, 255, 255), 2.0f, 0, 2.0f);
+        }
+        if (e->kind == AssetKind::Model && ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+            m_contentSelected = e->path;
+            const std::string payload = "assets/" + e->path;
+            ImGui::SetDragDropPayload("MEAT_ASSET_MODEL", payload.c_str(),
+                                      payload.size() + 1);
+            ImGui::Text("Place %s", e->name.c_str());
+            ImGui::EndDragDropSource();
+        }
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("%s\n%s  |  %s", e->name.c_str(),
-                              kAssetKindNames[k], humanSize(e->size).c_str());
+            if (e->kind == AssetKind::Model)
+                ImGui::SetTooltip("%s\n%s  |  %s\nDouble-click or drag to place", e->name.c_str(),
+                                  kAssetKindNames[k], humanSize(e->size).c_str());
+            else
+                ImGui::SetTooltip("%s\n%s  |  %s", e->name.c_str(), kAssetKindNames[k],
+                                  humanSize(e->size).c_str());
             // Double-click a model tile to drop it into the world (mirrors the
             // Place button + the Assets panel's double-click-to-open convention).
             if (e->kind == AssetKind::Model && ImGui::IsMouseDoubleClicked(0)) {

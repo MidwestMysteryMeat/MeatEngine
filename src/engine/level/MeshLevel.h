@@ -44,7 +44,7 @@ struct MeshLevelRuntime {
     void submit(Renderer& renderer) const;
 };
 
-// Helper: single-asset desc (common game.json form).
+// Helpers for common game.json forms.
 inline MeshLevelDesc makeMeshLevelDesc(const std::string& assetPath, float scale = 1.0f) {
     MeshLevelDesc d;
     if (!assetPath.empty()) {
@@ -55,5 +55,8 @@ inline MeshLevelDesc makeMeshLevelDesc(const std::string& assetPath, float scale
     }
     return d;
 }
+
+// Build TRS: yaw radians around Y, then translate. Scale stays on import opts.
+glm::mat4 meshLevelTransform(glm::vec3 pos, float yawRadians = 0.0f);
 
 } // namespace meat

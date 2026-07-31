@@ -1,5 +1,6 @@
 #pragma once
 #include "engine/core/JobQueue.h"
+#include "engine/level/MeshLevel.h"
 #include "engine/net/Messages.h"
 #include "engine/net/Transport.h"
 #include "engine/script/ScriptHost.h"
@@ -38,10 +39,8 @@ public:
     // a game project points this at its own scripts dir (see --project).
     void setScriptDir(std::string dir) { m_scriptDir = std::move(dir); }
     // B2: optional static mesh level (authoritative triangle colliders). Call before init.
-    void setMeshLevel(std::string assetPath, float scale = 1.0f) {
-        m_meshLevelAsset = std::move(assetPath);
-        m_meshLevelScale = scale > 1e-4f ? scale : 1.0f;
-    }
+    void setMeshLevel(std::string assetPath, float scale = 1.0f);
+    void setMeshLevelDesc(MeshLevelDesc desc);
 
     bool init(std::uint32_t worldSeed);
     bool initFromSave(const std::string& path); // reads seed, then init + replay
@@ -318,9 +317,8 @@ private:
     std::uint64_t m_scriptRng = 0x2545F4914F6CDD1Dull; // seeded in init()
     std::string m_scriptDir = "assets/scripts";
     // B2 mesh level (physics only; client mirrors for render).
-    std::string m_meshLevelAsset;
-    float m_meshLevelScale = 1.0f;
-    PhysicsWorld::BodyHandle m_meshLevelBody = PhysicsWorld::kInvalidBody;
+    MeshLevelDesc m_meshLevelDesc;
+    std::vector<PhysicsWorld::BodyHandle> m_meshLevelBodies;
     void loadMeshLevelColliders();
     std::uint32_t m_nextEntityId = 1;
     // Sparse chip-damage: only voxels that have been shot, remaining hp. Entries

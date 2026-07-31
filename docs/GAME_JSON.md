@@ -51,8 +51,9 @@ Preferred place for map defaults. When both top-level and `world` set the same f
 | `seed` | unsigned int |
 | `hemisphereAmbient` | bool (A3 sky/ground fill) |
 | `levelType` | `voxel` (default) or `mesh` — mesh forces Void terrain if terrain omitted |
-| `meshLevel` / `levelMesh` | string path to a static model (B2 MeshLevel) |
-| `meshLevelScale` | float model scale (default 1) |
+| `meshLevel` / `levelMesh` | string path **or** object `{ asset, scale, pos, yawDeg }` |
+| `meshLevels` | array of strings or objects (multi-mesh map) |
+| `meshLevelScale` | default scale for instances that omit `scale` |
 
 ### Template presets
 
@@ -74,24 +75,33 @@ python tools/new_project.py MyGame --template space
 
 Writes a project with nested `world` for the chosen genre (`fps` / `tps` / `space` / `racer`).
 
-## B2 MeshLevel example
+## B2 MeshLevel examples
+
+Single mesh:
 
 ```json
-{
-  "name": "Hangar Arena",
-  "world": {
-    "levelType": "mesh",
-    "meshLevel": "assets/models/prop_crate.obj",
-    "meshLevelScale": 20.0,
-    "environment": "surface",
-    "template": "fps"
-  }
+"world": {
+  "levelType": "mesh",
+  "meshLevel": "assets/models/prop_crate.obj",
+  "meshLevelScale": 20.0
 }
 ```
 
-Loads a static mesh with a triangle collider on server + client. Prefer Void terrain
-so the mesh is the floor (automatic when `levelType` is `mesh` or `meshLevel` is set
-without an explicit terrain).
+Multi-mesh map (parts with transform):
+
+```json
+"world": {
+  "levelType": "mesh",
+  "meshLevelScale": 1.0,
+  "meshLevels": [
+    { "asset": "assets/models/hangar.obj", "pos": [0, 0, 0], "scale": 1.0 },
+    { "asset": "assets/models/prop_crate.obj", "pos": [12, 0, 4], "yawDeg": 90, "scale": 2.0 }
+  ]
+}
+```
+
+Each part gets a triangle collider on server + client. Prefer Void terrain so meshes are the
+floor (automatic when `levelType` is `mesh` or any mesh level is set without explicit terrain).
 
 ## Examples
 

@@ -65,7 +65,7 @@ Scoring: **creator value** × **engine leverage** × **dependency readiness** �
 
 | # | ID | Item | Why | Size | Deps |
 |---|-----|------|-----|------|------|
-| 13 | **B2** | **`Level` / MeshLevel (non-voxel)** | First slice ✅ meshLevel path; multi-map later. | L | physics ready |
+| 13 | **B2** | **`Level` / MeshLevel (non-voxel)** | Single + multi-mesh ✅; Level interface later. | L | physics ready |
 | 14 | **B5** | **`game.json` world: {template, environment}** ✅ | Nested `world` + GAME_JSON.md. | S | B4 |
 | 15 | **C7** | **Packaging / shippable game** ✅ | package.ps1: launchers, credits, zip. | M | D2 later |
 | 16 | **G2** | **Game-mode framework** | Breach/Horde — gameplay, not engine core. | L | G rules |

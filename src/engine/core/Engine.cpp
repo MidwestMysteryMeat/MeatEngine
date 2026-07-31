@@ -181,7 +181,9 @@ bool Engine::initNetwork(const EngineConfig& config) {
         server = std::make_unique<ServerSim>(config.rules);
         if (!config.projectDir.empty())
             server->setScriptDir(config.projectDir + "/scripts");
-        if (!config.meshLevelAsset.empty())
+        if (!config.meshLevelDesc.instances.empty())
+            server->setMeshLevelDesc(config.meshLevelDesc);
+        else if (!config.meshLevelAsset.empty())
             server->setMeshLevel(config.meshLevelAsset, config.meshLevelScale);
         return config.loadPath.empty() ? server->init(config.seed)
                                        : server->initFromSave(config.loadPath);
@@ -276,10 +278,9 @@ void Engine::setupClientWorld() {
     m_prevPlayerPos = m_currPlayerPos = clientSpawnPos();
     m_clientWorldReady = true;
     // B2: static mesh level (prediction colliders + render).
-    if (!m_meshLevelAsset.empty()) {
-        MeshLevelDesc desc = makeMeshLevelDesc(m_meshLevelAsset, m_meshLevelScale);
-        const int n = m_meshLevel.load(desc, m_renderer, m_physics);
-        log::info("client MeshLevel: {} part(s) from '{}'", n, m_meshLevelAsset);
+    if (!m_meshLevelDesc.instances.empty()) {
+        const int n = m_meshLevel.load(m_meshLevelDesc, m_renderer, m_physics);
+        log::info("client MeshLevel: {} part(s)", n);
     }
     loadWorldProps();
     loadAnimTestActor();
@@ -1661,8 +1662,9 @@ int Engine::run(const EngineConfig& configIn) {
     applyEnvironment(config.rules);
     m_perspective = config.rules.perspective;
     m_hemisphereAmbient = config.rules.hemisphereAmbient;
-    m_meshLevelAsset = config.meshLevelAsset;
-    m_meshLevelScale = config.meshLevelScale;
+    m_meshLevelDesc = config.meshLevelDesc;
+    if (m_meshLevelDesc.instances.empty() && !config.meshLevelAsset.empty())
+        m_meshLevelDesc = makeMeshLevelDesc(config.meshLevelAsset, config.meshLevelScale);
     m_animBooth = config.animBooth;
     m_animModel = config.animModel;
     m_animClip = config.animClip;

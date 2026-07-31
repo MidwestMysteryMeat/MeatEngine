@@ -1,5 +1,6 @@
 #include "engine/core/Engine.h"
 #include "engine/core/Log.h"
+#include "engine/level/MeshLevel.h"
 #include "editor/RoomEditor.h"
 
 #include <nlohmann/json.hpp>
@@ -77,20 +78,73 @@ void applyWorldFields(meat::EngineConfig& config, const nlohmann::json& j) {
     if (j.contains("hemisphereAmbient") && j["hemisphereAmbient"].is_boolean())
         config.rules.hemisphereAmbient = j["hemisphereAmbient"].get<bool>();
     // B2: static mesh level (triangle colliders + render).
+    auto parseMeshInstance = [](const nlohmann::json& e,
+                                float defaultScale) -> meat::MeshLevelInstance {
+        meat::MeshLevelInstance inst;
+        if (e.is_string()) {
+            inst.assetPath = e.get<std::string>();
+            inst.scale = defaultScale;
+            return inst;
+        }
+        if (!e.is_object()) return inst;
+        if (e.contains("asset") && e["asset"].is_string())
+            inst.assetPath = e["asset"].get<std::string>();
+        else if (e.contains("path") && e["path"].is_string())
+            inst.assetPath = e["path"].get<std::string>();
+        else if (e.contains("mesh") && e["mesh"].is_string())
+            inst.assetPath = e["mesh"].get<std::string>();
+        inst.scale = (e.contains("scale") && e["scale"].is_number()) ? e["scale"].get<float>()
+                                                                     : defaultScale;
+        glm::vec3 pos(0.0f);
+        float yaw = 0.0f;
+        if (e.contains("pos") && e["pos"].is_array() && e["pos"].size() >= 3) {
+            pos = {e["pos"][0].get<float>(), e["pos"][1].get<float>(), e["pos"][2].get<float>()};
+        }
+        if (e.contains("position") && e["position"].is_array() && e["position"].size() >= 3) {
+            pos = {e["position"][0].get<float>(), e["position"][1].get<float>(),
+                   e["position"][2].get<float>()};
+        }
+        if (e.contains("yaw") && e["yaw"].is_number()) yaw = e["yaw"].get<float>();
+        if (e.contains("yawDeg") && e["yawDeg"].is_number())
+            yaw = e["yawDeg"].get<float>() * 0.01745329252f; // deg → rad
+        inst.transform = meat::meshLevelTransform(pos, yaw);
+        return inst;
+    };
+
     if (j.contains("meshLevel") && j["meshLevel"].is_string())
         config.meshLevelAsset = j["meshLevel"].get<std::string>();
     if (j.contains("levelMesh") && j["levelMesh"].is_string()) // alias
         config.meshLevelAsset = j["levelMesh"].get<std::string>();
     if (j.contains("meshLevelScale") && j["meshLevelScale"].is_number())
         config.meshLevelScale = j["meshLevelScale"].get<float>();
+
+    // Multi-mesh: "meshLevels": [ "a.obj", { "asset":"b.obj", "pos":[x,y,z], "yawDeg":90 } ]
+    if (j.contains("meshLevels") && j["meshLevels"].is_array()) {
+        for (const auto& e : j["meshLevels"]) {
+            meat::MeshLevelInstance inst = parseMeshInstance(e, config.meshLevelScale);
+            if (inst.assetPath.empty()) continue;
+            config.meshLevelDesc.instances.push_back(std::move(inst));
+        }
+    }
+    // Single object form: "meshLevel": { "asset":"...", "pos":[...] }
+    if (j.contains("meshLevel") && j["meshLevel"].is_object()) {
+        meat::MeshLevelInstance inst = parseMeshInstance(j["meshLevel"], config.meshLevelScale);
+        if (!inst.assetPath.empty())
+            config.meshLevelDesc.instances.push_back(std::move(inst));
+    }
+    // Promote single string shortcut into desc when desc empty.
+    if (config.meshLevelDesc.instances.empty() && !config.meshLevelAsset.empty())
+        config.meshLevelDesc =
+            meat::makeMeshLevelDesc(config.meshLevelAsset, config.meshLevelScale);
+
     if (j.contains("levelType") && j["levelType"].is_string()) {
         const std::string lt = j["levelType"].get<std::string>();
         if (lt == "mesh" || lt == "MeshLevel") {
-            // Prefer void canvas under a mesh floor unless terrain already set.
             if (!j.contains("terrain")) applyTerrainString(config, "void");
         }
     }
-    if (!config.meshLevelAsset.empty() && !j.contains("terrain") && !j.contains("levelType"))
+    if (!config.meshLevelDesc.instances.empty() && !j.contains("terrain") &&
+        !j.contains("levelType"))
         applyTerrainString(config, "void");
 }
 

@@ -69,9 +69,9 @@ blank / …), but spanning voxel AND non-voxel AND themed worlds. Physics is alr
 (it just consumes collider meshes), so this is bounded, not a rewrite. Voxel is the *default*, not a cage.
 - [x] **B1. Terrain modes** — Normal / Superflat / Void (`game.json "terrain"` or `--terrain`),
   synced to clients in the rules flags byte; Void gets a spawn pad so you don't fall through.
-- [~] **B2. `Level` / MeshLevel** — first slice: `MeshLevel` loads static mesh + triangle
-  `MeshShape` (server + client); `game.json` `world.meshLevel` / `levelType: mesh`. Still open:
-  full Level interface, multi-part maps, disable voxel meshing entirely.
+- [~] **B2. `Level` / MeshLevel** — static mesh(es) + triangle `MeshShape` (server + client);
+  `meshLevel` / **`meshLevels[]`** with pos/yaw/scale. Still open: full Level interface,
+  disable voxel meshing entirely.
 - [x] **B3. Environment presets** — Surface / Underwater / Space drive gravity + fog + ambient
   (+ hemi lobes). Skybox/water plane still open.
 - [x] **B3b. Gravity volumes / zoned gravity** ⭐ — `GravityField` + CharacterController sampling;
@@ -87,12 +87,10 @@ blank / …), but spanning voxel AND non-voxel AND themed worlds. Physics is alr
 The through-line is **usability** — UE5's ergonomics (New Map → drag assets in → tweak → script →
 light → ship) without the bloat/missing pieces that don't fit a PSX voxel FPS. All ImGui add-ons MIT.
 - [x] **C1. Content browser** — recursive `assets/` scan, grouped + filtered + selectable + details.
-- [ ] **C2. Content-browser styling + editor theme** — UE5-style thumbnail **grid**, folders +
-  breadcrumbs, per-type icons, drag-source handles; a polished dark editor theme (one ImGui style
-  pass) applied engine-wide. This is the "feels like a real tool" pass.
-- [ ] **C3. Drag-drop asset placement** ⭐ — drag an asset from the browser into the viewport to place
-  it (raycast to surface), then move/rotate/scale with the existing **ImGuizmo** gizmos; a **world
-  outliner** of placed instances. This is the core "fill the map" loop and the highest-usability win.
+- [~] **C2. Content-browser styling + editor theme** — dark Slate theme, colour tile grid, folders +
+  breadcrumbs, selection outline, drag-source on model tiles. Still open: real thumbnails.
+- [~] **C3. Drag-drop asset placement** ⭐ — double-click / drag model from Content Browser to
+  viewport places prop (raycast); ImGuizmo + outliner. Still open: drag materials/textures.
 - [ ] **C4. Import/export** — import FBX/OBJ/PNG into the project (bake, see D3); export map/prefab.
   OSS: ImGuiFileDialog.
 - [~] **C5. Inspectors** — first slice: Room Designer **Details** panel (world rules snapshot,

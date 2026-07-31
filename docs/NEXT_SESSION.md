@@ -70,7 +70,8 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
 9. ~~**C6-c multi-graph / watches / subgraphs**~~ ✅
 10. ~~**B2 MeshLevel first slice**~~ ✅ — `world.meshLevel` + triangle colliders.
 11. ~~**C7 packaging**~~ ✅ — `tools/package.ps1` launchers + zip.
-12. **B2 depth** (multi-mesh maps) / C2 theme / F netcode / D OSS — as needed.
+12. ~~**B2 multi-mesh + C2/C3 drag-place**~~ ✅ — `meshLevels[]`, content drag-to-viewport.
+13. **F netcode** / **D OSS** / ARCHITECTURE reconcile / real asset thumbnails — as needed.
 
 ## Cleanup / debt from last sprint
 - **ARCHITECTURE.md is stale** — still frames delta-compression, navmesh, torch-light, ozz as

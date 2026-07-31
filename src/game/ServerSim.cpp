@@ -173,28 +173,48 @@ bool ServerSim::init(std::uint32_t worldSeed) {
     return true;
 }
 
+void ServerSim::setMeshLevel(std::string assetPath, float scale) {
+    m_meshLevelDesc = makeMeshLevelDesc(std::move(assetPath), scale > 1e-4f ? scale : 1.0f);
+}
+
+void ServerSim::setMeshLevelDesc(MeshLevelDesc desc) {
+    m_meshLevelDesc = std::move(desc);
+}
+
 void ServerSim::loadMeshLevelColliders() {
-    if (m_meshLevelAsset.empty()) return;
-    if (m_meshLevelBody != PhysicsWorld::kInvalidBody) {
-        m_physics.removeStaticBox(m_meshLevelBody);
-        m_meshLevelBody = PhysicsWorld::kInvalidBody;
+    for (PhysicsWorld::BodyHandle b : m_meshLevelBodies) {
+        if (b != PhysicsWorld::kInvalidBody) m_physics.removeStaticBox(b);
     }
-    ModelImportOptions opts;
-    opts.scale = m_meshLevelScale;
-    const auto model = loadStaticModel(m_meshLevelAsset, opts);
-    if (!model) {
-        log::error("server MeshLevel: failed to load '{}'", m_meshLevelAsset);
-        return;
+    m_meshLevelBodies.clear();
+    if (m_meshLevelDesc.instances.empty()) return;
+
+    int ok = 0;
+    for (const MeshLevelInstance& inst : m_meshLevelDesc.instances) {
+        if (inst.assetPath.empty()) continue;
+        ModelImportOptions opts;
+        opts.scale = inst.scale > 1e-4f ? inst.scale : 1.0f;
+        const auto model = loadStaticModel(inst.assetPath, opts);
+        if (!model) {
+            log::error("server MeshLevel: failed to load '{}'", inst.assetPath);
+            continue;
+        }
+        std::vector<glm::vec3> positions;
+        positions.reserve(model->mesh.vertices.size());
+        for (const VoxelVertex& v : model->mesh.vertices) {
+            const glm::vec4 w = inst.transform * glm::vec4(v.pos, 1.0f);
+            positions.emplace_back(w.x, w.y, w.z);
+        }
+        const auto body = m_physics.addStaticTriangleMesh(positions, model->mesh.indices);
+        if (body == PhysicsWorld::kInvalidBody) {
+            log::error("server MeshLevel: collider failed for '{}'", inst.assetPath);
+            continue;
+        }
+        m_meshLevelBodies.push_back(body);
+        ++ok;
+        log::info("server MeshLevel: '{}' ({} tris, scale {})", inst.assetPath,
+                  model->mesh.indices.size() / 3, opts.scale);
     }
-    std::vector<glm::vec3> positions;
-    positions.reserve(model->mesh.vertices.size());
-    for (const VoxelVertex& v : model->mesh.vertices) positions.push_back(v.pos);
-    m_meshLevelBody = m_physics.addStaticTriangleMesh(positions, model->mesh.indices);
-    if (m_meshLevelBody == PhysicsWorld::kInvalidBody)
-        log::error("server MeshLevel: collider failed for '{}'", m_meshLevelAsset);
-    else
-        log::info("server MeshLevel: '{}' ({} tris, scale {})", m_meshLevelAsset,
-                  model->mesh.indices.size() / 3, m_meshLevelScale);
+    log::info("server MeshLevel: {} part(s) active", ok);
 }
 
 bool ServerSim::propBounds(const std::string& asset, glm::vec3& outMin, glm::vec3& outMax) const {

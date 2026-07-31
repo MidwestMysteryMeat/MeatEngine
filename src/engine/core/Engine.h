@@ -52,8 +52,10 @@ struct EngineConfig {
     std::string animRetarget; // --animretarget <path>: bake a foreign-skeleton clip onto
                               // the model (rest-pose-compensated; UE5/MoCap different bind)
     // B2 MeshLevel: optional static mesh world (triangle colliders). Empty = voxel-only.
+    // Prefer meshLevelDesc when non-empty; meshLevelAsset is the single-mesh shortcut.
     std::string meshLevelAsset;
     float meshLevelScale = 1.0f;
+    MeshLevelDesc meshLevelDesc;
 };
 
 // Composition root. The simulation authority is always a ServerSim; this class
@@ -91,8 +93,7 @@ private:
     PhysicsWorld m_physics;   // client mirror
     GravityField m_gravity;   // client prediction mirror of server field (B3b)
     MeshLevelRuntime m_meshLevel; // B2 client render + prediction colliders
-    std::string m_meshLevelAsset;
-    float m_meshLevelScale = 1.0f;
+    MeshLevelDesc m_meshLevelDesc;
     VoxelWorld m_voxels;      // client mirror
     EntityRegistry m_entities;
     EventBus m_events;

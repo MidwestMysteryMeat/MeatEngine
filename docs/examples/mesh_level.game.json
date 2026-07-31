@@ -5,8 +5,20 @@
   "world": {
     "template": "fps",
     "levelType": "mesh",
-    "meshLevel": "assets/models/prop_crate.obj",
-    "meshLevelScale": 40.0,
+    "meshLevelScale": 20.0,
+    "meshLevels": [
+      {
+        "asset": "assets/models/prop_crate.obj",
+        "scale": 40.0,
+        "pos": [0, 0, 0]
+      },
+      {
+        "asset": "assets/models/prop_crate.obj",
+        "scale": 15.0,
+        "pos": [25, 0, 0],
+        "yawDeg": 45
+      }
+    ],
     "environment": "surface",
     "perspective": "first"
   }
