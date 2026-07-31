@@ -186,6 +186,16 @@ private:
     Camera m_editorCamera;
     std::vector<EditorLight> m_editorLights;    // rendered every frame, saved as extras
     std::vector<SeedVolume> m_seedVolumes;      // consumed by dungeon gen later
+    std::vector<EditorProp> m_editorProps;      // placed mesh props, rendered + saved as extras
+    // Loaded-mesh cache for editor props, keyed by assetPath so repeated props /
+    // per-frame re-renders don't reload from disk. A cached entry with mesh==0
+    // marks a missing/failed load, so we don't retry (or spam logs) every frame.
+    struct EditorPropMesh {
+        MeshHandle mesh = 0;
+        MaterialHandle material{0};
+    };
+    std::unordered_map<std::string, EditorPropMesh> m_editorPropCache;
+    const EditorPropMesh& editorPropMesh(const std::string& assetPath);
     void saveEditorExtras() const;
     void loadEditorExtras();
 };

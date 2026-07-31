@@ -23,7 +23,7 @@ public:
 
 private:
     enum class Tool { Place, Erase, Wall, Floor, Platform, Doorway, Light, SeedVolume };
-    enum class Selection { None, Light, Volume };
+    enum class Selection { None, Light, Volume, Prop };
 
     void updateFlyCamera(EditorContext& ctx, float dt);
     void drawTopBar(EditorContext& ctx);
@@ -53,8 +53,11 @@ private:
         std::uintmax_t size = 0; // bytes
         AssetKind kind = AssetKind::Other;
     };
-    void drawContentBrowser();
+    void drawContentBrowser(EditorContext& ctx);
     void rescanContent();
+    // Spawn an EditorProp for the selected Content-Browser model, dropped where
+    // the editor camera looks (raycast against the voxel world), and select it.
+    void placeSelectedProp(EditorContext& ctx);
     static AssetKind classifyExt(const std::string& ext);
 
     const std::vector<std::string>& listDir(EditorContext& ctx, const std::string& dir);
@@ -86,6 +89,7 @@ private:
 
     Selection m_selKind = Selection::None;
     int m_selIndex = -1;
+    int m_propGizmoOp = 0; // selected prop's ImGuizmo op: 0 move, 1 rotate, 2 scale
 
     int m_previewLights = 0; // per-frame budget so previews can't eat the light UBO
     std::string m_status;

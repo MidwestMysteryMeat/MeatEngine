@@ -29,6 +29,16 @@ struct SeedVolume { // marks a region for procedural dungeon generation (Phase 6
     std::uint32_t seed = 0;
 };
 
+// A mesh asset placed into the world from the editor's Content Browser. Like
+// EditorLight it is editor-owned, shared into the context, rendered by the
+// engine every frame (mesh cached by assetPath) and saved via the editor
+// extras. Decoration only for now: no server sync, no collision (see
+// EditorProp handling in Engine.cpp).
+struct EditorProp {
+    std::string assetPath;     // project-relative model path (e.g. "assets/models/prop_crate.obj")
+    glm::mat4 transform{1.0f}; // world TRS, manipulated by the ImGuizmo transform gizmo
+};
+
 struct EditorContext {
     Camera& camera;    // editor-owned free-fly camera; engine renders with it
     VoxelWorld& voxels; // client mirror — read/pick only, never setBlock directly
@@ -36,6 +46,7 @@ struct EditorContext {
     Renderer& renderer; // for preview submits (sprites/lights); engine owns passes
     std::vector<EditorLight>& lights;      // shared: engine renders these always
     std::vector<SeedVolume>& seedVolumes;  // shared: consumed by dungeon gen
+    std::vector<EditorProp>& props;        // shared: engine renders these always
     std::function<void(glm::ivec3, BlockId)> requestVoxelOp; // → server, validated
     std::function<void(bool)> setRelativeMouse;              // capture for fly-look
     std::function<void()> requestWorldSave;                  // server save + extras

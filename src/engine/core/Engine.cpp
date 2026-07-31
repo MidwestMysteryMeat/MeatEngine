@@ -10,6 +10,7 @@
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp> // value_ptr/make_mat4: serialize editor-prop transforms
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
@@ -184,6 +185,31 @@ void Engine::loadWorldProps() {
                            glm::translate(glm::mat4(1.0f), c.place)});
     }
     log::info("loaded {} world props", m_props.size());
+}
+
+// Lazily load (and cache) the mesh + material for an editor-placed prop. Props
+// are staged through the same static-Assimp path the world props use; loading
+// with center=true drops the model's base to y=0 and recenters it in XZ, so an
+// EditorProp's transform translation seats the base on the picked surface. A
+// missing/failed asset caches a mesh==0 entry so we neither reload nor spam.
+const Engine::EditorPropMesh& Engine::editorPropMesh(const std::string& assetPath) {
+    auto it = m_editorPropCache.find(assetPath);
+    if (it != m_editorPropCache.end()) return it->second;
+    EditorPropMesh entry;
+    if (std::filesystem::exists(assetPath)) {
+        if (const auto model = loadStaticModel(assetPath, {.center = true})) {
+            MaterialDesc mat;
+            mat.tint = glm::vec3(0.9f);
+            if (!model->albedo.empty()) mat.albedo = m_renderer.loadTexture(model->albedo);
+            entry.mesh = m_renderer.uploadChunkMesh(model->mesh);
+            entry.material = m_renderer.createMaterial(mat);
+        } else {
+            log::warn("editor prop '{}' failed to load", assetPath);
+        }
+    } else {
+        log::warn("editor prop '{}' not found", assetPath);
+    }
+    return m_editorPropCache.emplace(assetPath, entry).first->second;
 }
 
 void Engine::loadAnimTestActor() {
@@ -691,6 +717,11 @@ void Engine::render(float alpha) {
                                  m_animActor->material);
     }
 
+    for (const EditorProp& prop : m_editorProps) { // editor-placed decoration meshes
+        const EditorPropMesh& pm = editorPropMesh(prop.assetPath);
+        if (pm.mesh != 0) m_renderer.submitMesh(pm.mesh, prop.transform, pm.material);
+    }
+
     for (const EditorLight& light : m_editorLights) { // placed lights are world lights
         if (light.type == 0)
             m_renderer.submitPointLight(light.pos, light.color, light.radius);
@@ -706,6 +737,7 @@ void Engine::render(float alpha) {
                           m_renderer,
                           m_editorLights,
                           m_seedVolumes,
+                          m_editorProps,
                           [this](glm::ivec3 v, BlockId b) { m_client.sendVoxelOp(v, b); },
                           [this](bool on) { m_window.setRelativeMouse(on); },
                           [this] {
@@ -875,6 +907,7 @@ void Engine::saveEditorExtras() const {
     nlohmann::json j = nlohmann::json::object();
     j["lights"] = nlohmann::json::array();
     j["seedVolumes"] = nlohmann::json::array();
+    j["props"] = nlohmann::json::array();
     for (const EditorLight& l : m_editorLights)
         j["lights"].push_back({{"type", l.type},
                                {"pos", {l.pos.x, l.pos.y, l.pos.z}},
@@ -886,6 +919,12 @@ void Engine::saveEditorExtras() const {
         j["seedVolumes"].push_back({{"min", {v.min.x, v.min.y, v.min.z}},
                                     {"max", {v.max.x, v.max.y, v.max.z}},
                                     {"seed", v.seed}});
+    for (const EditorProp& p : m_editorProps) {
+        nlohmann::json t = nlohmann::json::array();
+        const float* m = glm::value_ptr(p.transform);
+        for (int i = 0; i < 16; ++i) t.push_back(m[i]);
+        j["props"].push_back({{"asset", p.assetPath}, {"transform", std::move(t)}});
+    }
     std::ofstream out("saves/editor_extras.json");
     if (out) out << j.dump();
 }
@@ -912,8 +951,19 @@ void Engine::loadEditorExtras() {
         vol.seed = v.value("seed", 0u);
         m_seedVolumes.push_back(vol);
     }
-    log::info("editor extras loaded ({} lights, {} volumes)", m_editorLights.size(),
-              m_seedVolumes.size());
+    for (const auto& p : j.value("props", nlohmann::json::array())) {
+        EditorProp prop;
+        prop.assetPath = p.value("asset", std::string{});
+        if (prop.assetPath.empty()) continue;
+        if (const auto& t = p["transform"]; t.is_array() && t.size() == 16) {
+            float m[16];
+            for (int i = 0; i < 16; ++i) m[i] = t[i];
+            prop.transform = glm::make_mat4(m);
+        }
+        m_editorProps.push_back(std::move(prop));
+    }
+    log::info("editor extras loaded ({} lights, {} volumes, {} props)", m_editorLights.size(),
+              m_seedVolumes.size(), m_editorProps.size());
 }
 
 bool Engine::runMenu(EngineConfig& config) {

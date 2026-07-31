@@ -103,7 +103,7 @@ void RoomEditor::update(EditorContext& ctx, float dt) {
     drawToolbar();
     drawOutliner(ctx);
     drawAssetBrowser(ctx);
-    drawContentBrowser();
+    drawContentBrowser(ctx);
     drawCodeEditor(ctx);
     if (!m_flying) drawGizmo(ctx, view, proj);
 
@@ -130,6 +130,14 @@ void RoomEditor::update(EditorContext& ctx, float dt) {
     }
 
     if (ctx.input.pressed(GLFW_KEY_ESCAPE)) m_anchor.reset();
+
+    // Delete removes the selected prop (matching the Outliner's Delete button).
+    if (m_selKind == Selection::Prop && ctx.input.pressed(GLFW_KEY_DELETE) && m_selIndex >= 0 &&
+        m_selIndex < static_cast<int>(ctx.props.size())) {
+        ctx.props.erase(ctx.props.begin() + m_selIndex);
+        m_selKind = Selection::None;
+        m_selIndex = -1;
+    }
 }
 
 void RoomEditor::updateFlyCamera(EditorContext& ctx, float dt) {
@@ -251,7 +259,21 @@ void RoomEditor::drawOutliner(EditorContext& ctx) {
         }
         ImGui::PopID();
     }
-    if (ctx.lights.empty() && ctx.seedVolumes.empty())
+    for (int i = 0; i < static_cast<int>(ctx.props.size()); ++i) {
+        const EditorProp& p = ctx.props[static_cast<std::size_t>(i)];
+        ImGui::PushID(2000 + i);
+        const std::size_t slash = p.assetPath.find_last_of('/');
+        const std::string leaf =
+            slash == std::string::npos ? p.assetPath : p.assetPath.substr(slash + 1);
+        char label[80];
+        std::snprintf(label, sizeof(label), "prop %d (%s)", i, leaf.c_str());
+        if (ImGui::Selectable(label, m_selKind == Selection::Prop && m_selIndex == i)) {
+            m_selKind = Selection::Prop;
+            m_selIndex = i;
+        }
+        ImGui::PopID();
+    }
+    if (ctx.lights.empty() && ctx.seedVolumes.empty() && ctx.props.empty())
         ImGui::TextDisabled("(empty)");
 
     if (m_selKind == Selection::Light && m_selIndex >= 0 &&
@@ -286,23 +308,55 @@ void RoomEditor::drawOutliner(EditorContext& ctx) {
             m_selKind = Selection::None;
             m_selIndex = -1;
         }
+    } else if (m_selKind == Selection::Prop && m_selIndex >= 0 &&
+               m_selIndex < static_cast<int>(ctx.props.size())) {
+        ImGui::Separator();
+        ImGui::Text("Properties");
+        EditorProp& prop = ctx.props[static_cast<std::size_t>(m_selIndex)];
+        ImGui::TextDisabled("%s", prop.assetPath.c_str());
+        const glm::vec3 pos = glm::vec3(prop.transform[3]);
+        ImGui::Text("pos %.1f %.1f %.1f", pos.x, pos.y, pos.z);
+        ImGui::Text("gizmo");
+        ImGui::SameLine();
+        ImGui::RadioButton("move", &m_propGizmoOp, 0);
+        ImGui::SameLine();
+        ImGui::RadioButton("rotate", &m_propGizmoOp, 1);
+        ImGui::SameLine();
+        ImGui::RadioButton("scale", &m_propGizmoOp, 2);
+        if (ImGui::Button("Delete")) {
+            ctx.props.erase(ctx.props.begin() + m_selIndex);
+            m_selKind = Selection::None;
+            m_selIndex = -1;
+        }
     }
     ImGui::End();
 }
 
 void RoomEditor::drawGizmo(EditorContext& ctx, const glm::mat4& view, const glm::mat4& proj) {
-    if (m_selKind != Selection::Light || m_selIndex < 0 ||
-        m_selIndex >= static_cast<int>(ctx.lights.size()))
-        return;
-    EditorLight& light = ctx.lights[static_cast<std::size_t>(m_selIndex)];
-
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGuizmo::SetOrthographic(false);
     ImGuizmo::SetRect(vp->Pos.x, vp->Pos.y, vp->Size.x, vp->Size.y);
-    glm::mat4 model = glm::translate(glm::mat4(1.0f), light.pos);
-    if (ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(proj), ImGuizmo::TRANSLATE,
-                             ImGuizmo::WORLD, glm::value_ptr(model)))
-        light.pos = glm::vec3(model[3]);
+
+    if (m_selKind == Selection::Light && m_selIndex >= 0 &&
+        m_selIndex < static_cast<int>(ctx.lights.size())) {
+        // Lights are a point: translate only.
+        EditorLight& light = ctx.lights[static_cast<std::size_t>(m_selIndex)];
+        glm::mat4 model = glm::translate(glm::mat4(1.0f), light.pos);
+        if (ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(proj), ImGuizmo::TRANSLATE,
+                                 ImGuizmo::WORLD, glm::value_ptr(model)))
+            light.pos = glm::vec3(model[3]);
+    } else if (m_selKind == Selection::Prop && m_selIndex >= 0 &&
+               m_selIndex < static_cast<int>(ctx.props.size())) {
+        // Props carry a full TRS: move/rotate/scale, manipulated in place. Scale
+        // reads more predictably in local space; move/rotate use world axes.
+        EditorProp& prop = ctx.props[static_cast<std::size_t>(m_selIndex)];
+        const ImGuizmo::OPERATION op = m_propGizmoOp == 1   ? ImGuizmo::ROTATE
+                                       : m_propGizmoOp == 2 ? ImGuizmo::SCALE
+                                                            : ImGuizmo::TRANSLATE;
+        const ImGuizmo::MODE mode = op == ImGuizmo::SCALE ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
+        ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(proj), op, mode,
+                             glm::value_ptr(prop.transform));
+    }
 }
 
 void RoomEditor::handleTool(EditorContext& ctx, glm::vec3 rayOrigin, glm::vec3 rayDir) {
@@ -709,7 +763,7 @@ void RoomEditor::rescanContent() {
               });
 }
 
-void RoomEditor::drawContentBrowser() {
+void RoomEditor::drawContentBrowser(EditorContext& ctx) {
     ImGui::Begin("Content Browser");
     if (!m_contentScanned) rescanContent(); // first open: scan once, not per frame
 
@@ -759,10 +813,43 @@ void RoomEditor::drawContentBrowser() {
         ImGui::TextDisabled("assets/%s", sel->path.c_str());
         ImGui::TextDisabled("%s  |  %s", kAssetKindNames[static_cast<int>(sel->kind)],
                             humanSize(sel->size).c_str());
+        // A model can be dropped into the world: it spawns an EditorProp where the
+        // camera is looking (raycast pick), then gets a transform gizmo + Outliner
+        // entry. Meshes only — textures/scripts/shaders aren't placeable.
+        if (sel->kind == AssetKind::Model) {
+            if (ImGui::Button("Place in world")) placeSelectedProp(ctx);
+            ImGui::SameLine();
+            ImGui::TextDisabled("drops where the camera looks");
+        }
     } else {
         ImGui::TextDisabled("(no selection)");
     }
     ImGui::End();
+}
+
+void RoomEditor::placeSelectedProp(EditorContext& ctx) {
+    if (m_contentSelected.empty()) return;
+    // Content paths are relative to the assets/ scan root; props store a
+    // project-relative path, which is what the engine's loader expects.
+    const std::string assetPath = "assets/" + m_contentSelected;
+
+    // Raycast the camera forward ray against the voxel world and seat the prop on
+    // the hit surface; with nothing in view, drop it a few metres ahead so the
+    // action never silently no-ops.
+    const glm::vec3 origin = ctx.camera.pos;
+    const glm::vec3 dir = ctx.camera.forward();
+    const auto hit = ctx.voxels.raycast(origin, dir, kPickDistance);
+    const glm::vec3 point = hit ? origin + dir * hit->t : origin + dir * 5.0f;
+
+    EditorProp prop;
+    prop.assetPath = assetPath;
+    prop.transform = glm::translate(glm::mat4(1.0f), point);
+    ctx.props.push_back(std::move(prop));
+
+    m_selKind = Selection::Prop;
+    m_selIndex = static_cast<int>(ctx.props.size()) - 1;
+    m_propGizmoOp = 0;
+    setStatus("placed " + assetPath);
 }
 
 } // namespace meat
