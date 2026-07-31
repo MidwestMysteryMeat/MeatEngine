@@ -25,6 +25,7 @@ in VsOut {
     noperspective vec2 uv; // affine — must match chunk.vert's interpolation qualifier
     float fog;
     float blockLight; // 0..1 torch flood-fill brightness
+    float ao;         // 0..1 openness (1 = open face, 0 = fully occluded corner)
     flat uint tex;
 } fs;
 
@@ -89,5 +90,8 @@ void main() {
     // so kMinLight is the only floor keeping unlit terrain readable.
     const float kMinLight = 0.10;
     lit *= max(fs.blockLight, kMinLight);
+    // Per-vertex voxel ambient occlusion (0fps): concave corners/edges where
+    // blocks meet darken toward 45% brightness; open flat faces stay full.
+    lit *= mix(0.45, 1.0, fs.ao);
     oColor = vec4(mix(lit, uFogColor.rgb, fs.fog), albedo.a);
 }

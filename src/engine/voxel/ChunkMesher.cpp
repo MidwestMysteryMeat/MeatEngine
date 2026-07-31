@@ -51,6 +51,40 @@ std::uint8_t lightAcrossFace(const Chunk& chunk, const std::array<const Chunk*, 
     return n->lightAt(local.x, local.y, local.z);
 }
 
+// Generic solidity query for AO occluder sampling. In-bounds reads the chunk;
+// out-of-bounds by one voxel along EXACTLY ONE axis reaches into that axis'
+// face neighbor (same shift-back-a-chunk trick as blockAcrossFace). A position
+// out of bounds along two or three axes is a diagonal for which no neighbor
+// chunk is available, so it's treated as air (false) — this is the standard
+// minor chunk-seam AO artifact.
+bool solidAt(const Chunk& chunk, const std::array<const Chunk*, 6>& neighbors,
+             const BlockRegistry& registry, glm::ivec3 p) {
+    if (p.x >= 0 && p.x < kChunkSize && p.y >= 0 && p.y < kChunkSize && p.z >= 0 &&
+        p.z < kChunkSize)
+        return registry.get(chunk.at(p.x, p.y, p.z)).solid;
+    int oob = 0;
+    int face = -1;
+    if (p.x < 0) { ++oob; face = 1; }
+    else if (p.x >= kChunkSize) { ++oob; face = 0; }
+    if (p.y < 0) { ++oob; face = 3; }
+    else if (p.y >= kChunkSize) { ++oob; face = 2; }
+    if (p.z < 0) { ++oob; face = 5; }
+    else if (p.z >= kChunkSize) { ++oob; face = 4; }
+    if (oob != 1) return false; // diagonal: no neighbor chunk to consult -> air
+    const Chunk* n = neighbors[static_cast<std::size_t>(face)];
+    if (!n) return false;
+    const glm::ivec3 local = p - kFaces[static_cast<std::size_t>(face)].dir * kChunkSize;
+    return registry.get(n->at(local.x, local.y, local.z)).solid;
+}
+
+// 0fps.net "Ambient occlusion for Minecraft-like worlds" corner rule: two solid
+// side occluders fully darken (0); otherwise brightness falls with the number
+// of solid side/corner occluders. Result is 0..3, 3 = fully open.
+int cornerAO(bool s1, bool s2, bool cor) {
+    return (s1 && s2) ? 0
+                      : 3 - (static_cast<int>(s1) + static_cast<int>(s2) + static_cast<int>(cor));
+}
+
 // Voxel-coordinate contribution of walking t mask cells along a signed unit
 // axis. Negative directions count down from the far edge so that mask cell 0
 // always sits where the face's corner table starts — that keeps the merged
@@ -65,7 +99,8 @@ std::size_t cellIndex(int u, int v) {
 }
 
 void emitQuad(ChunkMeshData& mesh, const FaceSpec& spec, glm::ivec3 baseVoxel, glm::ivec3 uDir,
-              glm::ivec3 vDir, int w, int h, std::uint16_t tex, std::uint8_t light) {
+              glm::ivec3 vDir, int w, int h, std::uint16_t tex, std::uint8_t light,
+              std::uint8_t aoMask) {
     // The quad is the single-voxel corner table stretched w cells along uDir
     // and h cells along vDir; with w == h == 1 it reproduces the old
     // per-voxel vertices exactly, so winding stays CCW from outside.
@@ -84,6 +119,10 @@ void emitQuad(ChunkMeshData& mesh, const FaceSpec& spec, glm::ivec3 baseVoxel, g
         vert.uv = kCornerUv[c] * glm::vec2(static_cast<float>(w), static_cast<float>(h));
         vert.tex = tex;
         vert.light = light; // uniform across the quad: light is part of the merge key
+        // Corner AOs packed 2 bits each; vertex c gets corner c's value. A merged
+        // quad shares one aoMask (AO is part of the merge key), so the four
+        // corners are consistent across the whole rectangle.
+        vert.ao = static_cast<std::uint8_t>((aoMask >> (2 * c)) & 0x3u);
         mesh.vertices.push_back(vert);
     }
     mesh.indices.insert(mesh.indices.end(),
@@ -110,6 +149,9 @@ ChunkMeshData buildChunkMesh(const Chunk& chunk, const std::array<const Chunk*, 
     constexpr std::uint32_t kEmpty = 0xFFFFFFFFu;
     std::array<std::uint32_t, static_cast<std::size_t>(kChunkSize) * kChunkSize> mask;
     std::array<std::uint8_t, static_cast<std::size_t>(kChunkSize) * kChunkSize> lightMask{};
+    // Per-cell packed corner AO (4 corners * 2 bits). Joined to the merge key so
+    // faces with different AO never fuse and per-voxel AO survives greedy meshing.
+    std::array<std::uint8_t, static_cast<std::size_t>(kChunkSize) * kChunkSize> aoMask{};
 
     for (int face = 0; face < 6; ++face) {
         const FaceSpec& spec = kFaces[static_cast<std::size_t>(face)];
@@ -134,6 +176,26 @@ ChunkMeshData buildChunkMesh(const Chunk& chunk, const std::array<const Chunk*, 
                             cell = registry.get(id).faceTex[static_cast<std::size_t>(face)];
                             lightMask[cellIndex(u, v)] =
                                 lightAcrossFace(chunk, neighbors, face, p + spec.dir);
+                            // 0fps AO: sample occluders on the OUTER side of the
+                            // face (p + dir). For each corner c (order matches
+                            // spec.corners / emitQuad's vertices) pick the two
+                            // edge directions and the diagonal, then apply the
+                            // corner rule. Pack the four 0..3 values 2 bits each.
+                            const glm::ivec3 outer = p + spec.dir;
+                            std::uint8_t packed = 0;
+                            for (std::size_t c = 0; c < 4; ++c) {
+                                const glm::ivec3 edgeU =
+                                    (kCornerUv[c].x > 0.5f) ? uDir : -uDir;
+                                const glm::ivec3 edgeV =
+                                    (kCornerUv[c].y > 0.5f) ? vDir : -vDir;
+                                const bool sU = solidAt(chunk, neighbors, registry, outer + edgeU);
+                                const bool sV = solidAt(chunk, neighbors, registry, outer + edgeV);
+                                const bool sC =
+                                    solidAt(chunk, neighbors, registry, outer + edgeU + edgeV);
+                                const int ao = cornerAO(sU, sV, sC);
+                                packed |= static_cast<std::uint8_t>((ao & 0x3) << (2 * c));
+                            }
+                            aoMask[cellIndex(u, v)] = packed;
                             sliceHasFaces = true;
                         }
                     }
@@ -150,9 +212,11 @@ ChunkMeshData buildChunkMesh(const Chunk& chunk, const std::array<const Chunk*, 
                         continue;
                     }
                     const std::uint8_t light = lightMask[cellIndex(u, v)];
+                    const std::uint8_t ao = aoMask[cellIndex(u, v)];
                     const auto matches = [&](int cu, int cv) {
                         return mask[cellIndex(cu, cv)] == tile &&
-                               lightMask[cellIndex(cu, cv)] == light;
+                               lightMask[cellIndex(cu, cv)] == light &&
+                               aoMask[cellIndex(cu, cv)] == ao;
                     };
                     int w = 1;
                     while (u + w < kChunkSize && matches(u + w, v)) ++w;
@@ -170,7 +234,7 @@ ChunkMeshData buildChunkMesh(const Chunk& chunk, const std::array<const Chunk*, 
                     const glm::ivec3 baseVoxel =
                         sliceAxis * s + axisSteps(uDir, u) + axisSteps(vDir, v);
                     emitQuad(mesh, spec, baseVoxel, uDir, vDir, w, h,
-                             static_cast<std::uint16_t>(tile), light);
+                             static_cast<std::uint16_t>(tile), light, ao);
                     u += w;
                 }
             }

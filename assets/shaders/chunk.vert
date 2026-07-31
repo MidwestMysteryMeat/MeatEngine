@@ -5,6 +5,7 @@ layout(location = 1) in vec3 aNormal; // delivered as normalized i8
 layout(location = 2) in vec2 aUv;
 layout(location = 3) in uint aTex;    // atlas tile index
 layout(location = 4) in float aLight; // block-light level 0..15 (torch flood-fill)
+layout(location = 5) in float aAo;    // per-vertex ambient occlusion 0..3 (0 = darkest corner)
 
 // FrameData mirrors Renderer::FrameUbo (std140, binding 0). Keep in sync.
 struct PointLight { vec4 posRadius; vec4 color; };
@@ -32,6 +33,7 @@ out VsOut {
     noperspective vec2 uv; // affine (no perspective correction) → the PSX texture warp
     float fog;
     float blockLight; // 0..1 torch brightness, gouraud-interpolated across the quad
+    float ao;         // 0..1 openness (1 = open face, 0 = fully occluded corner)
     flat uint tex;
 } vs;
 
@@ -42,6 +44,7 @@ void main() {
     vs.uv = aUv;
     vs.tex = aTex;
     vs.blockLight = clamp(aLight / 15.0, 0.0, 1.0);
+    vs.ao = aAo / 3.0; // 0..3 packed corner AO -> 0..1 openness, gouraud-interpolated
     // Vertex fog on purpose: the coarse per-vertex gradient is part of the PSX look.
     float dist = distance(world.xyz, uCamPos.xyz);
     vs.fog = clamp((dist - uFogParams.x) / max(uFogParams.y - uFogParams.x, 1e-3), 0.0, 1.0)

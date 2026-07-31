@@ -160,7 +160,7 @@ MeshHandle Renderer::uploadChunkMesh(const ChunkMeshData& data) {
     const GLuint vao = mesh.vao.id();
     glVertexArrayVertexBuffer(vao, 0, mesh.vbo.id(), 0, sizeof(VoxelVertex));
     glVertexArrayElementBuffer(vao, mesh.ibo.id());
-    for (GLuint attrib = 0; attrib < 5; ++attrib) {
+    for (GLuint attrib = 0; attrib < 6; ++attrib) {
         glEnableVertexArrayAttrib(vao, attrib);
         glVertexArrayAttribBinding(vao, attrib, 0);
     }
@@ -176,6 +176,10 @@ MeshHandle Renderer::uploadChunkMesh(const ChunkMeshData& data) {
     // divides by 15 to a 0..1 brightness. Not GL_TRUE (that would map 255->1).
     glVertexArrayAttribFormat(vao, 4, 1, GL_UNSIGNED_BYTE, GL_FALSE,
                               static_cast<GLuint>(offsetof(VoxelVertex, light)));
+    // Per-vertex ambient occlusion 0..3, unnormalized ubyte -> float; the shader
+    // divides by 3 to a 0..1 openness factor. Like light, NOT GL_TRUE.
+    glVertexArrayAttribFormat(vao, 5, 1, GL_UNSIGNED_BYTE, GL_FALSE,
+                              static_cast<GLuint>(offsetof(VoxelVertex, ao)));
     mesh.indexCount = static_cast<GLsizei>(data.indices.size());
 
     const MeshHandle handle = m_nextMesh++;

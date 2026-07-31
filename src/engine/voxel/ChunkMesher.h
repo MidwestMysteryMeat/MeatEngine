@@ -17,6 +17,7 @@ struct VoxelVertex {
     glm::vec2 uv;
     std::uint16_t tex;
     std::uint8_t light; // block-light level 0..15 of the air voxel this face faces
+    std::uint8_t ao;    // per-vertex ambient occlusion 0..3 (0 = darkest concave corner)
 };
 
 struct ChunkMeshData {
