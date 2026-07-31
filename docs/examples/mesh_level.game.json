@@ -1,0 +1,13 @@
+{
+  "name": "Mesh Level Slice",
+  "seed": 42,
+  "inventoryModel": "hotbar",
+  "world": {
+    "template": "fps",
+    "levelType": "mesh",
+    "meshLevel": "assets/models/prop_crate.obj",
+    "meshLevelScale": 40.0,
+    "environment": "surface",
+    "perspective": "first"
+  }
+}

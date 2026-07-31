@@ -10,6 +10,7 @@
 #include "engine/net/EnetTransport.h"
 #include "engine/net/LanDiscovery.h"
 #include "engine/net/LoopbackTransport.h"
+#include "engine/level/MeshLevel.h"
 #include "engine/physics/CharacterController.h"
 #include "engine/physics/GravityField.h"
 #include "engine/physics/PhysicsWorld.h"
@@ -50,6 +51,9 @@ struct EngineConfig {
                               // onto the loaded model by bone name (identical-bind Mixamo)
     std::string animRetarget; // --animretarget <path>: bake a foreign-skeleton clip onto
                               // the model (rest-pose-compensated; UE5/MoCap different bind)
+    // B2 MeshLevel: optional static mesh world (triangle colliders). Empty = voxel-only.
+    std::string meshLevelAsset;
+    float meshLevelScale = 1.0f;
 };
 
 // Composition root. The simulation authority is always a ServerSim; this class
@@ -86,6 +90,9 @@ private:
     AudioEngine m_audio;
     PhysicsWorld m_physics;   // client mirror
     GravityField m_gravity;   // client prediction mirror of server field (B3b)
+    MeshLevelRuntime m_meshLevel; // B2 client render + prediction colliders
+    std::string m_meshLevelAsset;
+    float m_meshLevelScale = 1.0f;
     VoxelWorld m_voxels;      // client mirror
     EntityRegistry m_entities;
     EventBus m_events;

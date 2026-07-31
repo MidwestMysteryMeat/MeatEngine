@@ -246,6 +246,40 @@ void PhysicsWorld::removeStaticBox(BodyHandle handle) {
     m_impl->boxBodies.erase(it);
 }
 
+PhysicsWorld::BodyHandle PhysicsWorld::addStaticTriangleMesh(
+    const std::vector<glm::vec3>& positions, const std::vector<std::uint32_t>& indices) {
+    if (!m_impl->system || positions.empty() || indices.size() < 3) return kInvalidBody;
+
+    JPH::VertexList vertices;
+    vertices.reserve(positions.size());
+    for (const glm::vec3& p : positions)
+        vertices.push_back(JPH::Float3(p.x, p.y, p.z));
+
+    JPH::IndexedTriangleList triangles;
+    triangles.reserve(indices.size() / 3);
+    for (std::size_t i = 0; i + 2 < indices.size(); i += 3)
+        triangles.emplace_back(indices[i], indices[i + 1], indices[i + 2]);
+
+    JPH::MeshShapeSettings shapeSettings(std::move(vertices), std::move(triangles));
+    const JPH::ShapeSettings::ShapeResult result = shapeSettings.Create();
+    if (result.HasError()) {
+        log::error("PhysicsWorld: triangle mesh shape failed: {}", result.GetError().c_str());
+        return kInvalidBody;
+    }
+    const JPH::BodyCreationSettings bodySettings(result.Get(), JPH::RVec3(0, 0, 0),
+                                                 JPH::Quat::sIdentity(), JPH::EMotionType::Static,
+                                                 layers::kNonMoving);
+    const JPH::BodyID id = m_impl->system->GetBodyInterface().CreateAndAddBody(
+        bodySettings, JPH::EActivation::DontActivate);
+    if (id.IsInvalid()) {
+        log::error("PhysicsWorld: out of bodies adding static triangle mesh");
+        return kInvalidBody;
+    }
+    // Track with box bodies so removeStaticBox can free it (same non-chunk list).
+    m_impl->boxBodies.push_back(id);
+    return id.GetIndexAndSequenceNumber();
+}
+
 PhysicsWorld::BodyHandle PhysicsWorld::addKinematicBox(glm::vec3 center, glm::vec3 halfExtents) {
     if (!m_impl->system)
         return kInvalidBody;

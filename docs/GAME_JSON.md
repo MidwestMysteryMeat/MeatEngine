@@ -50,6 +50,9 @@ Preferred place for map defaults. When both top-level and `world` set the same f
 | `perspective` | `first`, `third` / `tps` |
 | `seed` | unsigned int |
 | `hemisphereAmbient` | bool (A3 sky/ground fill) |
+| `levelType` | `voxel` (default) or `mesh` — mesh forces Void terrain if terrain omitted |
+| `meshLevel` / `levelMesh` | string path to a static model (B2 MeshLevel) |
+| `meshLevelScale` | float model scale (default 1) |
 
 ### Template presets
 
@@ -71,7 +74,27 @@ python tools/new_project.py MyGame --template space
 
 Writes a project with nested `world` for the chosen genre (`fps` / `tps` / `space` / `racer`).
 
+## B2 MeshLevel example
+
+```json
+{
+  "name": "Hangar Arena",
+  "world": {
+    "levelType": "mesh",
+    "meshLevel": "assets/models/prop_crate.obj",
+    "meshLevelScale": 20.0,
+    "environment": "surface",
+    "template": "fps"
+  }
+}
+```
+
+Loads a static mesh with a triangle collider on server + client. Prefer Void terrain
+so the mesh is the floor (automatic when `levelType` is `mesh` or `meshLevel` is set
+without an explicit terrain).
+
 ## Examples
 
 - `docs/examples/space.game.json`
+- `docs/examples/mesh_level.game.json`
 - `projects/SpaceSlice/game.json`

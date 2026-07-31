@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 // Forward declarations only — Jolt headers never leak past src/engine/physics/*.cpp.
 namespace JPH {
@@ -57,6 +58,10 @@ public:
     // small positive value so a degenerate box never trips a Jolt assert.
     BodyHandle addStaticBox(glm::vec3 center, glm::vec3 halfExtents);
     void removeStaticBox(BodyHandle body);
+    // B2: static triangle mesh collider in world space (verts already transformed).
+    // Same non-moving layer as chunk colliders / static boxes.
+    BodyHandle addStaticTriangleMesh(const std::vector<glm::vec3>& positions,
+                                     const std::vector<std::uint32_t>& indices);
     // Kinematic box (H4 ships): CharacterVirtual collides with it like terrain, but
     // the server moves it each tick via setBodyTransform. halfExtents local AABB.
     BodyHandle addKinematicBox(glm::vec3 center, glm::vec3 halfExtents);

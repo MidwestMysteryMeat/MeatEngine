@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -52,6 +53,9 @@ enum class NodeKind : std::uint8_t {
     ActionAnnounce,   // action: game.announce(msg) — HUD toast all clients
     // C6-c: live debug watch (game.watch + editor Watches panel)
     ActionWatch,      // action: game.watch(label, value)
+    // C6-c subgraphs
+    EventSubgraphEntry, // entry for library graphs (emitted as local function when called)
+    CallSubgraph,       // action: call scripts/graphs/<strA>.graph.json body
 };
 
 enum class PinKind : std::uint8_t {
@@ -131,7 +135,9 @@ std::string saveGraphJson(const NodeGraph& g);
 bool loadGraphJson(NodeGraph& out, const std::string& jsonText);
 
 // Compile graph → sandboxed Lua source that ScriptHost can load.
-// Generated file should be named so loadDir picks it up (e.g. scripts/bp_main.lua).
+// Overload with loadSubgraph resolves Call Subgraph stems under scripts/graphs/.
 std::string emitGraphLua(const NodeGraph& g);
+std::string emitGraphLua(const NodeGraph& g,
+                         const std::function<bool(const std::string&, NodeGraph&)>& loadSubgraph);
 
 } // namespace meat

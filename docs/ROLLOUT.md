@@ -69,9 +69,9 @@ blank / …), but spanning voxel AND non-voxel AND themed worlds. Physics is alr
 (it just consumes collider meshes), so this is bounded, not a rewrite. Voxel is the *default*, not a cage.
 - [x] **B1. Terrain modes** — Normal / Superflat / Void (`game.json "terrain"` or `--terrain`),
   synced to clients in the rules flags byte; Void gets a spawn pad so you don't fall through.
-- [ ] **B2. `Level` abstraction** — a `Level` interface: `VoxelWorld` (current) + `MeshLevel`
-  (static mesh + Jolt `MeshShape` collider). Worldgen/navmesh become optional; the client renders the
-  level mesh instead of chunks. True non-voxel games.
+- [~] **B2. `Level` / MeshLevel** — first slice: `MeshLevel` loads static mesh + triangle
+  `MeshShape` (server + client); `game.json` `world.meshLevel` / `levelType: mesh`. Still open:
+  full Level interface, multi-part maps, disable voxel meshing entirely.
 - [x] **B3. Environment presets** — Surface / Underwater / Space drive gravity + fog + ambient
   (+ hemi lobes). Skybox/water plane still open.
 - [x] **B3b. Gravity volumes / zoned gravity** ⭐ — `GravityField` + CharacterController sampling;
@@ -100,10 +100,10 @@ light → ship) without the bloat/missing pieces that don't fit a PSX voxel FPS.
   Boost.PFR auto widgets.
 - [~] **C6. Node scripting / Node graphs + live coding** ⭐ — first slices shipped: imnodes graph in
   Room Designer (events/actions/data/flow/math/object) → JSON + sandboxed Lua (`zz_nodegraph.lua`) +
-  Save+Compile live reload; UE-style open node / object highlight. Still open: more game API nodes,
-  subgraphs, debug pins, ImGuiColorTextEdit for the text path; C++ live-reload later (cr.h).
-- [ ] **C7. Packaging / export** — bundle exe + cooked assets + a zip/pk3 archive into a shippable
-  build (ties to D2 resource archives + `tools/package.ps1`).
+  Save+Compile live reload; multi-graph, watches, Call Subgraph. Still open: ImGuiColorTextEdit;
+  C++ live-reload later (cr.h).
+- [x] **C7. Packaging / export** — `tools/package.ps1` ships exe + assets + project, Play/Host/
+  Server/Editor launchers, credits, zip. D2 resource archives still open.
 - [ ] **C8. Profiler panels** — frame/mesh/netcode telemetry. OSS: ImPlot + Tracy (BSD-3).
 - [x] **C9. Output Log browser (UE5-style)** ⭐ — ring buffer in `Log.cpp` + Room Designer
   **Output Log** (All/Messages/Warnings/Errors, search, clear, auto-scroll, double-click copy).
@@ -163,7 +163,7 @@ Human feel-playtests (mouse feel, combat cadence, editor ergonomics), and real L
 > Note: C1–C3, B1/B3/B4, A1/A3, C6 (first slices), H1/H2/H3/H4 (first slices), E1 are largely **shipped**;
 > older “C3 first” ordering below is historical.
 
-**Now:** ~~C9 / C6 suite / A2 / B3b-e / B5 / multi-graph / watches~~ ✅ → **C6-c subgraphs** or
-**B2 MeshLevel** → **C7 packaging** → **F / D** as scale demands.
+**Now:** ~~creation suite + shadows + gravity authoring + B5 + C6-c + MeshLevel v1 + C7~~ ✅ →
+**B2 MeshLevel depth** / **C2 theme polish** / **F netcode** / **D OSS** as needed.
 
-Rationale: creation suite loop is solid; next large cuts are **mesh levels** or **subgraphs**.
+Rationale: usability-first loop shipped; remaining work is generality, polish, and scale.

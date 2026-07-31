@@ -76,6 +76,22 @@ void applyWorldFields(meat::EngineConfig& config, const nlohmann::json& j) {
         config.seed = static_cast<std::uint32_t>(j["seed"].get<std::int64_t>());
     if (j.contains("hemisphereAmbient") && j["hemisphereAmbient"].is_boolean())
         config.rules.hemisphereAmbient = j["hemisphereAmbient"].get<bool>();
+    // B2: static mesh level (triangle colliders + render).
+    if (j.contains("meshLevel") && j["meshLevel"].is_string())
+        config.meshLevelAsset = j["meshLevel"].get<std::string>();
+    if (j.contains("levelMesh") && j["levelMesh"].is_string()) // alias
+        config.meshLevelAsset = j["levelMesh"].get<std::string>();
+    if (j.contains("meshLevelScale") && j["meshLevelScale"].is_number())
+        config.meshLevelScale = j["meshLevelScale"].get<float>();
+    if (j.contains("levelType") && j["levelType"].is_string()) {
+        const std::string lt = j["levelType"].get<std::string>();
+        if (lt == "mesh" || lt == "MeshLevel") {
+            // Prefer void canvas under a mesh floor unless terrain already set.
+            if (!j.contains("terrain")) applyTerrainString(config, "void");
+        }
+    }
+    if (!config.meshLevelAsset.empty() && !j.contains("terrain") && !j.contains("levelType"))
+        applyTerrainString(config, "void");
 }
 
 // A game project is a folder with game.json (name/seed/rules) + scripts/ +

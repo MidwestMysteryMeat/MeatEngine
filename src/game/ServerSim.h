@@ -37,6 +37,11 @@ public:
     // Where gameplay scripts load from. Default is the engine's built-in assets;
     // a game project points this at its own scripts dir (see --project).
     void setScriptDir(std::string dir) { m_scriptDir = std::move(dir); }
+    // B2: optional static mesh level (authoritative triangle colliders). Call before init.
+    void setMeshLevel(std::string assetPath, float scale = 1.0f) {
+        m_meshLevelAsset = std::move(assetPath);
+        m_meshLevelScale = scale > 1e-4f ? scale : 1.0f;
+    }
 
     bool init(std::uint32_t worldSeed);
     bool initFromSave(const std::string& path); // reads seed, then init + replay
@@ -312,6 +317,11 @@ private:
     Transport* m_activeTransport = nullptr; // set each pump/tick for script callbacks
     std::uint64_t m_scriptRng = 0x2545F4914F6CDD1Dull; // seeded in init()
     std::string m_scriptDir = "assets/scripts";
+    // B2 mesh level (physics only; client mirrors for render).
+    std::string m_meshLevelAsset;
+    float m_meshLevelScale = 1.0f;
+    PhysicsWorld::BodyHandle m_meshLevelBody = PhysicsWorld::kInvalidBody;
+    void loadMeshLevelColliders();
     std::uint32_t m_nextEntityId = 1;
     // Sparse chip-damage: only voxels that have been shot, remaining hp. Entries
     // die with the block; pristine blocks are implicit full-hp.

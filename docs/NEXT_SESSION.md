@@ -67,9 +67,10 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
 6. **C6-c subgraphs / multi-graph / watches** — after reliability.
 7. ~~**B3b editor gravity volumes**~~ ✅
 8. ~~**B5 game.json world**~~ ✅ — nested `world` object; see [GAME_JSON.md](GAME_JSON.md).
-9. ~~**C6-c multi-graph tabs**~~ ✅
-10. ~~**C6-c watches**~~ ✅ — Action Watch + Watches panel; subgraphs still open.
-11. **B2 MeshLevel** / C7 packaging / F/D — later (see full plan).
+9. ~~**C6-c multi-graph / watches / subgraphs**~~ ✅
+10. ~~**B2 MeshLevel first slice**~~ ✅ — `world.meshLevel` + triangle colliders.
+11. ~~**C7 packaging**~~ ✅ — `tools/package.ps1` launchers + zip.
+12. **B2 depth** (multi-mesh maps) / C2 theme / F netcode / D OSS — as needed.
 
 ## Cleanup / debt from last sprint
 - **ARCHITECTURE.md is stale** — still frames delta-compression, navmesh, torch-light, ozz as

@@ -181,6 +181,8 @@ bool Engine::initNetwork(const EngineConfig& config) {
         server = std::make_unique<ServerSim>(config.rules);
         if (!config.projectDir.empty())
             server->setScriptDir(config.projectDir + "/scripts");
+        if (!config.meshLevelAsset.empty())
+            server->setMeshLevel(config.meshLevelAsset, config.meshLevelScale);
         return config.loadPath.empty() ? server->init(config.seed)
                                        : server->initFromSave(config.loadPath);
     };
@@ -273,6 +275,12 @@ void Engine::setupClientWorld() {
     }
     m_prevPlayerPos = m_currPlayerPos = clientSpawnPos();
     m_clientWorldReady = true;
+    // B2: static mesh level (prediction colliders + render).
+    if (!m_meshLevelAsset.empty()) {
+        MeshLevelDesc desc = makeMeshLevelDesc(m_meshLevelAsset, m_meshLevelScale);
+        const int n = m_meshLevel.load(desc, m_renderer, m_physics);
+        log::info("client MeshLevel: {} part(s) from '{}'", n, m_meshLevelAsset);
+    }
     loadWorldProps();
     loadAnimTestActor();
     loadNpcActor();
@@ -1075,6 +1083,9 @@ void Engine::render(float alpha) {
                                  m_animActor->material);
     }
 
+    // B2 mesh level geometry (static hangar / arena).
+    m_meshLevel.submit(m_renderer);
+
     for (const EditorProp& prop : m_editorProps) { // editor-placed decoration meshes
         const EditorPropMesh& pm = editorPropMesh(prop.assetPath);
         if (pm.mesh != 0) m_renderer.submitMesh(pm.mesh, prop.transform, pm.material);
@@ -1650,6 +1661,8 @@ int Engine::run(const EngineConfig& configIn) {
     applyEnvironment(config.rules);
     m_perspective = config.rules.perspective;
     m_hemisphereAmbient = config.rules.hemisphereAmbient;
+    m_meshLevelAsset = config.meshLevelAsset;
+    m_meshLevelScale = config.meshLevelScale;
     m_animBooth = config.animBooth;
     m_animModel = config.animModel;
     m_animClip = config.animClip;

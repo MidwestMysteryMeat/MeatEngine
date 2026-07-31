@@ -4,6 +4,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <functional>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -148,6 +149,13 @@ const GraphPinDesc kActionWatch[] = {
     {"then", PinKind::Exec, false},
     {"value", PinKind::Float, true}, // Int/Object also wire via pinsCompatible
 };
+const GraphPinDesc kEventSubgraph[] = {
+    {"then", PinKind::Exec, false},
+};
+const GraphPinDesc kCallSubgraph[] = {
+    {"exec", PinKind::Exec, true},
+    {"then", PinKind::Exec, false},
+};
 
 struct LayoutRef {
     const GraphPinDesc* pins;
@@ -202,6 +210,8 @@ LayoutRef layoutOf(NodeKind k) {
     case NodeKind::ActionDamagePlayer: return {kActionDamagePlayer, 4};
     case NodeKind::ActionAnnounce: return {kActionAnnounce, 3};
     case NodeKind::ActionWatch: return {kActionWatch, 3};
+    case NodeKind::EventSubgraphEntry: return {kEventSubgraph, 1};
+    case NodeKind::CallSubgraph: return {kCallSubgraph, 2};
     }
     return {kActionLog, 3};
 }
@@ -257,6 +267,8 @@ std::string kindToString(NodeKind k) {
     case NodeKind::ActionDamagePlayer: return "ActionDamagePlayer";
     case NodeKind::ActionAnnounce: return "ActionAnnounce";
     case NodeKind::ActionWatch: return "ActionWatch";
+    case NodeKind::EventSubgraphEntry: return "EventSubgraphEntry";
+    case NodeKind::CallSubgraph: return "CallSubgraph";
     }
     return "ActionLog";
 }
@@ -293,6 +305,8 @@ NodeKind kindFromString(const std::string& s) {
     if (s == "ActionDamagePlayer") return NodeKind::ActionDamagePlayer;
     if (s == "ActionAnnounce") return NodeKind::ActionAnnounce;
     if (s == "ActionWatch") return NodeKind::ActionWatch;
+    if (s == "EventSubgraphEntry") return NodeKind::EventSubgraphEntry;
+    if (s == "CallSubgraph") return NodeKind::CallSubgraph;
     return NodeKind::ActionLog;
 }
 
@@ -539,6 +553,18 @@ void emitExecChain(std::ostringstream& out, EmitCtx& ctx, int nodeId, int indent
         nextExec(1);
         break;
     }
+    case NodeKind::CallSubgraph: {
+        // Function name is filled by emitGraphLua after subgraph collect; here use stem.
+        std::string stem = n.strA.empty() ? "utility" : n.strA;
+        for (char& c : stem) {
+            if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                  c == '_'))
+                c = '_';
+        }
+        out << pad << "__sg_" << stem << "()\n";
+        nextExec(1);
+        break;
+    }
     default:
         // Pure / event nodes shouldn't be on an exec chain as targets except events' then.
         nextExec(0);
@@ -563,6 +589,61 @@ void emitEventFunction(std::ostringstream& out, const NodeGraph& g, NodeKind eve
     std::unordered_set<int> path;
     if (const GraphLink* L = g.findExecOut(event->id, 0))
         emitExecChain(out, ctx, L->toNode, 2, path);
+    out << "end\n\n";
+}
+
+std::string sanitizeStem(std::string stem) {
+    if (stem.empty()) stem = "utility";
+    for (char& c : stem) {
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+              c == '_'))
+            c = '_';
+    }
+    return stem;
+}
+
+void collectCallStems(const NodeGraph& g, std::vector<std::string>& out) {
+    for (const GraphNode& n : g.nodes) {
+        if (n.kind != NodeKind::CallSubgraph) continue;
+        const std::string stem = sanitizeStem(n.strA);
+        if (std::find(out.begin(), out.end(), stem) == out.end()) out.push_back(stem);
+    }
+}
+
+// Callable body for a library graph: prefer Subgraph Entry, else BeginPlay, else Tick.
+void emitSubgraphFunction(std::ostringstream& out, const NodeGraph& g, const std::string& stem) {
+    const GraphNode* entry = nullptr;
+    for (const GraphNode& n : g.nodes) {
+        if (n.kind == NodeKind::EventSubgraphEntry) {
+            entry = &n;
+            break;
+        }
+    }
+    if (!entry) {
+        for (const GraphNode& n : g.nodes) {
+            if (n.kind == NodeKind::EventOnInit) {
+                entry = &n;
+                break;
+            }
+        }
+    }
+    if (!entry) {
+        for (const GraphNode& n : g.nodes) {
+            if (n.kind == NodeKind::EventOnTick) {
+                entry = &n;
+                break;
+            }
+        }
+    }
+    out << "local function __sg_" << stem << "()\n";
+    if (entry) {
+        EmitCtx ctx{g, {}, 0};
+        std::unordered_set<int> path;
+        if (const GraphLink* L = g.findExecOut(entry->id, 0))
+            emitExecChain(out, ctx, L->toNode, 2, path);
+    } else {
+        out << "  -- empty subgraph '" << stem << "' (no entry)\n";
+    }
     out << "end\n\n";
 }
 
@@ -607,6 +688,8 @@ const char* nodeKindName(NodeKind kind) {
     case NodeKind::ActionDamagePlayer: return "Damage Player";
     case NodeKind::ActionAnnounce: return "Announce";
     case NodeKind::ActionWatch: return "Watch";
+    case NodeKind::EventSubgraphEntry: return "Event Subgraph Entry";
+    case NodeKind::CallSubgraph: return "Call Subgraph";
     }
     return "Node";
 }
@@ -621,7 +704,8 @@ const char* nodeKindCategory(NodeKind kind) {
     case NodeKind::PrintObject:
     case NodeKind::ActionDamagePlayer:
     case NodeKind::ActionAnnounce:
-    case NodeKind::ActionWatch: return "Action";
+    case NodeKind::ActionWatch:
+    case NodeKind::CallSubgraph: return "Action";
     case NodeKind::Branch:
     case NodeKind::Sequence: return "Flow";
     case NodeKind::MathAdd:
@@ -637,7 +721,8 @@ const char* nodeKindCategory(NodeKind kind) {
 
 bool nodeKindIsEvent(NodeKind kind) {
     return kind == NodeKind::EventOnInit || kind == NodeKind::EventOnTick ||
-           kind == NodeKind::EventOnPlayerJoin || kind == NodeKind::EventOnPlayerDeath;
+           kind == NodeKind::EventOnPlayerJoin || kind == NodeKind::EventOnPlayerDeath ||
+           kind == NodeKind::EventSubgraphEntry;
 }
 
 GraphNode* NodeGraph::findNode(int id) {
@@ -707,6 +792,7 @@ int NodeGraph::addNode(NodeKind kind, float x, float y) {
         n.strA = "value";
         n.floatA = 0.0f;
     }
+    if (kind == NodeKind::CallSubgraph) n.strA = "utility";
     nodes.push_back(n);
     return n.id;
 }
@@ -864,10 +950,51 @@ bool loadGraphJson(NodeGraph& out, const std::string& jsonText) {
 }
 
 std::string emitGraphLua(const NodeGraph& g) {
+    return emitGraphLua(g, {});
+}
+
+std::string emitGraphLua(const NodeGraph& g,
+                         const std::function<bool(const std::string&, NodeGraph&)>& loadSubgraph) {
     std::ostringstream out;
     out << "-- AUTO-GENERATED from node graph '" << g.name
         << "' — edit the graph in the Node Graph panel, not this file.\n";
     out << "-- C6 visual scripting (node graph) → sandboxed Lua (ScriptHost game.* API).\n\n";
+
+    // Collect subgraphs (one level + transitive) with cycle guard.
+    std::vector<std::string> stems;
+    collectCallStems(g, stems);
+    std::unordered_set<std::string> emitted;
+    std::unordered_map<std::string, NodeGraph> loaded;
+    for (std::size_t i = 0; i < stems.size(); ++i) {
+        const std::string stem = stems[i];
+        if (emitted.count(stem)) continue;
+        if (!loadSubgraph) {
+            out << "local function __sg_" << stem << "()\n";
+            out << "  game.log('[nodegraph] missing subgraph loader for " << stem << "')\n";
+            out << "end\n\n";
+            emitted.insert(stem);
+            continue;
+        }
+        NodeGraph sub;
+        if (!loadSubgraph(stem, sub)) {
+            log::warn("node graph: Call Subgraph '{}' not found", stem);
+            out << "local function __sg_" << stem << "()\n";
+            out << "  game.log('[nodegraph] subgraph not found: " << stem << "')\n";
+            out << "end\n\n";
+            emitted.insert(stem);
+            continue;
+        }
+        // Nested calls from this subgraph.
+        collectCallStems(sub, stems);
+        loaded[stem] = std::move(sub);
+        emitted.insert(stem);
+    }
+    // Emit leaves first: simple reverse order after topological-ish collection.
+    for (auto it = stems.rbegin(); it != stems.rend(); ++it) {
+        const auto found = loaded.find(*it);
+        if (found != loaded.end()) emitSubgraphFunction(out, found->second, *it);
+    }
+
     emitEventFunction(out, g, NodeKind::EventOnInit, "on_init", "seed");
     emitEventFunction(out, g, NodeKind::EventOnTick, "on_tick", "t");
     emitEventFunction(out, g, NodeKind::EventOnPlayerJoin, "on_player_join", "peer");

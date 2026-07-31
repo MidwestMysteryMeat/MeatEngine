@@ -164,12 +164,37 @@ bool ServerSim::init(std::uint32_t worldSeed) {
         m_physics.removeChunkCollider(pos);
         m_navmesh.removeChunk(pos);
     });
+    loadMeshLevelColliders();
     spawnDungeonLoot();
     spawnDungeonNpcs();
     spawnDemoShip();
     setupScripting();
     m_scripts.onInit(m_seed);
     return true;
+}
+
+void ServerSim::loadMeshLevelColliders() {
+    if (m_meshLevelAsset.empty()) return;
+    if (m_meshLevelBody != PhysicsWorld::kInvalidBody) {
+        m_physics.removeStaticBox(m_meshLevelBody);
+        m_meshLevelBody = PhysicsWorld::kInvalidBody;
+    }
+    ModelImportOptions opts;
+    opts.scale = m_meshLevelScale;
+    const auto model = loadStaticModel(m_meshLevelAsset, opts);
+    if (!model) {
+        log::error("server MeshLevel: failed to load '{}'", m_meshLevelAsset);
+        return;
+    }
+    std::vector<glm::vec3> positions;
+    positions.reserve(model->mesh.vertices.size());
+    for (const VoxelVertex& v : model->mesh.vertices) positions.push_back(v.pos);
+    m_meshLevelBody = m_physics.addStaticTriangleMesh(positions, model->mesh.indices);
+    if (m_meshLevelBody == PhysicsWorld::kInvalidBody)
+        log::error("server MeshLevel: collider failed for '{}'", m_meshLevelAsset);
+    else
+        log::info("server MeshLevel: '{}' ({} tris, scale {})", m_meshLevelAsset,
+                  model->mesh.indices.size() / 3, m_meshLevelScale);
 }
 
 bool ServerSim::propBounds(const std::string& asset, glm::vec3& outMin, glm::vec3& outMax) const {

@@ -1282,7 +1282,7 @@ const NodeKind kPaletteKinds[] = {
     NodeKind::EventOnInit,       NodeKind::EventOnTick,       NodeKind::EventOnPlayerJoin,
     NodeKind::EventOnPlayerDeath, NodeKind::ActionLog,        NodeKind::ActionSetBlock,
     NodeKind::ActionSpawnPickup, NodeKind::ActionAnnounce,    NodeKind::ActionDamagePlayer,
-    NodeKind::ActionWatch,
+    NodeKind::ActionWatch,       NodeKind::CallSubgraph,      NodeKind::EventSubgraphEntry,
     NodeKind::GetPlayerCount,    NodeKind::GetItemId,         NodeKind::GetTick,
     NodeKind::GetPropCount,      NodeKind::GetPlayerHealth,   NodeKind::Randi,
     NodeKind::ConstInt,          NodeKind::ConstFloat,        NodeKind::ConstString,
@@ -1465,8 +1465,15 @@ bool RoomEditor::saveAndCompileNodeGraph(EditorContext& ctx) {
         m_outputLogOpen = true;
         return false;
     }
-    // Active graph only → runtime hooks (multi-graph authoring; one live at a time).
-    const std::string lua = emitGraphLua(m_nodeGraph);
+    // Active graph + any Call Subgraph stems under scripts/graphs/.
+    auto loadSub = [&](const std::string& stem, NodeGraph& out) -> bool {
+        if (!ctx.readFile) return false;
+        const std::string subPath = std::string(kGraphsDir) + "/" + stem + ".graph.json";
+        const std::string text = ctx.readFile(subPath);
+        if (text.empty()) return false;
+        return loadGraphJson(out, text);
+    };
+    const std::string lua = emitGraphLua(m_nodeGraph, loadSub);
     if (!ctx.writeFile(kEmitLuaPath, lua)) {
         m_graphStatus = "failed to write generated Lua";
         m_graphStatusTtl = 4.0f;
@@ -1655,7 +1662,8 @@ void RoomEditor::drawNodeGraphDetails(EditorContext& ctx) {
     // Category-specific property editors (UE Details panel feel).
     if (n->kind == NodeKind::ActionLog || n->kind == NodeKind::ConstString ||
         n->kind == NodeKind::GetItemId || n->kind == NodeKind::GetWorldObject ||
-        n->kind == NodeKind::ActionAnnounce || n->kind == NodeKind::ActionWatch) {
+        n->kind == NodeKind::ActionAnnounce || n->kind == NodeKind::ActionWatch ||
+        n->kind == NodeKind::CallSubgraph) {
         char buf[160];
         std::snprintf(buf, sizeof(buf), "%s", n->strA.c_str());
         if (ImGui::InputText("String", buf, sizeof(buf))) {
