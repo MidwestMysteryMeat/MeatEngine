@@ -1,4 +1,5 @@
 #include "game/ServerSim.h"
+#include "engine/asset/ModelLoader.h"
 #include "engine/core/Log.h"
 #include "engine/core/ViewMath.h"
 #include "engine/net/DeltaSnapshot.h"
@@ -6,8 +7,11 @@
 #include "game/Environment.h"
 #include "game/Pathfinder.h"
 
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <nlohmann/json.hpp>
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <system_error>
@@ -70,6 +74,48 @@ bool ServerSim::init(std::uint32_t worldSeed) {
     setupScripting();
     m_scripts.onInit(m_seed);
     return true;
+}
+
+bool ServerSim::propBounds(const std::string& asset, glm::vec3& outMin, glm::vec3& outMax) const {
+    if (const auto it = m_propBoundsCache.find(asset); it != m_propBoundsCache.end()) {
+        outMin = it->second.first;
+        outMax = it->second.second;
+        return true;
+    }
+    // center=true matches the client's editorPropMesh load, so both derive the
+    // same local AABB → identical world colliders on server and client.
+    const auto model = loadStaticModel(asset, {.center = true});
+    if (!model) return false;
+    m_propBoundsCache.emplace(asset, std::make_pair(model->boundsMin, model->boundsMax));
+    outMin = model->boundsMin;
+    outMax = model->boundsMax;
+    return true;
+}
+
+bool ServerSim::addProp(Transport* transport, const std::string& asset,
+                        const glm::mat4& transform, std::uint32_t id) {
+    glm::vec3 lo, hi;
+    if (!propBounds(asset, lo, hi)) {
+        log::warn("server: prop '{}' failed to load — not placed", asset);
+        return false;
+    }
+    WorldProp prop;
+    prop.id = id != 0 ? id : m_nextPropId++;
+    prop.asset = asset;
+    prop.transform = transform;
+    glm::vec3 center, half;
+    transformedAabb(transform, lo, hi, center, half);
+    prop.body = m_physics.addStaticBox(center, half);
+    if (id != 0) m_nextPropId = std::max(m_nextPropId, id + 1); // keep ids monotonic post-load
+    m_props.push_back(std::move(prop));
+    if (transport) broadcastPropAdded(*transport, m_props.back());
+    log::info("server: prop {} '{}' placed with collider", m_props.back().id, asset);
+    return true;
+}
+
+void ServerSim::broadcastPropAdded(Transport& transport, const WorldProp& prop) const {
+    const PropAddedMsg msg{prop.id, prop.asset, prop.transform};
+    for (const auto& [peer, unused] : m_players) transport.send(peer, pack(msg), true);
 }
 
 void ServerSim::setupScripting() {
@@ -935,6 +981,17 @@ void ServerSim::handlePacket(Transport& transport, PeerId peer,
         applyVoxelOp(transport, op);
         break;
     }
+    case MsgType::PlaceProp: {
+        PlacePropMsg msg;
+        if (!decode(msg, reader)) return;
+        // Editor intent. Minimal validation, mirroring the voxel-op path: require a
+        // project-relative assets/ path (no path traversal); per-peer edit
+        // permissions are the same TODO the voxel path carries. addProp rejects a
+        // model that won't load, so a bad asset never creates a phantom prop.
+        if (msg.asset.rfind("assets/", 0) != 0) return;
+        addProp(&transport, msg.asset, msg.transform, 0);
+        break;
+    }
     default:
         break;
     }
@@ -1014,6 +1071,10 @@ void ServerSim::sendOverlayTo(Transport& transport, PeerId peer) const {
             transport.send(peer, pack(VoxelOpMsg{v, block}), true);
         }
     }
+    // Props are server-authoritative world objects, not regenerated from the seed,
+    // so a joiner must be told about every one (same reason as the voxel replay).
+    for (const WorldProp& prop : m_props)
+        transport.send(peer, pack(PropAddedMsg{prop.id, prop.asset, prop.transform}), true);
 }
 
 void ServerSim::sendInventory(Transport& transport, PeerId peer, const Player& player) const {
@@ -1197,6 +1258,15 @@ bool ServerSim::saveTo(const std::string& path) const {
     }
     j["players"] = std::move(players);
 
+    nlohmann::json props = nlohmann::json::array();
+    for (const WorldProp& prop : m_props) {
+        nlohmann::json t = nlohmann::json::array();
+        const float* m = glm::value_ptr(prop.transform);
+        for (int i = 0; i < 16; ++i) t.push_back(m[i]);
+        props.push_back({{"id", prop.id}, {"asset", prop.asset}, {"transform", std::move(t)}});
+    }
+    j["props"] = std::move(props);
+
     std::error_code ec;
     std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ec);
     std::ofstream out(path);
@@ -1254,6 +1324,20 @@ void ServerSim::loadSaveBody(const nlohmann::json& j) {
                                          cp.z * kChunkSize + z),
                               cell[1].get<BlockId>());
         }
+    }
+
+    // Props: recreate the collider now (no transport → no broadcast; the join
+    // replay in sendOverlayTo resends them to every client, editor or gameplay).
+    for (const auto& entry : j.value("props", nlohmann::json::array())) {
+        const std::string asset = entry.value("asset", std::string{});
+        if (asset.empty()) continue;
+        glm::mat4 transform(1.0f);
+        if (const auto& t = entry["transform"]; t.is_array() && t.size() == 16) {
+            float m[16];
+            for (int i = 0; i < 16; ++i) m[i] = t[i].get<float>();
+            transform = glm::make_mat4(m);
+        }
+        addProp(nullptr, asset, transform, entry.value("id", std::uint32_t{0}));
     }
 
     const auto players = j.value("players", nlohmann::json::array());

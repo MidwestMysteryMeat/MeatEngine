@@ -1,10 +1,25 @@
 #include "engine/net/Messages.h"
 
+#include <glm/gtc/type_ptr.hpp>
+
 #include <algorithm>
 
 namespace meat {
 
 namespace {
+
+// 16 floats, column-major (glm's storage order) — the whole world TRS on the wire.
+void writeMat4(ByteWriter& w, const glm::mat4& m) {
+    const float* p = glm::value_ptr(m);
+    for (int i = 0; i < 16; ++i) w.write(p[i]);
+}
+bool readMat4(ByteReader& r, glm::mat4& m) {
+    float v[16];
+    for (float& f : v)
+        if (!r.read(f)) return false;
+    m = glm::make_mat4(v);
+    return true;
+}
 
 // PlayerCommand button bitmask layout — order is part of the wire format.
 enum CommandButton : std::uint8_t {
@@ -171,13 +186,42 @@ bool decode(VoxelOpMsg& msg, ByteReader& r) {
     return r.read(msg.voxel) && r.read(msg.block);
 }
 
+void encode(const PlacePropMsg& msg, ByteWriter& w) {
+    w.write(std::string_view{msg.asset});
+    writeMat4(w, msg.transform);
+}
+
+bool decode(PlacePropMsg& msg, ByteReader& r) {
+    return r.read(msg.asset) && readMat4(r, msg.transform);
+}
+
+void encode(const PropAddedMsg& msg, ByteWriter& w) {
+    w.write(msg.id);
+    w.write(std::string_view{msg.asset});
+    writeMat4(w, msg.transform);
+}
+
+bool decode(PropAddedMsg& msg, ByteReader& r) {
+    return r.read(msg.id) && r.read(msg.asset) && readMat4(r, msg.transform);
+}
+
+void encode(const RemovePropMsg& msg, ByteWriter& w) {
+    w.write(msg.id);
+}
+
+bool decode(RemovePropMsg& msg, ByteReader& r) {
+    return r.read(msg.id);
+}
+
 std::optional<MsgType> peekType(std::span<const std::byte> packet) {
     if (packet.empty()) {
         return std::nullopt;
     }
     const auto raw = static_cast<std::uint8_t>(packet.front());
+    // RemoveProp is the last enumerator — new message types must extend this bound
+    // or unpack()/peekType reject them as unknown.
     if (raw < static_cast<std::uint8_t>(MsgType::Hello) ||
-        raw > static_cast<std::uint8_t>(MsgType::DeltaSnapshot)) {
+        raw > static_cast<std::uint8_t>(MsgType::RemoveProp)) {
         return std::nullopt;
     }
     return static_cast<MsgType>(raw);

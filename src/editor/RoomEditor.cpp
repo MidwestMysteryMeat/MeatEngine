@@ -460,6 +460,9 @@ void RoomEditor::drawGizmo(EditorContext& ctx, const glm::mat4& view, const glm:
                m_selIndex < static_cast<int>(ctx.props.size())) {
         // Props carry a full TRS: move/rotate/scale, manipulated in place. Scale
         // reads more predictably in local space; move/rotate use world axes.
+        // NOTE: gizmo edits mutate only the LOCAL render copy — the server prop and
+        // its collider are not updated. Gizmo-move-after-place sync is out of scope
+        // for the prop-sync pass (placement + collision + sync + save is the goal).
         EditorProp& prop = ctx.props[static_cast<std::size_t>(m_selIndex)];
         const ImGuizmo::OPERATION op = m_propGizmoOp == 1   ? ImGuizmo::ROTATE
                                        : m_propGizmoOp == 2 ? ImGuizmo::SCALE
@@ -1056,14 +1059,11 @@ void RoomEditor::placeSelectedProp(EditorContext& ctx) {
     const auto hit = ctx.voxels.raycast(origin, dir, kPickDistance);
     const glm::vec3 point = hit ? origin + dir * hit->t : origin + dir * 5.0f;
 
-    EditorProp prop;
-    prop.assetPath = assetPath;
-    prop.transform = glm::translate(glm::mat4(1.0f), point);
-    ctx.props.push_back(std::move(prop));
-
-    m_selKind = Selection::Prop;
-    m_selIndex = static_cast<int>(ctx.props.size()) - 1;
-    m_propGizmoOp = 0;
+    // Server intent: the prop becomes a shared, collidable, saved world object and
+    // comes back via PropAddedMsg into ctx.props (with a real id + collider) — no
+    // local push. Selection follows once it lands (the Outliner lists synced props).
+    if (ctx.requestPlaceProp)
+        ctx.requestPlaceProp(assetPath, glm::translate(glm::mat4(1.0f), point));
     setStatus("placed " + assetPath);
 }
 

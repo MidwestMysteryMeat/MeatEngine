@@ -32,6 +32,15 @@ public:
     // applies, and echoes to everyone — including us.
     void sendVoxelOp(glm::ivec3 voxel, std::uint16_t block);
 
+    // Prop placement intent (editor). Server assigns an id, adds a collider, and
+    // echoes PropAddedMsg to everyone (surfaced via takeNewProps below).
+    void sendPlaceProp(const std::string& asset, const glm::mat4& transform);
+
+    // Drain props the server reported since the last call. The Engine applies
+    // them (render mesh + client-mirror collider); the Client stays protocol-only.
+    std::vector<PropAddedMsg> takeNewProps();
+    std::vector<std::uint32_t> takeRemovedProps();
+
     // Drain net events: Welcome, VoxelOps into the mirror, Snapshots into
     // rewind-and-replay reconciliation of the local character.
     void pump(VoxelWorld& voxels, PhysicsWorld& physics, CharacterController& player);
@@ -68,6 +77,9 @@ private:
     std::deque<PlayerCommand> m_unacked; // commands newer than the server's ack
     std::unordered_map<PeerId, RemoteHistory> m_remotes;
     std::vector<EntityState> m_entities;
+    // Props reported by the server this frame, drained by the Engine each loop.
+    std::vector<PropAddedMsg> m_newProps;
+    std::vector<std::uint32_t> m_removedProps;
     // Newest snapshot tick we hold; piggybacked to the server as the delta-baseline
     // ack on every CommandMsg. 0 until the first snapshot lands (server keyframes).
     std::uint64_t m_ackTick = 0;

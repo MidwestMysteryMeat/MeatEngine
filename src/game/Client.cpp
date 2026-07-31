@@ -10,6 +10,7 @@
 #include <glm/gtc/constants.hpp>
 
 #include <algorithm>
+#include <utility>
 
 namespace meat {
 namespace {
@@ -33,6 +34,14 @@ void Client::sendCommand(const PlayerCommand& cmd) {
 void Client::sendVoxelOp(glm::ivec3 voxel, std::uint16_t block) {
     if (m_transport) m_transport->send(1, pack(VoxelOpMsg{voxel, block}), true);
 }
+
+void Client::sendPlaceProp(const std::string& asset, const glm::mat4& transform) {
+    if (m_transport) m_transport->send(1, pack(PlacePropMsg{asset, transform}), true);
+}
+
+std::vector<PropAddedMsg> Client::takeNewProps() { return std::exchange(m_newProps, {}); }
+
+std::vector<std::uint32_t> Client::takeRemovedProps() { return std::exchange(m_removedProps, {}); }
 
 void Client::pump(VoxelWorld& voxels, PhysicsWorld& physics, CharacterController& player) {
     if (!m_transport) return;
@@ -105,6 +114,16 @@ void Client::pump(VoxelWorld& voxels, PhysicsWorld& physics, CharacterController
             VoxelOpMsg op;
             if (!decode(op, reader)) break;
             voxels.setBlock(op.voxel, op.block); // server-echoed; mirror applies verbatim
+            break;
+        }
+        case MsgType::PropAdded: {
+            PropAddedMsg msg;
+            if (decode(msg, reader)) m_newProps.push_back(std::move(msg));
+            break;
+        }
+        case MsgType::RemoveProp: {
+            RemovePropMsg msg;
+            if (decode(msg, reader)) m_removedProps.push_back(msg.id);
             break;
         }
         case MsgType::BatchVoxelOp: { // explosion crater: many voxels → air, one packet

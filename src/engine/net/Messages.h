@@ -20,7 +20,8 @@
 namespace meat {
 
 enum class MsgType : std::uint8_t {
-    Hello = 1, Welcome, Command, Snapshot, VoxelOp, Inventory, BatchVoxelOp, DeltaSnapshot
+    Hello = 1, Welcome, Command, Snapshot, VoxelOp, Inventory, BatchVoxelOp, DeltaSnapshot,
+    PlaceProp, PropAdded, RemoveProp
 };
 
 struct HelloMsg {
@@ -80,6 +81,29 @@ struct VoxelOpMsg {
     std::uint16_t block = 0;
 };
 
+// Editor intent: place a mesh prop as a server-authoritative world object.
+// Client→server. The server assigns an id, sizes a static box collider, persists
+// it in the world save, and echoes PropAddedMsg to everyone (including the sender).
+struct PlacePropMsg {
+    std::string asset;         // project-relative model path (e.g. "assets/models/prop_crate.obj")
+    glm::mat4 transform{1.0f}; // world TRS
+};
+
+// Server→client: a world prop now exists — from a live place, the join replay
+// (sendOverlayTo), or a save reload. The client renders it and builds a matching
+// client-mirror box collider so prediction collides like the server.
+struct PropAddedMsg {
+    std::uint32_t id = 0;
+    std::string asset;
+    glm::mat4 transform{1.0f};
+};
+
+// Server→client: a world prop was removed (reserved for future editor deletion
+// sync; encode/decode wired so the range and handlers are complete).
+struct RemovePropMsg {
+    std::uint32_t id = 0;
+};
+
 // Snapshots larger than this are rejected on decode (and clamped on encode) so
 // a hostile packet can never make us allocate an absurd player list.
 inline constexpr std::size_t kMaxSnapshotPlayers = 64;
@@ -104,12 +128,21 @@ void encode(const SnapshotMsg& msg, ByteWriter& w);
 bool decode(SnapshotMsg& msg, ByteReader& r);
 void encode(const VoxelOpMsg& msg, ByteWriter& w);
 bool decode(VoxelOpMsg& msg, ByteReader& r);
+void encode(const PlacePropMsg& msg, ByteWriter& w);
+bool decode(PlacePropMsg& msg, ByteReader& r);
+void encode(const PropAddedMsg& msg, ByteWriter& w);
+bool decode(PropAddedMsg& msg, ByteReader& r);
+void encode(const RemovePropMsg& msg, ByteWriter& w);
+bool decode(RemovePropMsg& msg, ByteReader& r);
 
 constexpr MsgType msgTypeOf(const HelloMsg&) { return MsgType::Hello; }
 constexpr MsgType msgTypeOf(const WelcomeMsg&) { return MsgType::Welcome; }
 constexpr MsgType msgTypeOf(const CommandMsg&) { return MsgType::Command; }
 constexpr MsgType msgTypeOf(const SnapshotMsg&) { return MsgType::Snapshot; }
 constexpr MsgType msgTypeOf(const VoxelOpMsg&) { return MsgType::VoxelOp; }
+constexpr MsgType msgTypeOf(const PlacePropMsg&) { return MsgType::PlaceProp; }
+constexpr MsgType msgTypeOf(const PropAddedMsg&) { return MsgType::PropAdded; }
+constexpr MsgType msgTypeOf(const RemovePropMsg&) { return MsgType::RemoveProp; }
 
 // nullopt if the packet is empty or the type byte is not a known MsgType.
 std::optional<MsgType> peekType(std::span<const std::byte> packet);

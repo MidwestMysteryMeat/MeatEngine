@@ -202,6 +202,38 @@ void Engine::loadWorldProps() {
     log::info("loaded {} world props", m_props.size());
 }
 
+// Drain the server's prop reports (PropAddedMsg from a live place / join replay,
+// RemovePropMsg) into the rendered+collidable synced list. Idempotent on id so a
+// join-replay followed by a later broadcast can't double-add.
+void Engine::syncWorldProps() {
+    for (const PropAddedMsg& msg : m_client.takeNewProps()) {
+        const bool exists = std::any_of(m_editorProps.begin(), m_editorProps.end(),
+                                        [&](const EditorProp& p) { return p.id == msg.id; });
+        if (exists) continue;
+        EditorProp prop;
+        prop.id = msg.id;
+        prop.assetPath = msg.asset;
+        prop.transform = msg.transform;
+        m_editorProps.push_back(prop);
+        // Client-mirror box collider (same bounds+transform math as the server) so
+        // local prediction stops at the prop where the authoritative sim does.
+        const EditorPropMesh& pm = editorPropMesh(msg.asset);
+        glm::vec3 center, half;
+        transformedAabb(msg.transform, pm.boundsMin, pm.boundsMax, center, half);
+        m_propBodies[msg.id] = m_physics.addStaticBox(center, half);
+        const glm::vec3 at = glm::vec3(msg.transform[3]);
+        log::info("client: world prop {} '{}' synced at ({:.1f},{:.1f},{:.1f}) (+collider)", msg.id,
+                  msg.asset, at.x, at.y, at.z);
+    }
+    for (const std::uint32_t id : m_client.takeRemovedProps()) {
+        std::erase_if(m_editorProps, [id](const EditorProp& p) { return p.id == id; });
+        if (const auto it = m_propBodies.find(id); it != m_propBodies.end()) {
+            m_physics.removeStaticBox(it->second);
+            m_propBodies.erase(it);
+        }
+    }
+}
+
 // Lazily load (and cache) the mesh + material for an editor-placed prop. Props
 // are staged through the same static-Assimp path the world props use; loading
 // with center=true drops the model's base to y=0 and recenters it in XZ, so an
@@ -218,6 +250,8 @@ const Engine::EditorPropMesh& Engine::editorPropMesh(const std::string& assetPat
             if (!model->albedo.empty()) mat.albedo = m_renderer.loadTexture(model->albedo);
             entry.mesh = m_renderer.uploadChunkMesh(model->mesh);
             entry.material = m_renderer.createMaterial(mat);
+            entry.boundsMin = model->boundsMin; // same center=true bounds the server uses
+            entry.boundsMax = model->boundsMax;
         } else {
             log::warn("editor prop '{}' failed to load", assetPath);
         }
@@ -759,6 +793,11 @@ void Engine::render(float alpha) {
                               if (m_server) m_server->saveTo("saves/quick.json");
                               saveEditorExtras();
                           }};
+        // Prop placement is a server intent, exactly like a voxel edit: the prop
+        // returns via PropAddedMsg and appears in m_editorProps with a collider.
+        ctx.requestPlaceProp = [this](std::string asset, glm::mat4 transform) {
+            m_client.sendPlaceProp(asset, transform);
+        };
         ctx.listFiles = [](const std::string& dir) {
             std::vector<std::string> out;
             std::error_code ec;
@@ -919,10 +958,12 @@ void Engine::drawInventoryUi() {
 }
 
 void Engine::saveEditorExtras() const {
+    // Props are NO LONGER saved here: they are server-authoritative world objects
+    // persisted in the world save (ServerSim::saveTo). Extras keep only the
+    // client-side editor authoring aids (lights, seed volumes).
     nlohmann::json j = nlohmann::json::object();
     j["lights"] = nlohmann::json::array();
     j["seedVolumes"] = nlohmann::json::array();
-    j["props"] = nlohmann::json::array();
     for (const EditorLight& l : m_editorLights)
         j["lights"].push_back({{"type", l.type},
                                {"pos", {l.pos.x, l.pos.y, l.pos.z}},
@@ -934,12 +975,6 @@ void Engine::saveEditorExtras() const {
         j["seedVolumes"].push_back({{"min", {v.min.x, v.min.y, v.min.z}},
                                     {"max", {v.max.x, v.max.y, v.max.z}},
                                     {"seed", v.seed}});
-    for (const EditorProp& p : m_editorProps) {
-        nlohmann::json t = nlohmann::json::array();
-        const float* m = glm::value_ptr(p.transform);
-        for (int i = 0; i < 16; ++i) t.push_back(m[i]);
-        j["props"].push_back({{"asset", p.assetPath}, {"transform", std::move(t)}});
-    }
     std::ofstream out("saves/editor_extras.json");
     if (out) out << j.dump();
 }
@@ -966,19 +1001,11 @@ void Engine::loadEditorExtras() {
         vol.seed = v.value("seed", 0u);
         m_seedVolumes.push_back(vol);
     }
-    for (const auto& p : j.value("props", nlohmann::json::array())) {
-        EditorProp prop;
-        prop.assetPath = p.value("asset", std::string{});
-        if (prop.assetPath.empty()) continue;
-        if (const auto& t = p["transform"]; t.is_array() && t.size() == 16) {
-            float m[16];
-            for (int i = 0; i < 16; ++i) m[i] = t[i];
-            prop.transform = glm::make_mat4(m);
-        }
-        m_editorProps.push_back(std::move(prop));
-    }
-    log::info("editor extras loaded ({} lights, {} volumes, {} props)", m_editorLights.size(),
-              m_seedVolumes.size(), m_editorProps.size());
+    // Props are intentionally NOT loaded here anymore — they arrive from the
+    // server (PropAddedMsg / join replay), driven by the world save. A legacy
+    // extras file may still carry a "props" array; it is simply ignored.
+    log::info("editor extras loaded ({} lights, {} volumes)", m_editorLights.size(),
+              m_seedVolumes.size());
 }
 
 bool Engine::runMenu(EngineConfig& config) {
@@ -1220,6 +1247,7 @@ int Engine::run(const EngineConfig& configIn) {
             m_beacon.update(m_server->playerCount(), 8);
         }
         m_client.pump(m_voxels, m_physics, m_player);
+        if (m_clientWorldReady) syncWorldProps(); // server prop adds/removes → render + colliders
         if (!m_clientWorldReady && m_client.welcomed()) setupClientWorld();
 
         if (m_clientWorldReady) { // audio cues from authoritative state deltas

@@ -20,6 +20,8 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace meat {
 
@@ -110,6 +112,15 @@ private:
         float health = 120.0f;
         float fireCooldown = 0.0f;
     };
+    // A server-authoritative mesh prop placed from the editor. Owns a static box
+    // collider (players collide with it), is broadcast to every client, replayed
+    // to joiners (sendOverlayTo), and persisted in the world save.
+    struct WorldProp {
+        std::uint32_t id = 0;
+        std::string asset;
+        glm::mat4 transform{1.0f};
+        PhysicsWorld::BodyHandle body = PhysicsWorld::kInvalidBody;
+    };
     struct Npc {
         std::uint32_t id = 0;
         EntityArchetype type = EntityArchetype::NpcChaser;
@@ -141,6 +152,16 @@ private:
     void handlePacket(Transport& transport, PeerId peer, std::span<const std::byte> data);
     void broadcastSnapshot(Transport& transport);
     void applyVoxelOp(Transport& transport, const VoxelOpMsg& op);
+    // Create a world prop: sizes a static box collider from the model bounds,
+    // stores it, and (when transport != null) broadcasts PropAddedMsg to all
+    // clients. id==0 mints a fresh id (live place); a non-zero id is reused (save
+    // reload). Returns false if the model can't be loaded, in which case nothing
+    // is added (a prop without a collider is never created).
+    bool addProp(Transport* transport, const std::string& asset, const glm::mat4& transform,
+                 std::uint32_t id);
+    void broadcastPropAdded(Transport& transport, const WorldProp& prop) const;
+    // Model bounds (post-center), cached by asset path. False if the model fails.
+    bool propBounds(const std::string& asset, glm::vec3& outMin, glm::vec3& outMax) const;
     void processCombat(Transport& transport, PeerId peer, Player& player);
     void sendInventory(Transport& transport, PeerId peer, const Player& player) const;
     void sendOverlayTo(Transport& transport, PeerId peer) const; // replay world edits
@@ -200,6 +221,10 @@ private:
     void setupScripting();
 
     std::vector<WorldEntity> m_entities;
+    std::vector<WorldProp> m_props;
+    std::uint32_t m_nextPropId = 1;
+    // Model bounds cache so repeated props / reloads don't re-hit the disk loader.
+    mutable std::unordered_map<std::string, std::pair<glm::vec3, glm::vec3>> m_propBoundsCache;
     std::vector<Projectile> m_projectiles;
     std::vector<Deployable> m_deployables;
     std::vector<Npc> m_npcs;

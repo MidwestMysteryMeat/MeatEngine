@@ -14,6 +14,7 @@
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/ObjectLayer.h>
 #include <Jolt/Physics/Collision/RayCast.h>
+#include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/PhysicsSettings.h>
 #include <Jolt/Physics/PhysicsSystem.h>
@@ -21,9 +22,13 @@
 
 JPH_SUPPRESS_WARNINGS
 
+#include <glm/common.hpp> // glm::max(vec3, vec3)
+
+#include <algorithm>
 #include <cstddef>
 #include <map>
 #include <utility>
+#include <vector>
 
 namespace meat {
 
@@ -81,6 +86,7 @@ struct PhysicsWorld::Impl {
     std::unique_ptr<JPH::JobSystemThreadPool> jobSystem;
     std::unique_ptr<JPH::PhysicsSystem> system;
     std::map<ChunkPos, JPH::BodyID> chunkBodies;
+    std::vector<JPH::BodyID> boxBodies; // standalone static boxes (props)
 };
 
 PhysicsWorld::PhysicsWorld() : m_impl(std::make_unique<Impl>()) {}
@@ -94,6 +100,11 @@ PhysicsWorld::~PhysicsWorld() {
         bodies.DestroyBody(entry.second);
     }
     m_impl->chunkBodies.clear();
+    for (const JPH::BodyID& id : m_impl->boxBodies) {
+        bodies.RemoveBody(id);
+        bodies.DestroyBody(id);
+    }
+    m_impl->boxBodies.clear();
     JPH::UnregisterTypes();
     delete JPH::Factory::sInstance;
     JPH::Factory::sInstance = nullptr;
@@ -195,6 +206,44 @@ void PhysicsWorld::removeChunkCollider(ChunkPos pos) {
     bodies.RemoveBody(it->second);
     bodies.DestroyBody(it->second);
     m_impl->chunkBodies.erase(it);
+}
+
+PhysicsWorld::BodyHandle PhysicsWorld::addStaticBox(glm::vec3 center, glm::vec3 halfExtents) {
+    if (!m_impl->system)
+        return kInvalidBody;
+    // Jolt requires every half extent to be >= the box convex radius (default
+    // 0.05 m); a thin/empty model would otherwise assert. Floor to keep it legal.
+    const glm::vec3 he = glm::max(halfExtents, glm::vec3(0.05f));
+    JPH::BoxShapeSettings shapeSettings(JPH::Vec3(he.x, he.y, he.z));
+    const JPH::ShapeSettings::ShapeResult result = shapeSettings.Create();
+    if (result.HasError()) {
+        log::error("PhysicsWorld: box shape failed: {}", result.GetError().c_str());
+        return kInvalidBody;
+    }
+    const JPH::BodyCreationSettings bodySettings(
+        result.Get(), JPH::RVec3(center.x, center.y, center.z), JPH::Quat::sIdentity(),
+        JPH::EMotionType::Static, layers::kNonMoving);
+    const JPH::BodyID id = m_impl->system->GetBodyInterface().CreateAndAddBody(
+        bodySettings, JPH::EActivation::DontActivate);
+    if (id.IsInvalid()) {
+        log::error("PhysicsWorld: out of bodies adding static box");
+        return kInvalidBody;
+    }
+    m_impl->boxBodies.push_back(id);
+    return id.GetIndexAndSequenceNumber();
+}
+
+void PhysicsWorld::removeStaticBox(BodyHandle handle) {
+    if (!m_impl->system || handle == kInvalidBody)
+        return;
+    const JPH::BodyID id(handle);
+    const auto it = std::find(m_impl->boxBodies.begin(), m_impl->boxBodies.end(), id);
+    if (it == m_impl->boxBodies.end())
+        return;
+    JPH::BodyInterface& bodies = m_impl->system->GetBodyInterface();
+    bodies.RemoveBody(id);
+    bodies.DestroyBody(id);
+    m_impl->boxBodies.erase(it);
 }
 
 PhysicsWorld::RayHit PhysicsWorld::raycast(glm::vec3 from, glm::vec3 dir, float maxDist) const {

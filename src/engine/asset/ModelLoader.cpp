@@ -109,4 +109,20 @@ std::optional<StaticModel> loadStaticModel(const std::filesystem::path& path,
     return model;
 }
 
+void transformedAabb(const glm::mat4& transform, const glm::vec3& localMin,
+                     const glm::vec3& localMax, glm::vec3& outCenter, glm::vec3& outHalfExtents) {
+    glm::vec3 lo(std::numeric_limits<float>::max());
+    glm::vec3 hi(std::numeric_limits<float>::lowest());
+    for (int corner = 0; corner < 8; ++corner) {
+        const glm::vec3 p((corner & 1) ? localMax.x : localMin.x,
+                          (corner & 2) ? localMax.y : localMin.y,
+                          (corner & 4) ? localMax.z : localMin.z);
+        const glm::vec3 world = glm::vec3(transform * glm::vec4(p, 1.0f));
+        lo = glm::min(lo, world);
+        hi = glm::max(hi, world);
+    }
+    outCenter = (lo + hi) * 0.5f;
+    outHalfExtents = (hi - lo) * 0.5f;
+}
+
 } // namespace meat

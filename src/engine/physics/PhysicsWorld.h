@@ -45,6 +45,18 @@ public:
     void syncChunkCollider(ChunkPos pos, const ChunkMeshData& mesh);
     void removeChunkCollider(ChunkPos pos);
 
+    // Opaque handle to a standalone static body (used for world props). It is the
+    // Jolt body id; kInvalidBody marks a failed create. Unlike chunk colliders
+    // (keyed by ChunkPos), these are addressed by the handle the caller keeps.
+    using BodyHandle = std::uint32_t;
+    static constexpr BodyHandle kInvalidBody = 0xFFFFFFFFu;
+    // A static, axis-aligned box collider at world `center` with `halfExtents` (m).
+    // Lives on the same non-moving layer as chunk colliders, so a CharacterVirtual
+    // (player) collides with it exactly like terrain. halfExtents are floored to a
+    // small positive value so a degenerate box never trips a Jolt assert.
+    BodyHandle addStaticBox(glm::vec3 center, glm::vec3 halfExtents);
+    void removeStaticBox(BodyHandle body);
+
     struct RayHit {
         bool hit = false;
         glm::vec3 pos{0.0f};

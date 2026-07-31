@@ -1,6 +1,9 @@
 #pragma once
 #include "engine/voxel/ChunkMesher.h" // reuse VoxelVertex/ChunkMeshData for the mesh path
 
+#include <glm/mat4x4.hpp>
+#include <glm/vec3.hpp>
+
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -28,5 +31,12 @@ struct ModelImportOptions {
 // the classic cm/m mismatch before it ships.
 std::optional<StaticModel> loadStaticModel(const std::filesystem::path& path,
                                            const ModelImportOptions& opts = {});
+
+// Axis-aligned world-space box that encloses a model's local AABB [localMin,
+// localMax] after `transform`. Transforms all 8 corners — exact for a pure
+// translation, conservative under rotation/scale. Server and client size a prop's
+// static box collider identically with this so prediction matches authority.
+void transformedAabb(const glm::mat4& transform, const glm::vec3& localMin,
+                     const glm::vec3& localMax, glm::vec3& outCenter, glm::vec3& outHalfExtents);
 
 } // namespace meat

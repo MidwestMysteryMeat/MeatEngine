@@ -194,9 +194,15 @@ private:
     struct EditorPropMesh {
         MeshHandle mesh = 0;
         MaterialHandle material{0};
+        glm::vec3 boundsMin{0.0f}, boundsMax{0.0f}; // local AABB, sizes the client box collider
     };
     std::unordered_map<std::string, EditorPropMesh> m_editorPropCache;
     const EditorPropMesh& editorPropMesh(const std::string& assetPath);
+    // Client-mirror static box colliders for synced props, keyed by world-prop id,
+    // so local prediction stops at a prop exactly where the server does.
+    std::unordered_map<std::uint32_t, PhysicsWorld::BodyHandle> m_propBodies;
+    // Drain server prop add/remove reports (m_client) into m_editorProps + colliders.
+    void syncWorldProps();
     void saveEditorExtras() const;
     void loadEditorExtras();
 };

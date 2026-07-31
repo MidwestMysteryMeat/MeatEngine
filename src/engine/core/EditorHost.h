@@ -29,12 +29,14 @@ struct SeedVolume { // marks a region for procedural dungeon generation (Phase 6
     std::uint32_t seed = 0;
 };
 
-// A mesh asset placed into the world from the editor's Content Browser. Like
-// EditorLight it is editor-owned, shared into the context, rendered by the
-// engine every frame (mesh cached by assetPath) and saved via the editor
-// extras. Decoration only for now: no server sync, no collision (see
-// EditorProp handling in Engine.cpp).
+// A mesh asset placed into the world. As of the prop-sync pass this list is the
+// engine's mirror of the SERVER-authoritative world props: entries arrive only
+// from the server (PropAddedMsg / join replay), carry the server-assigned id, are
+// rendered every frame, back a client-mirror box collider (for prediction), and
+// persist in the world save — not the editor extras. `id` is 0 only for a
+// transient not-yet-acked local copy (none are created that way now).
 struct EditorProp {
+    std::uint32_t id = 0;      // server-assigned world-prop id (0 = unsynced)
     std::string assetPath;     // project-relative model path (e.g. "assets/models/prop_crate.obj")
     glm::mat4 transform{1.0f}; // world TRS, manipulated by the ImGuizmo transform gizmo
 };
@@ -50,6 +52,10 @@ struct EditorContext {
     std::function<void(glm::ivec3, BlockId)> requestVoxelOp; // → server, validated
     std::function<void(bool)> setRelativeMouse;              // capture for fly-look
     std::function<void()> requestWorldSave;                  // server save + extras
+    // Place a mesh prop as a server-authoritative world object (editor intent).
+    // Engine sends PlacePropMsg; the prop returns via PropAddedMsg and lands in
+    // `props` with a real id + collider. Replaces the old local push_back.
+    std::function<void(std::string asset, glm::mat4 transform)> requestPlaceProp;
     // Asset/code panels: enumerate files under a project-relative dir, read/write
     // text, and hot-reload scripts into the running server (host/single-player).
     std::function<std::vector<std::string>(const std::string& dir)> listFiles;
