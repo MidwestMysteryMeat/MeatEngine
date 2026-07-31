@@ -62,7 +62,8 @@ bool Renderer::init(Window& window) {
     if (!m_chunkShader.load(kShaderDir, "chunk") || !m_meshShader.load(kShaderDir, "mesh") ||
         !m_skinnedShader.load(kShaderDir, "skinned") ||
         !m_spriteShader.load(kShaderDir, "sprite") || !m_resolveShader.load(kShaderDir, "resolve") ||
-        !m_shadowShader.load(kShaderDir, "shadow") || !m_skyShader.load(kShaderDir, "sky")) {
+        !m_shadowShader.load(kShaderDir, "shadow") || !m_skyShader.load(kShaderDir, "sky") ||
+        !m_waterShader.load(kShaderDir, "water")) {
         return false;
     }
     if (!m_crosshairProgram.compile(kCrosshairVert, kCrosshairFrag, "crosshair")) {
@@ -98,6 +99,7 @@ void Renderer::reloadShaders() {
     m_resolveShader.reload();
     m_shadowShader.reload();
     m_skyShader.reload();
+    m_waterShader.reload();
 }
 
 bool Renderer::captureScreenshot(const std::filesystem::path& path) {
@@ -578,6 +580,28 @@ void Renderer::drawSkyPass() {
     glEnable(GL_DEPTH_TEST);
 }
 
+void Renderer::drawWaterPass() {
+    if (!psx.waterPlane || psx.waterExtent <= 0.0f || psx.waterAlpha <= 0.0f) return;
+    // After opaque geometry: depth-test against terrain, no depth write, alpha blend.
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDepthMask(GL_FALSE);
+    glDisable(GL_CULL_FACE); // visible from above and below the surface
+    glUseProgram(m_waterShader.id());
+    const GlShaderProgram& water = m_waterShader.program();
+    water.setUniform("uWaterY", psx.waterY);
+    water.setUniform("uExtent", psx.waterExtent);
+    water.setUniform("uTime", static_cast<float>(glfwGetTime()));
+    water.setUniform("uWaterColor", psx.waterColor);
+    water.setUniform("uWaterAlpha", psx.waterAlpha);
+    // Reuse attribute-less sprite VAO (triangle strip corners from gl_VertexID).
+    glBindVertexArray(m_spriteVao.id());
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glBindVertexArray(0);
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
+}
+
 void Renderer::flushScenePasses() {
     // B3-sky first (depth off) so fog/clear still tint empty space under geometry.
     drawSkyPass();
@@ -658,6 +682,9 @@ void Renderer::flushScenePasses() {
             glDrawElements(GL_TRIANGLES, meshIt->second.indexCount, GL_UNSIGNED_INT, nullptr);
         }
     }
+
+    // B3 water plane: after opaque, before sprites (markers/UI-ish stay on top).
+    drawWaterPass();
 
     // Sprite pass: after opaque geometry, still inside the PSX target so sprites
     // dither and fog like everything else. Alpha-test (discard < 0.5) with depth

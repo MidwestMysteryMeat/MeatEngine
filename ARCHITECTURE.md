@@ -265,7 +265,8 @@ Shaders live in `assets/shaders/*.{vert,frag}`, hot-reloadable (F6).
 3. ✓ Emissive materials (glow that ignores incoming light; feeds PSX bloom-less look).
 4. ✓ Voxel block-light flood-fill baked into vertices (torch-style); AO (A1) in mesher.
 5. ✓ Directional sun shadow map (A2 PCF); skinned casters deferred.
-6. ✓ Hemisphere ambient (A3); ✓ procedural sky gradient + optional stars (B3-sky).
+6. ✓ Hemisphere ambient (A3); ✓ procedural sky gradient + optional stars (B3-sky);
+   ✓ Underwater water plane (B3 large alpha-tinted quad).
 7. Editor preview lights = the same point/spot submits, live-edited.
 
 ### physics/

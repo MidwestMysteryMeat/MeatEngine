@@ -19,6 +19,12 @@ EnvSettings envSettings(GameRules::Environment env) {
         e.skyHorizon = glm::vec3(0.04f, 0.18f, 0.28f);
         e.skyGround = glm::vec3(0.01f, 0.05f, 0.10f);
         e.skyStars = false;
+        // Surface sits above typical spawn (~8 m @ 0.5 voxel) so the player reads as submerged.
+        e.waterPlane = true;
+        e.waterY = 10.0f;
+        e.waterExtent = 400.0f;
+        e.waterColor = glm::vec3(0.06f, 0.32f, 0.42f);
+        e.waterAlpha = 0.58f;
         return e;
     }
     case Env::Space: {

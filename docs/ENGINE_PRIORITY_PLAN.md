@@ -57,7 +57,7 @@ Scoring: **creator value** × **engine leverage** × **dependency readiness** �
 | # | ID | Item | Why | Size | Deps |
 |---|-----|------|-----|------|------|
 | 9 | **A2** | **Directional sun shadow map** ✅ | Shipped: depth pass + PCF; skinned casters later. | M | A1 done |
-| 10 | **B3-sky** | **Sky gradient / water plane** | Gradient + stars ✅; water plane still open. | M | B3 |
+| 10 | **B3-sky** | **Sky gradient / water plane** | Gradient + stars ✅; water plane ✅ (Underwater). | M | B3 |
 | 11 | **H4-p** | **Ship systems polish** | Dock latch, shield/HP UX, hangar — only if Space is the showcase game. | M | H4 |
 | 12 | **H1-r** | **Racer track mesh + server laps** | Fun genre sibling; lower than ship/log unless racing is the pitch. | M | Racer skeleton |
 
@@ -79,7 +79,7 @@ Scoring: **creator value** × **engine leverage** × **dependency readiness** �
 | 19 | **D2** | Resource archives (zip/pk3) | Feeds C7; not blocking editor loop. | M |
 | 20 | **D1** | Binary greedy mesher | Perf risk; measure first. | L |
 | 21 | **D4** | EnTT migration | Incremental, no feature unlock alone. | L |
-| 22 | **A4/A5/A6** | SSAO / RGB light / blob shadows | After A2. | M–L |
+| 22 | **A4/A5** | SSAO / RGB light | After A2. A6 blob shadows ✅. | M–L |
 | 23 | **E2–E5** | Anim polish (pelvis, aim IK, faces) | After combat/template polish if FPS is showcase. | M–L |
 | 24 | **G1/G3** | Destruction depth / Lua abilities | Content systems, not suite blockers. | L |
 | 25 | **F3** | Full bitsery codec | When bandwidth becomes real. | M |

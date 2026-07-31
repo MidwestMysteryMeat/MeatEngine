@@ -35,6 +35,12 @@ struct PsxOptions {
     glm::vec3 skyHorizon{0.55f, 0.62f, 0.72f};
     glm::vec3 skyGround{0.12f, 0.11f, 0.10f};
     bool skyStars = false; // sparse procedural stars (Space)
+    // B3 water plane: large horizontal quad + alpha tint (Underwater env).
+    bool waterPlane = false;
+    float waterY = 10.0f;
+    float waterExtent = 400.0f;
+    glm::vec3 waterColor{0.08f, 0.28f, 0.38f};
+    float waterAlpha = 0.55f;
 };
 
 using MeshHandle = std::uint32_t;        // 0 = invalid
@@ -171,6 +177,7 @@ private:
     void renderShadowMap();
     void bindShadowUniforms(const GlShaderProgram& prog) const;
     void drawSkyPass();
+    void drawWaterPass();
     void flushScenePasses();
     void drawCrosshairPass(glm::ivec2 targetSize);
     void resolveToBackbuffer();
@@ -184,6 +191,7 @@ private:
     Shader m_resolveShader;
     Shader m_shadowShader; // A2 depth-only sun pass
     Shader m_skyShader;    // B3-sky gradient backdrop
+    Shader m_waterShader;  // B3 water plane (alpha tint quad)
     GlShaderProgram m_crosshairProgram; // trivial, source embedded in Renderer.cpp
     // Camera basis for sky (set in beginFrame).
     glm::vec3 m_camForward{0, 0, -1};

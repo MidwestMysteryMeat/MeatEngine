@@ -25,6 +25,12 @@ struct EnvSettings {
     glm::vec3 skyHorizon{0.55f, 0.62f, 0.72f};
     glm::vec3 skyGround{0.12f, 0.11f, 0.10f};
     bool skyStars = false;
+    // B3 water plane: large horizontal quad + tint (Underwater env). Visual only.
+    bool waterPlane = false;
+    float waterY = 10.0f;        // world metres (surface height)
+    float waterExtent = 400.0f;  // half-size of the plane (m); recentred on camera XZ
+    glm::vec3 waterColor{0.08f, 0.28f, 0.38f};
+    float waterAlpha = 0.55f;
 };
 
 // Maps an Environment preset to its settings. Single source of truth for the presets so server
