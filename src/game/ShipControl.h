@@ -69,8 +69,14 @@ inline void integrateShip(ShipPose& ship, const PlayerCommand& cmd, float dt,
     const float cp = std::cos(ship.pitch), sp = std::sin(ship.pitch);
     // -Z forward at yaw 0 (matches viewForward / CharacterController).
     const glm::vec3 forward(-sy * cp, sp, -cy * cp);
-    const glm::vec3 right(cy, 0.0f, -sy);
-    const glm::vec3 up(0.0f, 1.0f, 0.0f);
+    // Local-up from gravity when |g| is meaningful; else world +Y (void free-flight).
+    const float gLen = glm::length(gravityAccel);
+    const glm::vec3 up =
+        gLen > 0.5f ? glm::normalize(-gravityAccel) : glm::vec3(0.0f, 1.0f, 0.0f);
+    // Strafe on the plane ⊥ up so habitats / planetoids keep A/D sensible.
+    glm::vec3 right = glm::cross(forward, up);
+    if (glm::dot(right, right) < 1e-6f) right = glm::vec3(cy, 0.0f, -sy);
+    else right = glm::normalize(right);
 
     glm::vec2 move = cmd.move;
     const float mlen = glm::length(move);

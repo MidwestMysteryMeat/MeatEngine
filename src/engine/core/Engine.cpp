@@ -1190,6 +1190,14 @@ void Engine::render(float alpha) {
         ImGui::Text("pos %.1f %.1f %.1f", m_currPlayerPos.x, m_currPlayerPos.y,
                     m_currPlayerPos.z);
         if (m_client.vehicleId() != 0) {
+            float hullHp = -1.0f;
+            for (const EntityState& e : m_client.entities()) {
+                if (e.id == m_client.vehicleId() &&
+                    e.archetype == static_cast<std::uint8_t>(EntityArchetype::Ship)) {
+                    hullHp = e.health;
+                    break;
+                }
+            }
             if (m_client.vehicleRole() == 1) {
                 ImGui::Text("SHIP %u  PILOT  cannon (auto hardpoints)", m_client.vehicleId());
                 ImGui::TextDisabled("E leave | V cam | LMB fire | WASD+Space/Ctrl thrust");
@@ -1197,9 +1205,14 @@ void Engine::render(float alpha) {
                 ImGui::Text("SHIP %u  PASSENGER  (ride / gun)", m_client.vehicleId());
                 ImGui::TextDisabled("E leave | V cam | LMB fire inventory | pilot flies");
             }
+            if (hullHp >= 0.0f) ImGui::Text("HULL %.0f", hullHp);
             ImGui::TextDisabled("amber traffic ships are hostile AI — shoot to salvage");
         } else {
-            ImGui::TextDisabled("near ship: E board (2 seats)  |  amber = AI traffic");
+            const glm::vec3 g = m_gravity.sample(m_currPlayerPos);
+            if (glm::length(g) < 2.0f)
+                ImGui::TextDisabled("EVA: Space/Ctrl RCS thrusters  |  E board ship (2 seats)");
+            else
+                ImGui::TextDisabled("near ship: E board (2 seats)  |  amber = AI traffic");
         }
         // CC-BY requires naming authors when their art is shown (see assets/ATTRIBUTION.md).
         ImGui::TextDisabled("ships: JamyzGenius / JazOone3D / ABJVNK  (CC-BY 4.0)");

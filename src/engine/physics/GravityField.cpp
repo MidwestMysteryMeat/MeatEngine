@@ -96,6 +96,17 @@ void configureDefaultGravityField(GravityField& field, float envGravityY, bool s
     habitat.priority = 10;
     field.addBox(habitat);
 
+    // Station dock volume — walkable deck near the distant station landmark
+    // (spawned at pad + (0, 8, -70) in ServerSim::spawnSpaceDecor). Priority 9
+    // so the spawn habitat (10) still wins if volumes ever overlap.
+    GravityBoxVolume station;
+    const glm::vec3 dock = pad + glm::vec3(0.0f, 8.0f, -70.0f);
+    station.min = dock + glm::vec3(-28.0f, -12.0f, -28.0f);
+    station.max = dock + glm::vec3(28.0f, 18.0f, 28.0f);
+    station.gravity = glm::vec3(0.0f, -10.0f, 0.0f);
+    station.priority = 9;
+    field.addBox(station);
+
     // A planetoid below the pad for fall-into-SOI tests and H4 orbital prep.
     // Standing on the habitat box still wins (priority); leave the box and you
     // feel the radial pull toward the body center.

@@ -139,10 +139,28 @@ void CharacterController::update(const PlayerCommand& cmd, float fixedDt, Physic
     }
 
     const glm::vec3 g = t.gravityVec;
+    const float gMag = glm::length(g);
+    // B3b / H4 EVA: when the field is near free-fall, jump/crouch become RCS thrusters
+    // and air control is full so spacewalks stay steerable without a ship.
+    const bool eva = gMag < 2.0f;
     float vUp = velAlongUp;
-    if (grounded && vUp <= 0.1f) {
+    if (!eva && grounded && vUp <= 0.1f) {
         vUp = 0.0f;
         if (cmd.jump && !im.jumpHeld) vUp = t.jumpSpeed;
+    } else if (eva) {
+        constexpr float kEvaThrust = 8.0f; // m/s² RCS along local-up
+        if (cmd.jump) vUp += kEvaThrust * fixedDt;
+        if (cmd.crouch) vUp -= kEvaThrust * fixedDt;
+        // Lighter damping so you coast between burns.
+        vUp *= std::pow(0.98f, fixedDt * 60.0f);
+        horiz *= std::pow(0.98f, fixedDt * 60.0f);
+        // Stronger steer while EVA (move already mixed into want above).
+        if (moveLen > 0.0f) {
+            const float evaAccel = t.walkSpeed * 6.0f * fixedDt;
+            const glm::vec3 delta = want - horiz;
+            const float dLen = glm::length(delta);
+            horiz = dLen <= evaAccel ? want : horiz + delta * (evaAccel / dLen);
+        }
     } else {
         // Gravity fully in 3D; project residual onto up for the jump axis.
         vel = horiz + up * vUp + g * fixedDt;
@@ -151,7 +169,12 @@ void CharacterController::update(const PlayerCommand& cmd, float fixedDt, Physic
     }
     im.jumpHeld = cmd.jump;
 
-    vel = horiz + up * vUp;
+    // Still apply residual gravity in EVA (near-zero field) and normal air/ground.
+    if (eva) {
+        vel = horiz + up * vUp + g * fixedDt;
+    } else {
+        vel = horiz + up * vUp;
+    }
     im.character->SetLinearVelocity(JPH::Vec3(vel.x, vel.y, vel.z));
 
     JPH::CharacterVirtual::ExtendedUpdateSettings updateSettings;
