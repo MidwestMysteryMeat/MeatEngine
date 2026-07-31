@@ -36,6 +36,10 @@ target_link_libraries(MeatEngine PRIVATE
     nlohmann_json::nlohmann_json
     Recast
     Detour
+    ozz_base
+    ozz_animation
+    ozz_animation_offline
+    ozz_geometry
 )
 
 if(MSVC)

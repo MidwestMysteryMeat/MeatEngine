@@ -88,6 +88,22 @@ FetchContent_Declare(recastnavigation
     GIT_REPOSITORY https://github.com/recastnavigation/recastnavigation
     GIT_TAG v1.6.0 GIT_SHALLOW ON)
 
+# ---- ozz-animation (MIT): runtime skeletal animation core -------------------
+# Sampling/blending/IK jobs + offline RawSkeleton/RawAnimation builders (we convert
+# Assimp-loaded rigs to ozz in-memory at load). Tools/samples/tests/fbx pull deps we
+# don't want (fbx SDK, jpeg, ...) — force them all OFF; build just the libraries.
+set(ozz_build_tools OFF CACHE BOOL "" FORCE)
+set(ozz_build_fbx OFF CACHE BOOL "" FORCE)
+set(ozz_build_data OFF CACHE BOOL "" FORCE)
+set(ozz_build_samples OFF CACHE BOOL "" FORCE)
+set(ozz_build_howtos OFF CACHE BOOL "" FORCE)
+set(ozz_build_tests OFF CACHE BOOL "" FORCE)
+set(ozz_build_simd_ref OFF CACHE BOOL "" FORCE)
+set(ozz_build_msvc_rt_dll ON CACHE BOOL "" FORCE) # match /MD project-wide
+FetchContent_Declare(ozz
+    GIT_REPOSITORY https://github.com/guillaumeblanc/ozz-animation
+    GIT_TAG 0.16.0 GIT_SHALLOW ON)
+
 # ---- Header-only: stb, miniaudio, json --------------------------------------
 FetchContent_Declare(stb_src
     GIT_REPOSITORY https://github.com/nothings/stb
@@ -102,7 +118,7 @@ FetchContent_Declare(nlohmann_json
 
 FetchContent_MakeAvailable(glfw glad glm assimp joltphysics lua_src sol2
                            imgui_src imguizmo_src enet stb_src miniaudio_src nlohmann_json
-                           recastnavigation)
+                           recastnavigation ozz)
 
 # ENet's CMakeLists predates usage-requirement style; export its include dir.
 target_include_directories(enet PUBLIC ${enet_SOURCE_DIR}/include)
