@@ -32,6 +32,7 @@ private:
 
     void updateFlyCamera(EditorContext& ctx, float dt);
     void drawTopBar(EditorContext& ctx);
+    void drawNewMapDialog(EditorContext& ctx);
     void drawToolbar();
     void drawOutliner(EditorContext& ctx);
     void drawGizmo(EditorContext& ctx, const glm::mat4& view, const glm::mat4& proj);
@@ -143,6 +144,12 @@ private:
     // --- Editor theme ------------------------------------------------------
     // One-shot guard so applyEditorTheme() runs on the first update() only.
     bool m_themed = false;
+
+    // --- New Map (B4) ------------------------------------------------------
+    bool m_newMapOpen = false;
+    int m_newMapTerrain = 0;     // 0 Normal, 1 Superflat, 2 Void
+    int m_newMapEnvironment = 0; // 0 Surface, 1 Underwater, 2 Space
+    int m_newMapSeed = 1337;
 };
 
 } // namespace meat

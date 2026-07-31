@@ -48,6 +48,12 @@ public:
     const GameRules& rules() const { return m_rules; }
     int playerCount() const { return static_cast<int>(m_players.size()); }
 
+    // B4 New Map: clear voxels/props/entities, switch terrain+environment+seed, and
+    // regenerate dungeon content. Connected players are respawned at the default pad.
+    // Does not tear down the transport or peer map — Hello stays valid.
+    void reseedWorld(std::uint32_t seed, GameRules::Terrain terrain,
+                     GameRules::Environment environment);
+
 private:
     struct Player {
         CharacterController controller;

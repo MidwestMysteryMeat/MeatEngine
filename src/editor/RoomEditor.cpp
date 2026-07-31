@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <iterator>
@@ -308,10 +309,78 @@ void RoomEditor::drawTopBar(EditorContext& ctx) {
         ctx.requestWorldSave();
         setStatus("world save requested");
     }
+    ImGui::SameLine();
+    if (ImGui::Button("New Map...")) {
+        m_newMapOpen = true;
+        m_newMapTerrain = static_cast<int>(ctx.currentTerrain);
+        m_newMapEnvironment = static_cast<int>(ctx.currentEnvironment);
+        m_newMapSeed = static_cast<int>(ctx.currentSeed);
+    }
+    if (ctx.setHemisphereAmbient) {
+        bool hemi = ctx.hemisphereAmbient;
+        if (ImGui::Checkbox("hemisphere ambient", &hemi)) ctx.setHemisphereAmbient(hemi);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("A3 sky/ground fill (not gated by torches). F7 also toggles.");
+    }
     ImGui::TextDisabled("RMB fly (WASD/QE, wheel = speed) | LMB apply | Esc cancel | F1 exit");
     if (!m_status.empty())
         ImGui::TextColored({1.0f, 0.85f, 0.3f, 1.0f}, "%s", m_status.c_str());
     ImGui::End();
+
+    if (m_newMapOpen) drawNewMapDialog(ctx);
+}
+
+void RoomEditor::drawNewMapDialog(EditorContext& ctx) {
+    ImGui::OpenPopup("New Map");
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos({vp->Pos.x + vp->Size.x * 0.5f, vp->Pos.y + vp->Size.y * 0.5f},
+                            ImGuiCond_Appearing, {0.5f, 0.5f});
+    if (!ImGui::BeginPopupModal("New Map", &m_newMapOpen, ImGuiWindowFlags_AlwaysAutoResize)) {
+        m_newMapOpen = false;
+        return;
+    }
+
+    ImGui::TextUnformatted("Create a fresh world (host / single-player).");
+    ImGui::Separator();
+
+    ImGui::TextUnformatted("Template");
+    ImGui::RadioButton("Landscape (Normal)", &m_newMapTerrain, 0);
+    ImGui::RadioButton("Superflat", &m_newMapTerrain, 1);
+    ImGui::RadioButton("Blank (Void)", &m_newMapTerrain, 2);
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("Environment");
+    ImGui::RadioButton("Surface", &m_newMapEnvironment, 0);
+    ImGui::SameLine();
+    ImGui::RadioButton("Underwater", &m_newMapEnvironment, 1);
+    ImGui::SameLine();
+    ImGui::RadioButton("Space", &m_newMapEnvironment, 2);
+
+    ImGui::Separator();
+    ImGui::InputInt("Seed", &m_newMapSeed);
+    if (ImGui::Button("Randomize seed")) m_newMapSeed = static_cast<int>(std::rand());
+
+    ImGui::Separator();
+    ImGui::TextDisabled("Clears voxel edits and world props. Players respawn on the pad.");
+
+    if (ImGui::Button("Create", {120, 0})) {
+        const auto seed = static_cast<std::uint32_t>(m_newMapSeed < 0 ? 0 : m_newMapSeed);
+        // Ordinals match GameRules::Terrain / Environment (engine stays game-free).
+        if (ctx.requestNewMap &&
+            ctx.requestNewMap(m_newMapTerrain, m_newMapEnvironment, seed)) {
+            setStatus("New Map created");
+            m_newMapOpen = false;
+            ImGui::CloseCurrentPopup();
+        } else {
+            setStatus("New Map failed (host/SP only)");
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", {120, 0})) {
+        m_newMapOpen = false;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
 }
 
 void RoomEditor::drawToolbar() {

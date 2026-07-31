@@ -17,16 +17,14 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
    (`first`/`third`), `game.json "template"` (`fps`/`tps`) + `"perspective"`, CLI `--template` /
    `--perspective`. Third-person over-shoulder cam with physics raycast pullback; crosshair gated
    to first-person only.
-2. **A3 — hemisphere ambient (toggle)** — surface the voxel AO world-wide by adding a sky/ground
-   hemisphere ambient term that is NOT gated by the block-light floor. Make it an **environment/game
-   setting** (don't force it — the dark PSX-night look stays available). Pairs with A1. *Files:*
-   chunk.frag ambient, Renderer/Environment.
+2. ~~**A3 — hemisphere ambient (toggle)**~~ ✅ — sky/ground hemi ambient outside the block-light
+   gate; env presets set strength (Surface on, Space off); `game.json "hemisphereAmbient"`, F7,
+   editor checkbox. Dark PSX-night still available when toggled off.
 3. ~~**Prop authoring polish**~~ ✅ — `MovePropMsg` on gizmo release; outliner / Del key send
    `RemovePropMsg`; server rebuilds colliders / deletes and broadcasts; client treats re-`PropAdded`
    as transform update.
-4. **New Map dialog (B4)** — an editor dialog to pick template + environment + seed and (re)create the
-   world, tying templates/environments into a UE5-style flow instead of CLI flags. *Files:* RoomEditor,
-   an engine hook to rebuild the world.
+4. ~~**New Map dialog (B4)**~~ ✅ — editor "New Map..." modal: template (Normal/Superflat/Void) +
+   environment (Surface/Underwater/Space) + seed; `ServerSim::reseedWorld` + client mesh clear.
 5. ~~**Networked world-config sync**~~ ✅ — `Welcome` carries `voxelSize` + `environment` (terrain was
    already in flags). Join clients apply host scale before world gen; spawn height scales with
    `kVoxelSize` (voxel cell 16,16,16).

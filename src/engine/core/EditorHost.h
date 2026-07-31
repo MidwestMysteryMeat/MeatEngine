@@ -4,6 +4,7 @@
 #include "engine/render/Renderer.h"
 #include "engine/voxel/VoxelWorld.h"
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <vector>
@@ -60,6 +61,14 @@ struct EditorContext {
     // MovePropMsg / RemovePropMsg; server rebuilds collider or deletes and echoes.
     std::function<void(std::uint32_t id, glm::mat4 transform)> requestMoveProp;
     std::function<void(std::uint32_t id)> requestRemoveProp;
+    // B4 New Map: host/SP only. Terrain/env are GameRules enum ordinals (0/1/2)
+    // so engine/core stays free of game includes (ARCHITECTURE layering).
+    std::function<bool(int terrain, int environment, std::uint32_t seed)> requestNewMap;
+    int currentTerrain = 0;      // GameRules::Terrain ordinal
+    int currentEnvironment = 0;  // GameRules::Environment ordinal
+    std::uint32_t currentSeed = 1337;
+    bool hemisphereAmbient = true;
+    std::function<void(bool)> setHemisphereAmbient;
     // Asset/code panels: enumerate files under a project-relative dir, read/write
     // text, and hot-reload scripts into the running server (host/single-player).
     std::function<std::vector<std::string>(const std::string& dir)> listFiles;

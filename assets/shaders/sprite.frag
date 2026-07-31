@@ -11,7 +11,8 @@ layout(std140, binding = 0) uniform FrameData {
     vec4 uFogColor;
     vec4 uDirLightDir;
     vec4 uDirLightColor;
-    vec4 uAmbientColor;
+    vec4 uAmbientColor; // rgb sky/flat, w hemi strength
+    vec4 uHemiGround;   // rgb ground lobe (A3)
     ivec4 uLightCounts;
     PointLight uPointLights[32];
     SpotLight uSpotLights[8];

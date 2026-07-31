@@ -62,6 +62,8 @@ void loadProject(meat::EngineConfig& config, const std::string& dir) {
         config.rules.perspective = (p == "third" || p == "tps") ? Perspective::Third
                                                                 : Perspective::First;
     }
+    if (j.contains("hemisphereAmbient"))
+        config.rules.hemisphereAmbient = j["hemisphereAmbient"].get<bool>();
     config.rules.finiteAmmo = j.value("finiteAmmo", config.rules.finiteAmmo);
     config.rules.minedBlockDrops = j.value("minedBlockDrops", config.rules.minedBlockDrops);
     config.rules.penetration = j.value("penetration", config.rules.penetration);

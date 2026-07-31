@@ -46,6 +46,9 @@ public:
     void setGenerator(std::function<void(Chunk&, ChunkPos)> generator);
     void setMeshReadyCallback(std::function<void(ChunkPos, ChunkMeshData)> callback);
     void setChunkUnloadedCallback(std::function<void(ChunkPos)> callback);
+    // Drop every loaded chunk + the edit overlay (B4 New Map). Fires the unload
+    // callback per chunk so physics/navmesh colliders are torn down first.
+    void clearWorld();
 
     BlockRegistry& blockRegistry() { return m_blocks; }
     const BlockRegistry& blockRegistry() const { return m_blocks; }

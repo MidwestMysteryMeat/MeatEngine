@@ -82,7 +82,11 @@ public:
     void submitSprite(glm::vec3 center, glm::vec2 size, TextureHandle tex,
                       glm::vec4 uvRect = {0.0f, 0.0f, 1.0f, 1.0f},
                       glm::vec3 tint = {1.0f, 1.0f, 1.0f}, bool fullbright = false);
-    void setAmbientLight(glm::vec3 color); // premultiplied rgb (color * intensity)
+    // Flat / sky ambient (premultiplied rgb). When hemisphere strength > 0 this is the
+    // sky lobe; when strength == 0 it is the classic isotropic ambient.
+    void setAmbientLight(glm::vec3 color);
+    // A3: ground lobe + blend strength [0,1]. Strength 0 disables hemi (flat ambient only).
+    void setHemisphereAmbient(glm::vec3 groundColor, float strength);
     void setDirectionalLight(glm::vec3 dir, glm::vec3 color);
     void submitPointLight(glm::vec3 pos, glm::vec3 color, float radius);
     void submitSpotLight(glm::vec3 pos, glm::vec3 dir, glm::vec3 color, float radius, float angle);
@@ -115,7 +119,8 @@ private:
         glm::vec4 fogColor;     // rgb
         glm::vec4 dirLightDir;  // xyz normalized, direction the light travels
         glm::vec4 dirLightColor;
-        glm::vec4 ambientColor; // rgb premultiplied by intensity; w unused
+        glm::vec4 ambientColor; // rgb = sky/flat ambient; w = hemi strength [0,1]
+        glm::vec4 hemiGround;   // rgb = ground lobe (A3); w unused
         glm::ivec4 lightCounts; // x point count, y spot count
         GpuPointLight pointLights[kMaxPointLights];
         GpuSpotLight spotLights[kMaxSpotLights];

@@ -11,7 +11,8 @@ layout(std140, binding = 0) uniform FrameData {
     vec4 uFogColor;
     vec4 uDirLightDir;
     vec4 uDirLightColor;
-    vec4 uAmbientColor;
+    vec4 uAmbientColor; // rgb sky/flat, w hemi strength
+    vec4 uHemiGround;   // rgb ground lobe (A3)
     ivec4 uLightCounts;
     PointLight uPointLights[32];
     SpotLight uSpotLights[8];
@@ -45,8 +46,17 @@ vec3 blinnPhong(vec3 albedo, vec3 n, vec3 v, vec3 l, vec3 lightColor, float atte
     return (albedo * ndl + vec3(spec)) * lightColor * atten;
 }
 
+vec3 ambientTerm(vec3 albedo, vec3 n) {
+    float hemi = uAmbientColor.w;
+    if (hemi <= 0.0) return albedo * uAmbientColor.rgb;
+    float t = clamp(n.y * 0.5 + 0.5, 0.0, 1.0);
+    vec3 hemiCol = mix(uHemiGround.rgb, uAmbientColor.rgb, t);
+    vec3 flatCol = mix(uHemiGround.rgb, uAmbientColor.rgb, 0.5);
+    return albedo * mix(flatCol, hemiCol, hemi);
+}
+
 vec3 shade(vec3 albedo, vec3 n, vec3 v, vec3 worldPos) {
-    vec3 c = albedo * uAmbientColor.rgb;
+    vec3 c = ambientTerm(albedo, n);
     c += blinnPhong(albedo, n, v, normalize(-uDirLightDir.xyz), uDirLightColor.rgb, 1.0);
     for (int i = 0; i < uLightCounts.x; ++i) {
         vec3 toL = uPointLights[i].posRadius.xyz - worldPos;

@@ -36,9 +36,9 @@ void main() { oColor = vec4(1.0); }
 } // namespace
 
 bool Renderer::init(Window& window) {
-    // 1648 = previous 1632 + one vec4 (ambientColor) inserted before lightCounts;
-    // every GLSL FrameData copy gained the same member in the same slot.
-    static_assert(sizeof(FrameUbo) == 1648, "FrameUbo must match the std140 FrameData block");
+    // 1664 = previous 1648 + one vec4 (hemiGround) after ambientColor (A3).
+    // every GLSL FrameData copy must gain the same member in the same slot.
+    static_assert(sizeof(FrameUbo) == 1664, "FrameUbo must match the std140 FrameData block");
     static_assert(sizeof(GpuPointLight) == 32 && sizeof(GpuSpotLight) == 48);
 
     m_window = &window;
@@ -397,8 +397,13 @@ void Renderer::submitSprite(glm::vec3 center, glm::vec2 size, TextureHandle tex,
 }
 
 void Renderer::setAmbientLight(glm::vec3 color) {
-    // Premultiplied encoding: rgb already carries intensity; w unused.
-    m_frame.ambientColor = glm::vec4(color, 0.0f);
+    // Keep existing hemi strength in .w when only the colour changes.
+    m_frame.ambientColor = glm::vec4(color, m_frame.ambientColor.w);
+}
+
+void Renderer::setHemisphereAmbient(glm::vec3 groundColor, float strength) {
+    m_frame.hemiGround = glm::vec4(groundColor, 0.0f);
+    m_frame.ambientColor.w = strength < 0.0f ? 0.0f : strength > 1.0f ? 1.0f : strength;
 }
 
 void Renderer::setDirectionalLight(glm::vec3 dir, glm::vec3 color) {

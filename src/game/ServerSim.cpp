@@ -54,6 +54,64 @@ float raySegmentDistance(glm::vec3 ro, glm::vec3 rd, float range, glm::vec3 a, g
 }
 } // namespace
 
+void ServerSim::reseedWorld(std::uint32_t seed, GameRules::Terrain terrain,
+                            GameRules::Environment environment) {
+    m_seed = seed;
+    m_rules.terrain = terrain;
+    m_rules.environment = environment;
+    m_physics.setGravity(envSettings(m_rules.environment).gravity);
+
+    // Tear down dynamic world objects first (props drop colliders).
+    for (WorldProp& prop : m_props) {
+        if (prop.body != PhysicsWorld::kInvalidBody) m_physics.removeStaticBox(prop.body);
+    }
+    m_props.clear();
+    m_nextPropId = 1;
+    m_entities.clear();
+    m_projectiles.clear();
+    m_deployables.clear();
+    m_npcs.clear();
+    m_turrets.clear();
+    m_companions.clear();
+    m_voxelDamage.clear();
+    m_nextEntityId = 1;
+    m_snapshotRing.clear();
+
+    // Chunks + colliders + navmesh (unload callback removes both).
+    m_voxels.clearWorld();
+    m_voxels.setGenerator(makeTerrainGenerator(m_seed, m_palette, m_rules.terrain));
+
+    // Players: teleport to the new pad. Controllers already exist for anyone who
+    // had joined; setState is enough (no re-init). Unspawned peers still init later.
+    const glm::vec3 spawn = defaultSpawnPos();
+    for (auto& [peer, player] : m_players) {
+        if (!player) continue;
+        if (player->spawned) {
+            player->controller.setState(spawn, glm::vec3(0));
+            player->controller.setGravity(envSettings(m_rules.environment).gravity);
+        } else {
+            player->spawnOverride = spawn;
+        }
+        player->health = 100.0f;
+        player->fireCooldown = 0.0f;
+        player->placeCooldown = 0.0f;
+        player->useCooldown = 0.0f;
+        player->prevFire = false;
+        player->prevReload = false;
+        player->burstRemaining = 0;
+        player->reloadCooldown = 0.0f;
+        player->reloadingWeapon = 0;
+        player->modifiers.clear();
+        player->ackedSnapshotTick = 0; // force a keyframe after the world swap
+    }
+
+    spawnDungeonLoot();
+    spawnDungeonNpcs();
+    m_scripts.onInit(m_seed);
+    log::info("server: New Map — seed {} terrain {} env {}", m_seed, static_cast<int>(terrain),
+              static_cast<int>(environment));
+}
+
 bool ServerSim::init(std::uint32_t worldSeed) {
     m_seed = worldSeed;
     if (!m_physics.init()) return false;

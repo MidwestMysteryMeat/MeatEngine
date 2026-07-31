@@ -47,15 +47,14 @@ docs/ENGINE_REUSE_SURVEY.md + the memory OSS-grabs reference) and its verificati
 
 ## Pillar A — Lighting overhaul  *(active)*
 The single biggest visual lift. Do in this order:
-- [ ] **A1. Voxel ambient occlusion** — per-vertex corner darkening baked in the greedy mesher (AO
+- [x] **A1. Voxel ambient occlusion** — per-vertex corner darkening baked in the greedy mesher (AO
   joins the merge key so per-voxel detail survives; 3-neighbour occlusion, 0fps.net algorithm,
-  clean-room). New `ao` vertex attrib; shader multiplies lighting by it. *The defining voxel-lighting
-  feature and cheapest.* Gate: VLM sees concave corners/edges darkened, flat faces unaffected.
+  clean-room). New `ao` vertex attrib; shader multiplies lighting by it.
 - [ ] **A2. Directional (sun) shadow map** — one depth pass from the sun + PCF sample in the frag.
   Low-res/hard edges are on-aesthetic for PSX. Add a day/sun option. OSS: McNopper/OpenGL Example28
   (MIT) shadow GLSL, clean-room. Later: LiSPSM/PSSM for depth-resolution (Ogre reference only).
-- [ ] **A3. Better ambient / hemisphere term** — the night scenes are near-black; a sky/ground
-  hemisphere ambient lifts readability without flattening. Cheap frag change.
+- [x] **A3. Better ambient / hemisphere term** — sky/ground hemi outside the torch gate; toggleable
+  (F7 / game.json / editor) so dark PSX-night remains available.
 - [ ] **A4. SSAO (optional)** — screen-space contact AO in the resolve chain. OSS: McNopper (MIT) /
   lettier 3d-game-shaders (BSD-3). More cost; after A1–A3.
 - [ ] **A5. Colored block-light + emissive polish** — extend the torch flood-fill to RGB; night
@@ -72,17 +71,14 @@ blank / …), but spanning voxel AND non-voxel AND themed worlds. Physics is alr
 - [ ] **B2. `Level` abstraction** — a `Level` interface: `VoxelWorld` (current) + `MeshLevel`
   (static mesh + Jolt `MeshShape` collider). Worldgen/navmesh become optional; the client renders the
   level mesh instead of chunks. True non-voxel games.
-- [ ] **B3. Environment presets** — per-world **gravity + fog + ambient + skybox + water level**, so
-  a dev builds a **space** game (low/zero gravity, black void, no fog, starfield) or an **underwater**
-  game (buoyant gravity, blue fog, caustic ambient, water plane). Composes with any template. *(Scoped:
-  base gravity = `PhysicsWorld::SetGravity` + controller `t.gravity`; fog/ambient = `PsxOptions` +
-  `setAmbientLight` — all small, bounded hooks.)*
+- [x] **B3. Environment presets** — Surface / Underwater / Space drive gravity + fog + ambient
+  (+ hemi lobes). Skybox/water plane still open.
 - [ ] **B3b. Gravity volumes / zoned gravity** ⭐ — gravity is a *field*, not a global: per-region
   volumes (0-g in open space, normal inside a ship, radial "planet" gravity). The controller samples
   the active volume's gravity vector each tick. Unlocks **space games**, **ship interiors vs. void**,
   and **ship builders** (build a voxel/mesh craft that carries its own g-field). Big but on-vision.
-- [ ] **B4. "New Map" dialog** (editor) — pick template (Landscape / Superflat / Blank-Void / Mesh) +
-  environment (Surface / Underwater / Space / custom) + name + seed, then create and fill it.
+- [x] **B4. "New Map" dialog** (editor) — template (Landscape / Superflat / Void) + environment +
+  seed → `reseedWorld` (host/SP). Mesh template still open (B2).
 - [ ] **B5. `game.json` `world: {template, environment}`** so a project ships its map choice; no C++.
 
 ## Pillar C — Editor: a usable, UE5-inspired creation suite (USABILITY FIRST)
@@ -143,22 +139,10 @@ light → ship) without the bloat/missing pieces that don't fit a PSX voxel FPS.
 The engine must not force "FPS shooter." A project picks its genre/game-mode; the FPS/combat layer
 (guns, hotbar, hitscan, enemy NPCs) is a MODULE a game opts into, so a space ship-builder or an
 underwater explorer needn't ship guns. Composes with world templates (B) + environments (B3).
-- [ ] **H1. Game templates (UE5-style)** ⭐ — a project picks a TEMPLATE that presets camera +
-  controls + core mechanics, like UE5's FPS/TPS/Racer/etc. project templates: **FPS** (first-person
-  cam, gun module — today's default), **TPS** (third-person over-shoulder cam, same combat), **Racer**
-  (vehicle controller + chase cam, no guns), and room to add more (top-down, platformer, sandbox/
-  builder). `game.json "template"` + a New-Map choice (B4). The camera mode (first/third/chase) + the
-  active control+mechanic module are gated on it; combat/HUD/loadout become opt-in so a Racer or a
-  builder ships no guns. Default `fps` so nothing regresses. First tractable slice: a **perspective
-  option** (first- vs third-person camera) — the FPS↔TPS split — then the vehicle/chase (Racer).
-- [ ] **H2. Weapon fire modes** ⭐ — **Semi / Auto / Burst / Shotgun that FEEL distinct.** Semi-auto
-  **requires a trigger release between shots** (server tracks the fire-press EDGE — holding fire does
-  NOT auto-repeat a semi); Auto fires at the weapon's cadence while held; Burst = N rounds per press;
-  Shotgun = multiple pellets with spread per shot. Per-weapon `fireMode` + `pelletCount` + `spread`
-  in `ItemDef`; the client must send a press-edge/held bit so the server can gate semi.
-- [ ] **H3. Ammo + magazines** — per-weapon `magSize` + reserve ammo; a shot consumes a round, an
-  empty mag blocks fire, **reload (R)** refills from reserve on a timer; HUD shows mag/reserve. Extends
-  the existing `finiteAmmo` rule, which becomes the on/off switch for the whole ammo model.
+- [~] **H1. Game templates (UE5-style)** ⭐ — FPS↔TPS perspective slice shipped (`template` /
+  `perspective` / over-shoulder cam). Racer + module opt-in still open.
+- [x] **H2. Weapon fire modes** ⭐ — Semi / Auto / Burst with trigger-edge discipline + shotgun pellets.
+- [x] **H3. Ammo + magazines** — mag/reserve/reload + HUD; gated by `finiteAmmo`.
 
 ## Not automatable
 Human feel-playtests (mouse feel, combat cadence, editor ergonomics), and real Linux-hardware CI.

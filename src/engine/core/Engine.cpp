@@ -160,6 +160,11 @@ void Engine::applyEnvironment(const GameRules& rules) {
     m_renderer.psx.fogStart = env.fogStart;
     m_renderer.psx.fogEnd = env.fogEnd;
     m_renderer.setAmbientLight(env.ambient);
+    // A3: hemisphere ambient — form-defining fill not gated by torch light. Toggleable so the
+    // dark PSX-night look stays available (game.json / F7 / New Map "hemisphere ambient").
+    const float hemi = rules.hemisphereAmbient ? env.hemiStrength : 0.0f;
+    m_renderer.setHemisphereAmbient(env.hemiGround, hemi);
+    m_hemisphereAmbient = rules.hemisphereAmbient;
 }
 
 void Engine::setupClientWorld() {
@@ -178,6 +183,48 @@ void Engine::setupClientWorld() {
     loadAnimTestActor();
     loadNpcActor();
     log::info("client world ready (seed {})", m_client.worldSeed());
+}
+
+bool Engine::rebuildWorld(GameRules::Terrain terrain, GameRules::Environment environment,
+                          std::uint32_t seed) {
+    if (!m_server || !m_clientWorldReady) {
+        log::warn("rebuildWorld: host/SP only, and only after the world is ready");
+        return false;
+    }
+
+    // Drop client GPU chunk meshes + prop colliders before the server clears
+    // world state (same unload contract as streaming).
+    for (auto& [pos, mesh] : m_chunkMeshes) m_renderer.destroyMesh(mesh);
+    m_chunkMeshes.clear();
+    for (auto& [id, body] : m_propBodies) m_physics.removeStaticBox(body);
+    m_propBodies.clear();
+    m_editorProps.clear();
+    m_entityPrevPos.clear();
+    m_remoteAudio.clear();
+
+    m_voxels.clearWorld();
+
+    GameRules rules = m_server->rules();
+    rules.terrain = terrain;
+    rules.environment = environment;
+    rules.hemisphereAmbient = m_hemisphereAmbient;
+    m_server->reseedWorld(seed, terrain, environment);
+    applyEnvironment(rules);
+
+    // Client mirror generator must match the host's new seed/terrain.
+    // Block ids already registered at setupClientWorld — do NOT re-register.
+    const BlockPalette palette{/*stone*/ 1, /*dirt*/ 2, /*grass*/ 3, /*lamp*/ 4};
+    m_voxels.setGenerator(makeTerrainGenerator(seed, palette, terrain));
+
+    const glm::vec3 spawn = clientSpawnPos();
+    m_player.setState(spawn, glm::vec3(0));
+    m_player.setGravity(envSettings(environment).gravity);
+    m_prevPlayerPos = m_currPlayerPos = spawn;
+    m_editorCamera.pos = spawn + glm::vec3(0.0f, m_player.eyeHeight(), 0.0f);
+
+    log::info("engine: New Map applied (seed {}, terrain {}, env {})", seed,
+              static_cast<int>(terrain), static_cast<int>(environment));
+    return true;
 }
 
 void Engine::loadWorldProps() {
@@ -848,6 +895,25 @@ void Engine::render(float alpha) {
         ctx.requestRemoveProp = [this](std::uint32_t id) {
             if (id != 0) m_client.sendRemoveProp(id);
         };
+        ctx.requestNewMap = [this](int terrain, int environment, std::uint32_t seed) {
+            const auto t = static_cast<GameRules::Terrain>(terrain < 0 || terrain > 2 ? 0 : terrain);
+            const auto e =
+                static_cast<GameRules::Environment>(environment < 0 || environment > 2 ? 0
+                                                                                       : environment);
+            return rebuildWorld(t, e, seed);
+        };
+        if (m_server) {
+            ctx.currentTerrain = static_cast<int>(m_server->rules().terrain);
+            ctx.currentEnvironment = static_cast<int>(m_server->rules().environment);
+            ctx.currentSeed = m_server->seed();
+            ctx.hemisphereAmbient = m_hemisphereAmbient;
+        }
+        ctx.setHemisphereAmbient = [this](bool on) {
+            m_hemisphereAmbient = on;
+            GameRules r = m_server ? m_server->rules() : GameRules{};
+            r.hemisphereAmbient = on;
+            applyEnvironment(r);
+        };
         ctx.listFiles = [](const std::string& dir) {
             std::vector<std::string> out;
             std::error_code ec;
@@ -1251,6 +1317,7 @@ int Engine::run(const EngineConfig& configIn) {
     // (host-authoritative voxelSize + environment) before setupClientWorld.
     applyEnvironment(config.rules);
     m_perspective = config.rules.perspective;
+    m_hemisphereAmbient = config.rules.hemisphereAmbient;
     m_animBooth = config.animBooth;
     m_animModel = config.animModel;
     m_animClip = config.animClip;
@@ -1277,6 +1344,16 @@ int Engine::run(const EngineConfig& configIn) {
 
         if (m_input.pressed(GLFW_KEY_ESCAPE)) break;
         if (m_input.pressed(GLFW_KEY_F6)) m_renderer.reloadShaders();
+        if (m_input.pressed(GLFW_KEY_F7)) {
+            // A3: toggle hemisphere ambient — dark PSX-night (off) vs form-readable fill (on).
+            m_hemisphereAmbient = !m_hemisphereAmbient;
+            GameRules envRules;
+            if (m_client.welcomed()) envRules = m_client.rules();
+            else if (m_server) envRules = m_server->rules();
+            envRules.hemisphereAmbient = m_hemisphereAmbient;
+            applyEnvironment(envRules);
+            log::info("hemisphere ambient {}", m_hemisphereAmbient ? "ON" : "OFF");
+        }
         if (m_input.pressed(GLFW_KEY_F12)) m_renderer.captureScreenshot("build/shot.png");
         if (m_input.pressed(GLFW_KEY_F5) && m_server) {
             m_server->saveTo("saves/quick.json");

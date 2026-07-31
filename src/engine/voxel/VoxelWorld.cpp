@@ -328,6 +328,17 @@ void VoxelWorld::setChunkUnloadedCallback(std::function<void(ChunkPos)> callback
     m_chunkUnloaded = std::move(callback);
 }
 
+void VoxelWorld::clearWorld() {
+    // Unload callbacks first so physics/navmesh drop colliders while we still know
+    // which ChunkPos existed. Then wipe overlays so a New Map doesn't resurrect edits.
+    if (m_chunkUnloaded) {
+        for (const auto& [pos, unused] : m_chunks) m_chunkUnloaded(pos);
+    }
+    m_chunks.clear();
+    m_inFlight.clear();
+    m_overlay.clear();
+}
+
 std::optional<VoxelWorld::RayHit> VoxelWorld::raycast(glm::vec3 origin, glm::vec3 dir,
                                                       float maxDist) const {
     const float dirLen = glm::length(dir);

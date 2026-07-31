@@ -69,9 +69,13 @@ private:
     void applyEnvironment(const GameRules& rules); // world preset → gravity + fog + ambient
     int runDedicated(const EngineConfig& config);
     GameRules::Perspective m_perspective = GameRules::Perspective::First;
+    bool m_hemisphereAmbient = true; // A3 toggle (F7); applied with environment
     void simulateClientTick(const PlayerCommand& frameCmd);
     void render(float alpha);
     void drawInventoryUi();
+    // B4: rebuild host world (terrain + environment + seed). Host/SP only.
+    bool rebuildWorld(GameRules::Terrain terrain, GameRules::Environment environment,
+                      std::uint32_t seed);
 
     Window m_window;
     Input m_input;

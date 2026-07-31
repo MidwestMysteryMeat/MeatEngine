@@ -31,6 +31,9 @@ struct GameRules {
     // "perspective" or "template" (fps→First, tps→Third) / --perspective / --template.
     enum class Perspective : std::uint8_t { First = 0, Third = 1 };
     Perspective perspective = Perspective::First;
+    // When true, the environment's hemiStrength is applied (A3). When false, ambient is
+    // classic isotropic only — the dark PSX-night look. Toggled via game.json / F7 / New Map.
+    bool hemisphereAmbient = true;
     bool finiteAmmo = true;      // guns consume ammo items
     bool minedBlockDrops = true; // broken blocks enter the breaker's inventory
     bool penetration = true;     // bullets spend budget passing through materials

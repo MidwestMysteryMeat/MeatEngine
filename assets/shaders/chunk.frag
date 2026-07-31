@@ -11,7 +11,8 @@ layout(std140, binding = 0) uniform FrameData {
     vec4 uFogColor;
     vec4 uDirLightDir;
     vec4 uDirLightColor;
-    vec4 uAmbientColor;
+    vec4 uAmbientColor; // rgb sky/flat, w hemi strength
+    vec4 uHemiGround;   // rgb ground lobe (A3)
     ivec4 uLightCounts;
     PointLight uPointLights[32];
     SpotLight uSpotLights[8];
@@ -44,9 +45,21 @@ vec3 blinnPhong(vec3 albedo, vec3 n, vec3 v, vec3 l, vec3 lightColor, float atte
     return (albedo * ndl + vec3(spec)) * lightColor * atten;
 }
 
-vec3 shade(vec3 albedo, vec3 n, vec3 v, vec3 worldPos) {
-    vec3 c = albedo * uAmbientColor.rgb;
-    c += blinnPhong(albedo, n, v, normalize(-uDirLightDir.xyz), uDirLightColor.rgb, 1.0);
+// A3: hemisphere ambient. Strength 0 → classic flat ambient (uAmbientColor.rgb).
+// Strength 1 → full sky/ground blend by normal.y. NOT multiplied by block-light.
+vec3 ambientTerm(vec3 albedo, vec3 n) {
+    float hemi = uAmbientColor.w;
+    if (hemi <= 0.0) return albedo * uAmbientColor.rgb;
+    float t = clamp(n.y * 0.5 + 0.5, 0.0, 1.0);
+    vec3 hemiCol = mix(uHemiGround.rgb, uAmbientColor.rgb, t);
+    vec3 flatCol = mix(uHemiGround.rgb, uAmbientColor.rgb, 0.5);
+    return albedo * mix(flatCol, hemiCol, hemi);
+}
+
+// Direct lights only (sun / points / spots) — ambient is separate so chunk
+// block-light can gate direct without crushing form-defining hemi fill.
+vec3 shadeDirect(vec3 albedo, vec3 n, vec3 v, vec3 worldPos) {
+    vec3 c = blinnPhong(albedo, n, v, normalize(-uDirLightDir.xyz), uDirLightColor.rgb, 1.0);
     for (int i = 0; i < uLightCounts.x; ++i) {
         vec3 toL = uPointLights[i].posRadius.xyz - worldPos;
         float d = length(toL);
@@ -62,7 +75,6 @@ vec3 shade(vec3 albedo, vec3 n, vec3 v, vec3 worldPos) {
         vec3 l = toL / max(d, 1e-4);
         float att = clamp(1.0 - d / uSpotLights[i].posRadius.w, 0.0, 1.0);
         att *= att;
-        // dirCosAngle.w = cos(half-angle); soften the rim over the outer 20% of the cone
         float cosCut = uSpotLights[i].dirCosAngle.w;
         att *= smoothstep(cosCut, mix(cosCut, 1.0, 0.2), dot(-l, uSpotLights[i].dirCosAngle.xyz));
         if (att > 0.0) {
@@ -83,15 +95,13 @@ void main() {
 
     vec3 n = normalize(fs.normal);
     vec3 v = normalize(uCamPos.xyz - fs.worldPos);
-    vec3 lit = shade(albedo.rgb, n, v, fs.worldPos);
-    // Voxel block-light gate (torch flood-fill): faces near an emissive block
-    // keep full shading; faces the light never reached fall to kMinLight, so the
-    // world visibly darkens away from light sources. Skylight is out of scope,
-    // so kMinLight is the only floor keeping unlit terrain readable.
+    // Ambient / hemi is form-defining fill and is NOT gated by torch flood-fill.
+    vec3 ambient = ambientTerm(albedo.rgb, n);
+    // Direct lights still fall off away from torches so night caves go dark.
     const float kMinLight = 0.10;
-    lit *= max(fs.blockLight, kMinLight);
-    // Per-vertex voxel ambient occlusion (0fps): concave corners/edges where
-    // blocks meet darken toward 45% brightness; open flat faces stay full.
+    vec3 direct = shadeDirect(albedo.rgb, n, v, fs.worldPos) * max(fs.blockLight, kMinLight);
+    vec3 lit = ambient + direct;
+    // Per-vertex voxel ambient occlusion (0fps): concave corners/edges darken.
     lit *= mix(0.45, 1.0, fs.ao);
     oColor = vec4(mix(lit, uFogColor.rgb, fs.fog), albedo.a);
 }

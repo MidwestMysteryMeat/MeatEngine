@@ -14,7 +14,12 @@ struct EnvSettings {
     glm::vec3 fogColor;  // PSX vertex-fog colour (also the void/clear tint's mood)
     float fogStart;      // metres: fog begins
     float fogEnd;        // metres: fog fully saturates
-    glm::vec3 ambient;   // premultiplied ambient light (colour * intensity)
+    glm::vec3 ambient;   // premultiplied ambient light (colour * intensity) — sky lobe
+    // Hemisphere ambient (A3): sky (ambient) vs ground colours blended by normal.y.
+    // strength 0 = classic flat ambient only (dark PSX-night preserved); 1 = full hemi.
+    // Applied OUTSIDE the voxel block-light gate so form stays readable without torches.
+    glm::vec3 hemiGround{0.08f, 0.07f, 0.06f};
+    float hemiStrength = 0.0f;
 };
 
 // Maps an Environment preset to its settings. Single source of truth for the presets so server
