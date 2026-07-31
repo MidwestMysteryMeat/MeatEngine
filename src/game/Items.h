@@ -82,6 +82,7 @@ struct DefaultItems {
     ItemId companionBeacon = 0;
     ItemId shells = 0, rockets = 0, rifleAmmo = 0;
     ItemId stim = 0; // composed consumable: Heal + a timed damage/speed buff
+    ItemId shipCannon = 0; // H4: twin hardpoint auto-cannon (used while piloting)
 };
 DefaultItems registerDefaultItems(ItemRegistry& items, BlockId stone);
 

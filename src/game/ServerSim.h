@@ -56,7 +56,8 @@ public:
     // regenerate dungeon content. Connected players are respawned at the default pad.
     // Does not tear down the transport or peer map — Hello stays valid.
     void reseedWorld(std::uint32_t seed, GameRules::Terrain terrain,
-                     GameRules::Environment environment);
+                     GameRules::Environment environment,
+                     GameRules::Template gameTemplate = GameRules::Template::Fps);
 
 private:
     struct Player {

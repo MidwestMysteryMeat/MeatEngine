@@ -312,6 +312,7 @@ void RoomEditor::drawTopBar(EditorContext& ctx) {
     ImGui::SameLine();
     if (ImGui::Button("New Map...")) {
         m_newMapOpen = true;
+        m_newMapGenre = ctx.currentGameTemplate;
         m_newMapTerrain = static_cast<int>(ctx.currentTerrain);
         m_newMapEnvironment = static_cast<int>(ctx.currentEnvironment);
         m_newMapSeed = static_cast<int>(ctx.currentSeed);
@@ -343,7 +344,22 @@ void RoomEditor::drawNewMapDialog(EditorContext& ctx) {
     ImGui::TextUnformatted("Create a fresh world (host / single-player).");
     ImGui::Separator();
 
-    ImGui::TextUnformatted("Template");
+    ImGui::TextUnformatted("Game template");
+    if (ImGui::RadioButton("FPS (on-foot)", &m_newMapGenre, 0)) {
+        /* keep terrain/env as chosen */
+    }
+    if (ImGui::RadioButton("TPS (third-person)", &m_newMapGenre, 1)) {
+        /* camera only — terrain free */
+    }
+    if (ImGui::RadioButton("Space ship", &m_newMapGenre, 2)) {
+        m_newMapTerrain = 2;     // Void
+        m_newMapEnvironment = 2; // Space
+    }
+    if (m_newMapGenre == 2)
+        ImGui::TextDisabled("Space presets Void + Space env + ships.");
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("World template");
     ImGui::RadioButton("Landscape (Normal)", &m_newMapTerrain, 0);
     ImGui::RadioButton("Superflat", &m_newMapTerrain, 1);
     ImGui::RadioButton("Blank (Void)", &m_newMapTerrain, 2);
@@ -365,9 +381,9 @@ void RoomEditor::drawNewMapDialog(EditorContext& ctx) {
 
     if (ImGui::Button("Create", {120, 0})) {
         const auto seed = static_cast<std::uint32_t>(m_newMapSeed < 0 ? 0 : m_newMapSeed);
-        // Ordinals match GameRules::Terrain / Environment (engine stays game-free).
+        // Ordinals match GameRules enums (engine stays game-free).
         if (ctx.requestNewMap &&
-            ctx.requestNewMap(m_newMapTerrain, m_newMapEnvironment, seed)) {
+            ctx.requestNewMap(m_newMapTerrain, m_newMapEnvironment, m_newMapGenre, seed)) {
             setStatus("New Map created");
             m_newMapOpen = false;
             ImGui::CloseCurrentPopup();

@@ -1,0 +1,14 @@
+{
+  "name": "Space Slice",
+  "seed": 1337,
+  "template": "space",
+  "perspective": "first",
+  "terrain": "void",
+  "environment": "space",
+  "hemisphereAmbient": false,
+  "inventoryModel": "hotbar",
+  "finiteAmmo": true,
+  "minedBlockDrops": false,
+  "penetration": true,
+  "blockDamage": true
+}

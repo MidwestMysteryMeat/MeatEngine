@@ -75,9 +75,9 @@ private:
     void simulateClientTick(const PlayerCommand& frameCmd);
     void render(float alpha);
     void drawInventoryUi();
-    // B4: rebuild host world (terrain + environment + seed). Host/SP only.
+    // B4: rebuild host world (terrain + environment + game template + seed). Host/SP only.
     bool rebuildWorld(GameRules::Terrain terrain, GameRules::Environment environment,
-                      std::uint32_t seed);
+                      GameRules::Template gameTemplate, std::uint32_t seed);
 
     Window m_window;
     Input m_input;

@@ -61,11 +61,14 @@ struct EditorContext {
     // MovePropMsg / RemovePropMsg; server rebuilds collider or deletes and echoes.
     std::function<void(std::uint32_t id, glm::mat4 transform)> requestMoveProp;
     std::function<void(std::uint32_t id)> requestRemoveProp;
-    // B4 New Map: host/SP only. Terrain/env are GameRules enum ordinals (0/1/2)
+    // B4 New Map: host/SP only. Terrain/env/template are GameRules enum ordinals
     // so engine/core stays free of game includes (ARCHITECTURE layering).
-    std::function<bool(int terrain, int environment, std::uint32_t seed)> requestNewMap;
+    // template: 0 fps, 1 tps, 2 space (may override terrain/env when creating).
+    std::function<bool(int terrain, int environment, int gameTemplate, std::uint32_t seed)>
+        requestNewMap;
     int currentTerrain = 0;      // GameRules::Terrain ordinal
     int currentEnvironment = 0;  // GameRules::Environment ordinal
+    int currentGameTemplate = 0; // GameRules::Template ordinal
     std::uint32_t currentSeed = 1337;
     bool hemisphereAmbient = true;
     std::function<void(bool)> setHemisphereAmbient;

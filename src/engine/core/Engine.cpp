@@ -252,7 +252,7 @@ void Engine::setupClientWorld() {
 }
 
 bool Engine::rebuildWorld(GameRules::Terrain terrain, GameRules::Environment environment,
-                          std::uint32_t seed) {
+                          GameRules::Template gameTemplate, std::uint32_t seed) {
     if (!m_server || !m_clientWorldReady) {
         log::warn("rebuildWorld: host/SP only, and only after the world is ready");
         return false;
@@ -271,11 +271,23 @@ bool Engine::rebuildWorld(GameRules::Terrain terrain, GameRules::Environment env
 
     m_voxels.clearWorld();
 
+    // Genre template may preset camera / hemi (Space prefers first-person cockpit + dark).
+    if (gameTemplate == GameRules::Template::Tps)
+        m_perspective = GameRules::Perspective::Third;
+    else if (gameTemplate == GameRules::Template::Space) {
+        m_perspective = GameRules::Perspective::First;
+        m_hemisphereAmbient = false;
+    } else {
+        m_perspective = GameRules::Perspective::First;
+    }
+
     GameRules rules = m_server->rules();
     rules.terrain = terrain;
     rules.environment = environment;
+    rules.gameTemplate = gameTemplate;
     rules.hemisphereAmbient = m_hemisphereAmbient;
-    m_server->reseedWorld(seed, terrain, environment);
+    rules.perspective = m_perspective;
+    m_server->reseedWorld(seed, terrain, environment, gameTemplate);
     applyEnvironment(rules);
 
     // Client mirror generator must match the host's new seed/terrain.
@@ -289,8 +301,9 @@ bool Engine::rebuildWorld(GameRules::Terrain terrain, GameRules::Environment env
     m_prevPlayerPos = m_currPlayerPos = spawn;
     m_editorCamera.pos = spawn + glm::vec3(0.0f, m_player.eyeHeight(), 0.0f);
 
-    log::info("engine: New Map applied (seed {}, terrain {}, env {})", seed,
-              static_cast<int>(terrain), static_cast<int>(environment));
+    log::info("engine: New Map applied (seed {}, terrain {}, env {}, template {})", seed,
+              static_cast<int>(terrain), static_cast<int>(environment),
+              static_cast<int>(gameTemplate));
     return true;
 }
 
@@ -1035,16 +1048,20 @@ void Engine::render(float alpha) {
         ctx.requestRemoveProp = [this](std::uint32_t id) {
             if (id != 0) m_client.sendRemoveProp(id);
         };
-        ctx.requestNewMap = [this](int terrain, int environment, std::uint32_t seed) {
+        ctx.requestNewMap = [this](int terrain, int environment, int gameTemplate,
+                                   std::uint32_t seed) {
             const auto t = static_cast<GameRules::Terrain>(terrain < 0 || terrain > 2 ? 0 : terrain);
             const auto e =
                 static_cast<GameRules::Environment>(environment < 0 || environment > 2 ? 0
                                                                                        : environment);
-            return rebuildWorld(t, e, seed);
+            const auto gt = static_cast<GameRules::Template>(
+                gameTemplate < 0 || gameTemplate > 2 ? 0 : gameTemplate);
+            return rebuildWorld(t, e, gt, seed);
         };
         if (m_server) {
             ctx.currentTerrain = static_cast<int>(m_server->rules().terrain);
             ctx.currentEnvironment = static_cast<int>(m_server->rules().environment);
+            ctx.currentGameTemplate = static_cast<int>(m_server->rules().gameTemplate);
             ctx.currentSeed = m_server->seed();
             ctx.hemisphereAmbient = m_hemisphereAmbient;
         }
@@ -1156,11 +1173,12 @@ void Engine::render(float alpha) {
         ImGui::Text("players %zu", remotes.size() + 1);
         ImGui::Text("pos %.1f %.1f %.1f", m_currPlayerPos.x, m_currPlayerPos.y,
                     m_currPlayerPos.z);
-        if (m_client.vehicleId() != 0)
-            ImGui::Text("SHIP %u  (E leave | V cam | LMB hardpoints | WASD thrust)",
-                        m_client.vehicleId());
-        else
+        if (m_client.vehicleId() != 0) {
+            ImGui::Text("SHIP %u  cannon (auto hardpoints)", m_client.vehicleId());
+            ImGui::TextDisabled("E leave | V cam | LMB fire | WASD+Space/Ctrl thrust");
+        } else {
             ImGui::TextDisabled("near ship: E board");
+        }
         // CC-BY requires naming authors when their art is shown (see assets/ATTRIBUTION.md).
         ImGui::TextDisabled("ships: JamyzGenius / JazOone3D / ABJVNK  (CC-BY 4.0)");
         ImGui::Text("%.0f fps", ImGui::GetIO().Framerate);

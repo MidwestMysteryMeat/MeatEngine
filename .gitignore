@@ -40,3 +40,7 @@ assets/models/pistol_idle.fbx
 # staged licensed Mixamo/artist animation packs (locomotion, zombie, gestures,
 # cover) — local retarget-source only; never commit to the public repo.
 assets/anim_packs/
+
+# Scaffolded sample games (local)
+projects/
+

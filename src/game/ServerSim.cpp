@@ -66,10 +66,12 @@ void ServerSim::rebuildGravityField() {
 }
 
 void ServerSim::reseedWorld(std::uint32_t seed, GameRules::Terrain terrain,
-                            GameRules::Environment environment) {
+                            GameRules::Environment environment,
+                            GameRules::Template gameTemplate) {
     m_seed = seed;
     m_rules.terrain = terrain;
     m_rules.environment = environment;
+    m_rules.gameTemplate = gameTemplate;
     rebuildGravityField();
 
     // Tear down dynamic world objects first (props drop colliders).
@@ -125,8 +127,9 @@ void ServerSim::reseedWorld(std::uint32_t seed, GameRules::Terrain terrain,
     spawnDungeonNpcs();
     spawnDemoShip();
     m_scripts.onInit(m_seed);
-    log::info("server: New Map — seed {} terrain {} env {}", m_seed, static_cast<int>(terrain),
-              static_cast<int>(environment));
+    log::info("server: New Map — seed {} terrain {} env {} template {}", m_seed,
+              static_cast<int>(terrain), static_cast<int>(environment),
+              static_cast<int>(gameTemplate));
 }
 
 bool ServerSim::init(std::uint32_t worldSeed) {
@@ -292,6 +295,12 @@ void ServerSim::setupScripting() {
 }
 
 void ServerSim::spawnDungeonNpcs() {
+    // Void / Space templates have no underground dungeon rooms worth filling.
+    if (m_rules.terrain == GameRules::Terrain::Void ||
+        m_rules.gameTemplate == GameRules::Template::Space) {
+        log::info("server: skipping dungeon NPCs (void/space template)");
+        return;
+    }
     const DungeonLayout layout = DungeonLayout::generate(m_seed, {});
     std::size_t i = 0;
     for (const auto& room : layout.rooms()) {
@@ -788,6 +797,11 @@ void ServerSim::updateCompanions(Transport& transport) {
 }
 
 void ServerSim::spawnDungeonLoot() {
+    if (m_rules.terrain == GameRules::Terrain::Void ||
+        m_rules.gameTemplate == GameRules::Template::Space) {
+        log::info("server: skipping dungeon loot (void/space template)");
+        return;
+    }
     // Same pure function the terrain generator uses — identical layout for free.
     const DungeonLayout layout = DungeonLayout::generate(m_seed, {});
     std::size_t roomIndex = 0;
@@ -1365,25 +1379,29 @@ void ServerSim::applyVoxelOp(Transport& transport, const VoxelOpMsg& op) {
 
 void ServerSim::giveStartingLoadout(Player& player) {
     // Full reference arsenal so every weapon archetype is reachable in the slice.
+    // Space ship template: lighter EVA kit (cannons are hull-mounted, not inventory).
+    const bool space = m_rules.gameTemplate == GameRules::Template::Space;
     player.inventory.add(m_defaultItems.pistol, 1, m_items);
-    player.inventory.add(m_defaultItems.apPistol, 1, m_items); // AP/HP ammo variants
-    player.inventory.add(m_defaultItems.hpPistol, 1, m_items);
-    player.inventory.add(m_defaultItems.smg, 1, m_items);
-    player.inventory.add(m_defaultItems.shotgun, 1, m_items);
-    player.inventory.add(m_defaultItems.sniper, 1, m_items);
+    if (!space) {
+        player.inventory.add(m_defaultItems.apPistol, 1, m_items);
+        player.inventory.add(m_defaultItems.hpPistol, 1, m_items);
+        player.inventory.add(m_defaultItems.smg, 1, m_items);
+        player.inventory.add(m_defaultItems.shotgun, 1, m_items);
+        player.inventory.add(m_defaultItems.sniper, 1, m_items);
+        player.inventory.add(m_defaultItems.claymore, 2, m_items);
+        player.inventory.add(m_defaultItems.turret, 2, m_items);
+        player.inventory.add(m_defaultItems.companionBeacon, 2, m_items);
+        player.inventory.add(m_defaultItems.shells, 24, m_items);
+        player.inventory.add(m_defaultItems.rifleAmmo, 30, m_items);
+        player.inventory.add(m_defaultItems.stoneBlock, 32, m_items);
+    }
     player.inventory.add(m_defaultItems.rpg, 1, m_items);
-    player.inventory.add(m_defaultItems.grenade, 3, m_items);
-    player.inventory.add(m_defaultItems.claymore, 2, m_items);
-    player.inventory.add(m_defaultItems.turret, 2, m_items);
-    player.inventory.add(m_defaultItems.companionBeacon, 2, m_items);
-    player.inventory.add(m_defaultItems.ammo9mm, 90, m_items);
-    player.inventory.add(m_defaultItems.shells, 24, m_items);
-    player.inventory.add(m_defaultItems.rifleAmmo, 30, m_items);
-    player.inventory.add(m_defaultItems.rockets, 4, m_items);
+    player.inventory.add(m_defaultItems.grenade, space ? 2 : 3, m_items);
+    player.inventory.add(m_defaultItems.ammo9mm, space ? 48 : 90, m_items);
+    player.inventory.add(m_defaultItems.rockets, space ? 8 : 4, m_items);
     player.inventory.add(m_defaultItems.medkit, 2, m_items);
-    player.inventory.add(m_defaultItems.stim, 2, m_items); // composed Heal + buff consumable
-    player.inventory.add(m_defaultItems.stoneBlock, 32, m_items);
-    player.inventory.initMags(m_items); // load a full mag for every magazine weapon
+    player.inventory.add(m_defaultItems.stim, 2, m_items);
+    player.inventory.initMags(m_items);
 }
 
 void ServerSim::sendOverlayTo(Transport& transport, PeerId peer) const {
@@ -1424,7 +1442,11 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
     const bool piloting = player.pilotingShip != 0;
     const int slotIndex = player.lastCmd.selectedSlot % Inventory::kSlots;
     const ItemStack& held = player.inventory.slot(slotIndex);
-    const ItemDef& heldDef = m_items.get(held.id);
+    // While piloting, hardpoints always use the dedicated ship cannon (not the
+    // hotbar pick — EVA still uses inventory guns).
+    const ItemDef& heldDef =
+        piloting && m_defaultItems.shipCannon != 0 ? m_items.get(m_defaultItems.shipCannon)
+                                                   : m_items.get(held.id);
 
     // --- Reload (H3): resolve before firing so a finished reload feeds this tick.
     const bool firePressed = player.lastCmd.fire && !player.prevFire;

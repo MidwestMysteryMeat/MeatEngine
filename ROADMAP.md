@@ -1,5 +1,8 @@
 # Roadmap
 
+> **Current sequenced plan:** [docs/ROLLOUT.md](docs/ROLLOUT.md) and
+> [docs/NEXT_SESSION.md](docs/NEXT_SESSION.md). This file is the historical phase log.
+
 Vertical slice goal: host a game, friend joins → spawn in a hand-built room → pick up
 weapons + items → shoot (server-authoritative, client-predicted) → enter a procedural
 dungeon → manage inventory → save and reload. Single-player is the same flow over a

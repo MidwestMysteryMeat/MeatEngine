@@ -127,6 +127,16 @@ DefaultItems registerDefaultItems(ItemRegistry& items, BlockId stone) {
                         .effects = {healEffect(25.0f), modifierEffect(1.5f, 1.3f, 8.0f)}});
     d.stoneBlock = items.add(
         {.name = "stone", .type = ItemType::Block, .maxStack = 250, .blockId = stone});
+    // H4 ship twin hardpoints: auto hitscan, long range, no mag (hull-powered).
+    // Used only while piloting — inventory weapons stay for EVA.
+    d.shipCannon = items.add({.name = "ship cannon",
+                              .type = ItemType::Weapon,
+                              .damage = 22.0f,
+                              .fireInterval = 0.09f,
+                              .penBudget = 35.0f,
+                              .fireMode = FireMode::Auto,
+                              .spreadDeg = 0.8f,
+                              .magSize = 0});
     return d;
 }
 
