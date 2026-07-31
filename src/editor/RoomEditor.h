@@ -25,6 +25,11 @@ private:
     enum class Tool { Place, Erase, Wall, Floor, Platform, Doorway, Light, SeedVolume };
     enum class Selection { None, Light, Volume, Prop };
 
+    // One-time Dear ImGui style pass for a modern dark tool look. Applied to the
+    // shared ImGui style (editor windows only — the in-game HUD runs in a separate
+    // session where the editor never updates, so it keeps the retro look).
+    void applyEditorTheme();
+
     void updateFlyCamera(EditorContext& ctx, float dt);
     void drawTopBar(EditorContext& ctx);
     void drawToolbar();
@@ -128,6 +133,15 @@ private:
     bool m_contentScanned = false;
     char m_contentFilter[128] = {}; // name substring filter (case-insensitive)
     std::string m_contentSelected;  // scan-relative path of the highlighted entry
+    // Current sub-folder within assets/ shown by the browser grid ("" = root, else
+    // a scan-relative dir like "anim_packs/Action_Adventure_Pack"). The scan stays
+    // flat + recursive; this only filters which tiles are shown and drives the
+    // breadcrumb. Folders are derived from each entry's path.
+    std::string m_contentDir;
+
+    // --- Editor theme ------------------------------------------------------
+    // One-shot guard so applyEditorTheme() runs on the first update() only.
+    bool m_themed = false;
 };
 
 } // namespace meat

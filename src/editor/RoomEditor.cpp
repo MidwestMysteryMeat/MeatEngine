@@ -41,6 +41,33 @@ const char* const kToolNames[] = {"Place",   "Erase",   "Wall",  "Floor",
 // Content-browser group labels, indexed by RoomEditor::AssetKind (minus Count).
 const char* const kAssetKindNames[] = {"Models", "Textures", "Scripts", "Shaders", "Other"};
 
+// Short tile tag drawn on a content-browser placeholder square, indexed by kind.
+const char* const kAssetKindTags[] = {"MDL", "TEX", "LUA", "SHD", "FILE"};
+
+// Distinct restrained accent per asset kind for the placeholder tile — colours
+// read as a family (muted, not neon) so the grid scans by type at a glance.
+ImVec4 kindTileColor(int kind) {
+    switch (kind) {
+    case 0: return ImVec4(0.22f, 0.42f, 0.70f, 1.00f); // Models  — blue
+    case 1: return ImVec4(0.28f, 0.55f, 0.42f, 1.00f); // Textures— green
+    case 2: return ImVec4(0.62f, 0.45f, 0.24f, 1.00f); // Scripts — amber
+    case 3: return ImVec4(0.50f, 0.33f, 0.62f, 1.00f); // Shaders — violet
+    default: return ImVec4(0.34f, 0.35f, 0.38f, 1.00f); // Other  — grey
+    }
+}
+// Folder tiles get their own warm-grey so they never look like an asset kind.
+const ImVec4 kFolderTileColor(0.55f, 0.48f, 0.28f, 1.00f);
+
+// Truncate label to fit within maxW pixels, appending an ellipsis when clipped,
+// so tile captions stay on one line under a fixed-width square.
+std::string fitLabel(const std::string& s, float maxW) {
+    if (ImGui::CalcTextSize(s.c_str()).x <= maxW) return s;
+    std::string out = s;
+    while (!out.empty() && ImGui::CalcTextSize((out + "...").c_str()).x > maxW)
+        out.pop_back();
+    return out + "...";
+}
+
 // Human-readable byte count for the content browser's size column.
 std::string humanSize(std::uintmax_t bytes) {
     const char* const units[] = {"B", "KB", "MB", "GB", "TB"};
@@ -82,6 +109,10 @@ bool worldClickable(bool flying) {
 } // namespace
 
 void RoomEditor::update(EditorContext& ctx, float dt) {
+    if (!m_themed) { // one-shot: restyle ImGui the first frame the editor runs
+        applyEditorTheme();
+        m_themed = true;
+    }
     m_previewLights = 0;
     ctx.buildBlock = m_buildBlock; // ctx is rebuilt per frame; the editor owns persistence
     if (m_statusTtl > 0.0f && (m_statusTtl -= dt) <= 0.0f) m_status.clear();
@@ -173,6 +204,86 @@ void RoomEditor::updateFlyCamera(EditorContext& ctx, float dt) {
         const float speed = m_flySpeed * (ctx.input.down(GLFW_KEY_LEFT_SHIFT) ? 3.0f : 1.0f);
         ctx.camera.pos += glm::normalize(move) * speed * dt;
     }
+}
+
+// Modern dark tool theme: neutral greys with one restrained blue accent for
+// active/selected/header states. Metrics give panels a little breathing room and
+// gentle rounding. Applied once to the shared ImGui style; only editor windows
+// are drawn while this is active, so the in-game HUD is untouched.
+void RoomEditor::applyEditorTheme() {
+    ImGuiStyle& s = ImGui::GetStyle();
+
+    // Metrics — soft rounding + consistent padding for a tidy tool look.
+    s.WindowRounding = 4.0f;
+    s.ChildRounding = 4.0f;
+    s.FrameRounding = 3.0f;
+    s.PopupRounding = 3.0f;
+    s.GrabRounding = 3.0f;
+    s.TabRounding = 3.0f;
+    s.ScrollbarRounding = 3.0f;
+    s.WindowBorderSize = 1.0f;
+    s.FrameBorderSize = 1.0f;
+    s.WindowPadding = ImVec2(10.0f, 10.0f);
+    s.FramePadding = ImVec2(8.0f, 4.0f);
+    s.ItemSpacing = ImVec2(8.0f, 6.0f);
+    s.ItemInnerSpacing = ImVec2(6.0f, 4.0f);
+    s.ScrollbarSize = 12.0f;
+    s.GrabMinSize = 10.0f;
+    s.WindowTitleAlign = ImVec2(0.02f, 0.5f);
+
+    // Palette: neutral charcoal surfaces + a single blue accent.
+    const ImVec4 accent(0.26f, 0.59f, 0.98f, 1.00f); // active/selected blue
+    const ImVec4 accentDim(0.26f, 0.59f, 0.98f, 0.55f);
+    const ImVec4 bg(0.11f, 0.115f, 0.13f, 1.00f);      // window body
+    const ImVec4 panel(0.16f, 0.17f, 0.19f, 1.00f);    // frames/inputs
+    const ImVec4 panelHover(0.22f, 0.23f, 0.26f, 1.00f);
+    const ImVec4 header(0.20f, 0.21f, 0.24f, 1.00f);
+    const ImVec4 border(0.00f, 0.00f, 0.00f, 0.35f);
+    const ImVec4 text(0.88f, 0.89f, 0.91f, 1.00f);
+    const ImVec4 textDim(0.50f, 0.52f, 0.56f, 1.00f);
+
+    ImVec4* c = s.Colors;
+    c[ImGuiCol_Text] = text;
+    c[ImGuiCol_TextDisabled] = textDim;
+    c[ImGuiCol_WindowBg] = bg;
+    c[ImGuiCol_ChildBg] = ImVec4(0.13f, 0.135f, 0.15f, 1.00f);
+    c[ImGuiCol_PopupBg] = ImVec4(0.12f, 0.125f, 0.14f, 0.98f);
+    c[ImGuiCol_Border] = border;
+    c[ImGuiCol_BorderShadow] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+    c[ImGuiCol_FrameBg] = panel;
+    c[ImGuiCol_FrameBgHovered] = panelHover;
+    c[ImGuiCol_FrameBgActive] = accentDim;
+    c[ImGuiCol_TitleBg] = ImVec4(0.09f, 0.095f, 0.11f, 1.00f);
+    c[ImGuiCol_TitleBgActive] = ImVec4(0.14f, 0.15f, 0.18f, 0.97f); // slightly translucent
+    c[ImGuiCol_TitleBgCollapsed] = ImVec4(0.09f, 0.095f, 0.11f, 0.75f);
+    c[ImGuiCol_MenuBarBg] = ImVec4(0.13f, 0.135f, 0.15f, 1.00f);
+    c[ImGuiCol_ScrollbarBg] = ImVec4(0.09f, 0.095f, 0.11f, 0.60f);
+    c[ImGuiCol_ScrollbarGrab] = ImVec4(0.28f, 0.29f, 0.32f, 1.00f);
+    c[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.36f, 0.37f, 0.40f, 1.00f);
+    c[ImGuiCol_ScrollbarGrabActive] = accent;
+    c[ImGuiCol_CheckMark] = accent;
+    c[ImGuiCol_SliderGrab] = accent;
+    c[ImGuiCol_SliderGrabActive] = ImVec4(0.40f, 0.68f, 1.00f, 1.00f);
+    c[ImGuiCol_Button] = panel;
+    c[ImGuiCol_ButtonHovered] = panelHover;
+    c[ImGuiCol_ButtonActive] = accentDim;
+    c[ImGuiCol_Header] = header;                     // selectables/tree
+    c[ImGuiCol_HeaderHovered] = ImVec4(0.26f, 0.59f, 0.98f, 0.40f);
+    c[ImGuiCol_HeaderActive] = accentDim;
+    c[ImGuiCol_Separator] = ImVec4(0.28f, 0.29f, 0.32f, 0.60f);
+    c[ImGuiCol_SeparatorHovered] = accentDim;
+    c[ImGuiCol_SeparatorActive] = accent;
+    c[ImGuiCol_ResizeGrip] = ImVec4(0.28f, 0.29f, 0.32f, 0.60f);
+    c[ImGuiCol_ResizeGripHovered] = accentDim;
+    c[ImGuiCol_ResizeGripActive] = accent;
+    c[ImGuiCol_Tab] = ImVec4(0.14f, 0.15f, 0.17f, 1.00f);
+    c[ImGuiCol_TabHovered] = accentDim;
+    c[ImGuiCol_TabActive] = ImVec4(0.20f, 0.29f, 0.42f, 1.00f);
+    c[ImGuiCol_TabUnfocused] = ImVec4(0.11f, 0.115f, 0.13f, 1.00f);
+    c[ImGuiCol_TabUnfocusedActive] = ImVec4(0.16f, 0.19f, 0.24f, 1.00f);
+    c[ImGuiCol_PlotHistogram] = accent;
+    c[ImGuiCol_TextSelectedBg] = accentDim;
+    c[ImGuiCol_NavHighlight] = accent;
 }
 
 void RoomEditor::drawTopBar(EditorContext& ctx) {
@@ -764,6 +875,12 @@ void RoomEditor::rescanContent() {
 }
 
 void RoomEditor::drawContentBrowser(EditorContext& ctx) {
+    // Open roomy and clear of the other default-cascaded panels so the tile grid
+    // has space; the dev can still move/resize it (FirstUseEver only seeds it).
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos({vp->Pos.x + vp->Size.x - 452.0f, vp->Pos.y + 40.0f},
+                            ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({440.0f, 480.0f}, ImGuiCond_FirstUseEver);
     ImGui::Begin("Content Browser");
     if (!m_contentScanned) rescanContent(); // first open: scan once, not per frame
 
@@ -779,25 +896,123 @@ void RoomEditor::drawContentBrowser(EditorContext& ctx) {
         return needle.empty() || toLowerAscii(name).find(needle) != std::string::npos;
     };
 
+    // Breadcrumb: "assets" root plus each segment of the current sub-folder, each
+    // clickable to jump back up. The scan is flat + recursive; m_contentDir just
+    // scopes which tiles show. Guard against a stale dir the last scan dropped.
+    const std::string prefix = m_contentDir.empty() ? std::string() : m_contentDir + "/";
     ImGui::Separator();
-    ImGui::BeginChild("##contentlist", ImVec2(0.0f, 240.0f), ImGuiChildFlags_Borders);
-    for (int k = 0; k < static_cast<int>(AssetKind::Count); ++k) {
-        bool headerDrawn = false;
-        for (const ContentEntry& e : m_content) {
-            if (static_cast<int>(e.kind) != k || !matches(e.name)) continue;
-            if (!headerDrawn) {
-                ImGui::SeparatorText(kAssetKindNames[k]); // group by type
-                headerDrawn = true;
-            }
-            ImGui::PushID(e.path.c_str());
-            if (ImGui::Selectable(e.name.c_str(), m_contentSelected == e.path,
-                                  ImGuiSelectableFlags_SpanAllColumns))
-                m_contentSelected = e.path;
-            ImGui::SameLine(240.0f);
-            ImGui::TextDisabled("%s", humanSize(e.size).c_str());
+    if (ImGui::SmallButton("assets")) m_contentDir.clear();
+    {
+        std::string acc;
+        std::size_t start = 0;
+        while (start <= m_contentDir.size()) {
+            const std::size_t slash = m_contentDir.find('/', start);
+            const std::size_t end = slash == std::string::npos ? m_contentDir.size() : slash;
+            if (end == start) break; // trailing/empty segment
+            const std::string seg = m_contentDir.substr(start, end - start);
+            acc = acc.empty() ? seg : acc + "/" + seg;
+            ImGui::SameLine();
+            ImGui::TextDisabled("/");
+            ImGui::SameLine();
+            ImGui::PushID(static_cast<int>(start));
+            if (ImGui::SmallButton(seg.c_str())) m_contentDir = acc;
             ImGui::PopID();
+            if (slash == std::string::npos) break;
+            start = slash + 1;
         }
     }
+
+    // Split the flat scan into this folder's immediate sub-folders + files. A path
+    // like "anim_packs/Pack/idle.fbx" under dir "anim_packs" contributes folder
+    // "Pack"; with no further slash it is a file that lives in the current dir.
+    std::vector<std::string> folders;      // immediate child folder leaf names
+    std::vector<const ContentEntry*> files; // files directly in m_contentDir
+    for (const ContentEntry& e : m_content) {
+        if (e.path.compare(0, prefix.size(), prefix) != 0) continue;
+        const std::string rest = e.path.substr(prefix.size());
+        const std::size_t slash = rest.find('/');
+        if (slash == std::string::npos) {
+            if (matches(e.name)) files.push_back(&e);
+        } else {
+            const std::string leaf = rest.substr(0, slash);
+            if (std::find(folders.begin(), folders.end(), leaf) == folders.end())
+                folders.push_back(leaf);
+        }
+    }
+    std::sort(folders.begin(), folders.end());
+
+    // Tile grid: folders first, then files (already kind-then-name sorted by the
+    // scan). Each tile is a colour-coded placeholder square + truncated caption;
+    // a per-row counter wraps to the panel width. Real rendered previews are out
+    // of scope — the square's colour + tag stands in for a thumbnail.
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float tile = 84.0f;
+    const float availW = ImGui::GetContentRegionAvail().x;
+    const int perRow =
+        std::max(1, static_cast<int>((availW + style.ItemSpacing.x) / (tile + style.ItemSpacing.x)));
+
+    ImGui::BeginChild("##contentgrid", ImVec2(0.0f, 300.0f), ImGuiChildFlags_Borders);
+    int cell = 0;
+    const auto nextCell = [&]() {
+        if (++cell % perRow != 0) ImGui::SameLine();
+    };
+
+    for (const std::string& leaf : folders) {
+        ImGui::PushID(("dir/" + leaf).c_str());
+        ImGui::BeginGroup();
+        ImGui::PushStyleColor(ImGuiCol_Button, kFolderTileColor);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                              ImVec4(kFolderTileColor.x + 0.12f, kFolderTileColor.y + 0.12f,
+                                     kFolderTileColor.z + 0.10f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, kFolderTileColor);
+        const bool enter = ImGui::Button("DIR", ImVec2(tile, tile));
+        ImGui::PopStyleColor(3);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s  (folder)", leaf.c_str());
+        if (enter) m_contentDir = prefix + leaf;
+        ImGui::TextUnformatted(fitLabel(leaf, tile).c_str());
+        ImGui::EndGroup();
+        ImGui::PopID();
+        nextCell();
+    }
+
+    for (const ContentEntry* e : files) {
+        ImGui::PushID(e->path.c_str());
+        const int k = static_cast<int>(e->kind);
+        const bool selected = m_contentSelected == e->path;
+        ImVec4 col = kindTileColor(k);
+        if (selected) { // brighten the selected tile so it reads as active
+            col.x = std::min(1.0f, col.x + 0.18f);
+            col.y = std::min(1.0f, col.y + 0.18f);
+            col.z = std::min(1.0f, col.z + 0.18f);
+        }
+        ImGui::BeginGroup();
+        ImGui::PushStyleColor(ImGuiCol_Button, col);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                              ImVec4(std::min(1.0f, col.x + 0.12f), std::min(1.0f, col.y + 0.12f),
+                                     std::min(1.0f, col.z + 0.12f), 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, col);
+        const bool clicked = ImGui::Button(kAssetKindTags[k], ImVec2(tile, tile));
+        ImGui::PopStyleColor(3);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s\n%s  |  %s", e->name.c_str(),
+                              kAssetKindNames[k], humanSize(e->size).c_str());
+            // Double-click a model tile to drop it into the world (mirrors the
+            // Place button + the Assets panel's double-click-to-open convention).
+            if (e->kind == AssetKind::Model && ImGui::IsMouseDoubleClicked(0)) {
+                m_contentSelected = e->path;
+                placeSelectedProp(ctx);
+            }
+        }
+        if (clicked) m_contentSelected = e->path;
+        ImGui::TextUnformatted(fitLabel(e->name, tile).c_str());
+        ImGui::EndGroup();
+        ImGui::PopID();
+        nextCell();
+    }
+
+    if (folders.empty() && files.empty())
+        ImGui::TextDisabled(m_content.empty() ? "(no assets under assets/)" : "(empty folder)");
     ImGui::EndChild();
 
     // Details for the current selection.
