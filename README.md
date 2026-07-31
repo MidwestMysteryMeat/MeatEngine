@@ -1,62 +1,116 @@
 # MeatEngine
 
-A small, readable, single-player **voxel FPS engine** in modern C++20 — tight raw-mouse
-FPS feel, chunked voxel worlds you can build by hand in an in-engine **Room Designer** or
-generate as seeded **procedural dungeons**, with a deliberately **PSX-forward** renderer
-(half-res, nearest filtering, dither, fog — all toggleable).
+A **PSX-styled, host-authoritative voxel FPS engine** in modern C++20 — chunked voxel
+worlds with a deliberately retro renderer (low internal resolution, ordered dither,
+vertex jitter, affine texture mapping), a Quake/Source-lineage networking model, and an
+in-engine Room Designer, all in one executable with no scripting language required to
+ship a game.
 
-**Status: playable vertical slice.** The core loop, netcode, combat, inventory, save/load,
-editor, dungeons, scripting and packaging are implemented; see [ROADMAP.md](ROADMAP.md) for
-what's done vs. pending and [ARCHITECTURE.md](ARCHITECTURE.md) for how it fits together.
-Honest caveats: skeletal **bodies** animate on any mixamorig character but **hand fidelity
-on variant rigs** and full locomotion/viewmodels are still landing; and human feel-playtests
-are pending.
+The simulation always runs inside a server: in-process behind a loopback transport for
+single-player, a listen server for co-op/PvP, and headless for a dedicated host. The
+client is a renderer plus predictor talking to that server through a transport interface —
+there is no separate single-player code path.
 
-## Feature set
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the engine contract and
+[docs/ROLLOUT.md](docs/ROLLOUT.md) for the current roadmap (what's done vs. planned).
 
-Implemented:
+## Features
 
-- GLFW + OpenGL 4.5 core, fixed 60 Hz simulation, interpolated rendering
-- Voxel chunks (32³; **dev-configurable voxel size**, 0.5 m default) with worker-thread
-  meshing, greedy mesher, DDA raycast and streaming
-- Jolt physics: capsule character controller tuned for FPS, chunk colliders, hitscan
-- Forward Blinn-Phong (directional + point/spot) with a toggleable PSX post pipeline
-- Server-authoritative netcode: loopback single-player + ENet host/join, client prediction
-  with rewind-reconciliation, 20 Hz snapshots; LAN discovery + master-list session browsing
-- Combat: hitscan + projectiles + AoE, material penetration, weapon archetypes (pistol/SMG/
-  shotgun/sniper/RPG/grenade/claymore), deployable **turrets** and mobile **companions**
-- FBX / OBJ / GLB models via Assimp; PNG/JPG textures; skeletal animation (Mixamo-named
-  skeleton) with clip-merge and a VLM-gated render booth
-- Slot inventory (multiple GameRules models), pickups, equip/use; full save/load (JSON meta
-  + chunk-delta overlay), autosave
-- Room Designer editor (F1) + in-engine IDE panels (asset browser, Lua hot-reload)
-- Seeded procedural dungeons (rooms, corridors, loops, verticality), mixable with
-  hand-authored spaces
-- Lua gameplay scripting (sol2), sandboxed with an instruction budget
-- Packaging SDK: `--project`, `new_project.py`, `package.ps1` → shippable zip
+**Voxel world & rendering**
+- Chunked voxel world (fixed 32³ chunks; dev-configurable voxel size, 0.5 m default) with
+  worker-thread greedy meshing, DDA raycast, and radius-based streaming
+- PSX-forward renderer: half-resolution internal target with nearest upscale, ordered
+  dither, per-vertex snapping (jitter), and affine/`noperspective` texture mapping — the
+  signature PS1 look, all toggleable at runtime (F6 shader hot-reload)
+- Forward Blinn-Phong lighting: one directional sun + ambient, point lights (≤32) and
+  spot lights, emissive materials, atlas materials, and torch-style block-light flood-fill
+  (levels 0–15) baked into the mesh, plus vertex fog
 
-Pending: animation blend graph + retargeting for variant rigs, delta-compressed snapshots +
-lag compensation (PvP), human feel-playtests.
+**World generation**
+- FastNoiseLite OpenSimplex2 + FBm terrain (deterministic from a seed)
+- Seeded procedural dungeon generation (rooms, corridors, loops, verticality), mixable
+  with hand-authored spaces
+
+**Netcode (host-authoritative)**
+- ENet UDP transport with reliable + unreliable channels behind a `Transport` interface
+  (loopback and ENet share one code path)
+- Client-side prediction with rewind-and-replay reconciliation; remote entities
+  interpolate 100 ms behind the newest snapshot
+- Delta-compressed snapshots with acks (~97% smaller) and 16-bit position quantization
+  (MP-verified)
+- Session discovery: LAN broadcast beacon + browser and a self-hostable master-server
+  list (`tools/master_server.py`)
+
+**Physics & AI**
+- Jolt Physics: `CharacterVirtual` capsule controller tuned for FPS feel, chunk mesh
+  colliders, and world raycasts
+- Recast/Detour navmesh with an A* fallback for NPC pathing
+- GAS-lite (GameplayAbilitySystem-inspired) ability layer; `NpcZombie` melee chaser and an
+  armed `NpcShooter`
+
+**Animation**
+- ozz-animation skeletal core (offset-authoritative), cross-skeleton retargeting, and
+  clip-merge onto a canonical Mixamo-named skeleton
+- Idle↔walk blending with a server-authoritative walk weight, foot-curve grounding, and
+  deterministic facing
+- Two-bone foot IK for terrain foot-planting (VLM-verified, no regression)
+
+**Scripting & tooling**
+- Lua 5.4 gameplay scripting via sol2, sandboxed with an instruction budget
+- ImGui Room Designer editor (+ ImGuizmo transform gizmos) for hand-building worlds
+- Positional 3D audio (miniaudio)
+- `tools/autorig/` — a headless Blender auto-rigger that rigs an un-rigged humanoid mesh
+  to the Mixamo-named skeleton and exports a rigged FBX, so shared clips play on it with
+  no retargeting
+
+## Tech stack
+
+All third-party dependencies are fetched and built at configure time via CMake
+`FetchContent` (pinned versions in [`cmake/Dependencies.cmake`](cmake/Dependencies.cmake);
+license summary in [THIRD_PARTY.md](THIRD_PARTY.md)):
+
+| Library | Role |
+|---|---|
+| GLFW 3.4 | Window, input, GL context |
+| glad 2 (GL 4.5 core) | OpenGL loader (generated at configure) |
+| GLM 1.0.1 | Math |
+| Assimp 5.4.3 | FBX / OBJ / GLB import |
+| Jolt Physics 5.2.0 | Physics + character controller |
+| Recast/Detour 1.6.0 | Navmesh build + query |
+| ozz-animation 0.16.0 | Skeletal animation, blending, IK jobs |
+| Lua 5.4.7 + sol2 3.3.0 | Scripting runtime + bindings |
+| Dear ImGui (docking) + ImGuizmo | Editor & debug UI |
+| ENet 1.3.18 | UDP transport |
+| FastNoiseLite 1.1.1 | Worldgen noise |
+| enkiTS 1.11 | Task scheduler (parallel meshing/worldgen) |
+| stb (stb_image) | PNG / JPG loading |
+| miniaudio 0.11.21 | Audio playback |
+| nlohmann/json 3.11.3 | Save files & configs |
+| EnTT 3.13.2, bitsery 5.2.4 | Vendored, staged for incremental adoption (see roadmap) |
 
 ## Building
 
-Both platforms are built and configured on every push by [CI](.github/workflows/ci.yml)
-(Ubuntu/Clang + Windows/MSVC). First build fetches and compiles all third-party dependencies
-(Assimp and Jolt dominate; expect 10–20 minutes once).
+Both platforms configure and build on every push via CI (Ubuntu/Clang + Windows/MSVC).
+The **first** configure fetches and compiles every dependency — Assimp and Jolt dominate;
+expect roughly 10–20 minutes once. Requires CMake 3.28+ and Python 3 (for the glad loader
+generation, which needs `jinja2`).
 
 ### Windows
 
-Requires Visual Studio 2022 (Desktop C++), CMake 3.28+, Python 3 (for glad generation).
+Requires Visual Studio 2022 (Desktop C++) and Ninja.
 
 ```powershell
-./scripts/build.ps1            # configure + build (Ninja, Release)
+./scripts/build.ps1            # enters the VS dev shell, configures + builds (Ninja, Release)
 ./build/MeatEngine.exe         # run
 ```
 
+`build.ps1` installs `jinja2` for the current user and accepts `-Config Debug` and
+`-Clean`.
+
 ### Linux
 
-Requires a C++20 compiler (GCC 12+ or Clang 15+), CMake 3.28+, Ninja, Python 3 + jinja2 (glad
-generation), and the GL/X11 (and optionally Wayland) dev headers GLFW builds against:
+Requires a C++20 compiler (GCC 12+ or Clang 15+), Ninja, Python 3 + jinja2, and the
+GL / X11 (and optionally Wayland) dev headers GLFW builds against:
 
 ```bash
 sudo apt-get install -y ninja-build libgl1-mesa-dev \
@@ -69,44 +123,55 @@ cmake --build build --parallel
 ./build/MeatEngine        # run
 ```
 
-## Controls
+## Running
 
-| Input | Action |
+Launching with no mode argument opens the ImGui browser menu (single-player, host, LAN
+list, internet/master list, direct join). CLI flags bypass the menu for scripting and
+dedicated use:
+
+| Flag | Effect |
 |---|---|
-| WASD / mouse | Move / look |
-| Space / LShift / LCtrl | Jump / sprint / crouch |
-| LMB / RMB | Fire or mine / place block |
-| 1-9 / scroll | Hotbar select |
-| E | Use held item (medkit) |
-| Tab | Backpack |
-| F1 | Room Designer editor (host/single-player) |
-| F5 | Quicksave (auto-saves on exit; `--load saves/autosave.json` to resume) |
-| F6 | Shader hot-reload |
-| F12 | Screenshot → `build/shot.png` |
+| `--play` | Straight into single-player (in-process listen server) |
+| `--host` | Host a listen server (you play) |
+| `--join <addr[:port]>` | Connect to a host |
+| `--server` | Headless dedicated server (no window/renderer) |
+| `--editor` | Start in the Room Designer editor |
+| `--project <dir>` | Load a game project folder (`game.json` + `scripts/` + `assets/`) |
+| `--seed <n>` / `--voxelsize <m>` | Override world seed / voxel metric scale |
+| `--port <n>` / `--name <s>` / `--master <host[:port]>` | Networking overrides |
+| `--load <slot>` | Resume a save on startup |
 
-Multiplayer: `--host` to serve, `--join <ip>` to connect, `--server` for headless dedicated.
+In-game: **WASD/mouse** move & look, **Space/LShift/LCtrl** jump/sprint/crouch, **LMB/RMB**
+fire-or-mine / place, **1–9 / scroll** hotbar, **E** use, **Tab** backpack, **F1** toggle
+the Room Designer over the running game, **F5** quicksave, **F6** shader hot-reload.
 
 ## Making a game
 
-A game is a project folder — config, Lua, and assets — no C++ required:
+A game is a project folder — config, Lua, and assets — with no C++ required:
 
 ```powershell
-python tools/new_project.py MyGame --dir F:\Games    # scaffold a runnable game
+python tools/new_project.py MyGame --dir F:\Games        # scaffold a runnable game
 ./build/MeatEngine.exe --project F:\Games\MyGame --play   # run it
 powershell tools/package.ps1 -Project F:\Games\MyGame     # → dist/MyGame + .zip to ship
 ```
 
-`game.json` sets the name, seed, inventory model, and economy/ballistics rules;
-`scripts/*.lua` is server-authoritative gameplay (see `assets/scripts/example.lua`
-for the `game` API). The packaged folder runs standalone via its `Play.bat`.
+`game.json` sets the name, seed, inventory model, voxel size, and economy/ballistics
+rules; `scripts/*.lua` is server-authoritative gameplay. The packaged folder runs
+standalone.
 
 ## License
 
-Licensed under the **[Apache License 2.0](LICENSE)** — free to use, modify, fork and build on, commercially or not.
+Licensed under the **[Apache License 2.0](LICENSE)** — free to use, modify, fork, and
+build on, commercially or not.
 
-**Credit is required.** Apache-2.0 §4(c)–(d) obliges you to keep the copyright notice and to reproduce [`NOTICE`](NOTICE) in anything you distribute, including binaries and hosted builds. Credit it as `MeatEngine by MysteryMeat` (https://github.com/MidwestMysteryMeat/MeatEngine) in your credits screen, About box, or docs. The project name and the MysteryMeat name are not licensed for endorsement or promotion (§6).
+**Credit is required.** Apache-2.0 §4(c)–(d) obliges you to keep the copyright notice and
+to reproduce [`NOTICE`](NOTICE) in anything you distribute, including binaries and hosted
+builds. Credit it as `MeatEngine by MysteryMeat`
+(https://github.com/MidwestMysteryMeat/MeatEngine) in your credits screen, About box, or
+docs. The project and MysteryMeat names are not licensed for endorsement or promotion (§6).
 
 Third-party libraries stay under their own licenses ([THIRD_PARTY.md](THIRD_PARTY.md)).
-Bundled art/audio is CC-BY/CC0 with per-asset credits in [assets/ATTRIBUTION.md](assets/ATTRIBUTION.md) — those credits are required separately from this project's.
+Bundled art/audio is CC-BY/CC0 with per-asset credits in
+[assets/ATTRIBUTION.md](assets/ATTRIBUTION.md) — those credits are required separately.
 
 Previously MIT; relicensed to Apache-2.0 on 2026-07-30. Snapshots released under MIT stay MIT.

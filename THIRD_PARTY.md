@@ -17,7 +17,17 @@ none are vendored into this repository except where noted.
 | [stb](https://github.com/nothings/stb) (stb_image) | PNG/JPG loading | Public domain / MIT |
 | [miniaudio](https://github.com/mackron/miniaudio) | Audio playback | Public domain / MIT-0 |
 | [nlohmann/json](https://github.com/nlohmann/json) 3.11 | Save files, configs | MIT |
-| [Pinocchio](https://github.com/pmolodo/Pinocchio) | tools/autorig (planned, will be vendored under `third_party/`) | MIT (verify at vendor time) |
+| [ENet](https://github.com/lsalzman/enet) 1.3.18 | UDP transport | MIT |
+| [Recast/Detour](https://github.com/recastnavigation/recastnavigation) 1.6.0 | Navmesh build + query | zlib |
+| [ozz-animation](https://github.com/guillaumeblanc/ozz-animation) 0.16.0 | Skeletal animation, blending, two-bone/aim IK | MIT |
+| [enkiTS](https://github.com/dougbinks/enkiTS) 1.11 | Task scheduler | zlib |
+| [FastNoiseLite](https://github.com/Auburn/FastNoiseLite) 1.1.1 | Worldgen noise (single header) | MIT |
+| [EnTT](https://github.com/skypjack/entt) 3.13.2 | ECS — vendored, staged for incremental adoption | MIT |
+| [bitsery](https://github.com/fraillt/bitsery) 5.2.4 | Bit-packing/serialization — vendored, staged | MIT |
+
+`tools/autorig/autorig.py` is a headless **Blender** script (Blender is GPL and is NOT bundled —
+it is invoked externally on the dev's machine and only its FBX output is used, so no GPL code
+enters this repo). It replaced the earlier Pinocchio plan.
 
 ## Techniques adapted (no source copied)
 
