@@ -141,7 +141,7 @@ The engine must not force "FPS shooter." A project picks its genre/game-mode; th
 (guns, hotbar, hitscan, enemy NPCs) is a MODULE a game opts into, so a space ship-builder or an
 underwater explorer needn't ship guns. Composes with world templates (B) + environments (B3).
 - [~] **H1. Game templates (UE5-style)** ⭐ — FPS↔TPS, **Space (H4)**, **Racer** (ground car +
-  chase cam). Module opt-in / deeper racer track systems still open.
+  chase cam + AI pace + lap timer + speed HUD). Module opt-in / track mesh still open.
 - [x] **H2. Weapon fire modes** ⭐ — Semi / Auto / Burst with trigger-edge discipline + shotgun pellets.
 - [x] **H3. Ammo + magazines** — mag/reserve/reload + HUD; gated by `finiteAmmo`.
 - [~] **H4. Space ship template** ⭐ — Fab hulls, station/junkyard, ship auto-cannon, New Map
