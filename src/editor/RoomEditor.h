@@ -27,10 +27,10 @@ private:
     enum class Tool { Place, Erase, Wall, Floor, Platform, Doorway, Light, SeedVolume };
     enum class Selection { None, Light, Volume, Prop };
 
-    // One-time Dear ImGui style pass for a modern dark tool look. Applied to the
-    // shared ImGui style (editor windows only — the in-game HUD runs in a separate
-    // session where the editor never updates, so it keeps the retro look).
+    // One-time Dear ImGui style: UE5-Slate-inspired dark charcoal + blue select.
+    // Editor windows only — the in-game HUD is not drawn while this is active.
     void applyEditorTheme();
+    void applyBlueprintNodeStyle(); // imnodes palette (UE blueprint colors)
 
     void updateFlyCamera(EditorContext& ctx, float dt);
     void drawTopBar(EditorContext& ctx);
@@ -39,6 +39,12 @@ private:
     void drawOutliner(EditorContext& ctx);
     void drawGizmo(EditorContext& ctx, const glm::mat4& view, const glm::mat4& proj);
     void handleTool(EditorContext& ctx, glm::vec3 rayOrigin, glm::vec3 rayDir);
+    void drawBlueprintDetails(EditorContext& ctx);
+    void drawBlueprintContextMenu(EditorContext& ctx);
+    void openBlueprintNode(int nodeId);
+    void focusBlueprintNode(int nodeId);
+    void createObjectNodeFromSelection(EditorContext& ctx);
+    void updateObjectHighlight(EditorContext& ctx);
 
     // IDE panels — just more ImGui windows drawn inside update(); all file I/O
     // goes through the ctx callbacks (never std::filesystem in the editor).
@@ -171,6 +177,16 @@ private:
     int m_bpAddKind = 0; // palette index for "Add node"
     // Node ids that already received SetNodeGridSpacePos (imnodes owns drag after).
     std::vector<int> m_bpPlacedIds;
+    // UE-style: double-click / Open opens a Details panel for this node id (0 = none).
+    int m_bpOpenNodeId = 0;
+    // Right-click "place node here" spawn position in grid space.
+    float m_bpContextGridX = 80.0f;
+    float m_bpContextGridY = 80.0f;
+    bool m_bpContextOpen = false;
+    char m_bpSearch[64] = {};
+    // World object highlight driven by selected GetWorldObject / Highlight nodes.
+    std::uint32_t m_bpHighlightPropId = 0;
+    float m_bpHighlightPulse = 0.0f;
 };
 
 } // namespace meat

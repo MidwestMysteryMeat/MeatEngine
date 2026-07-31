@@ -32,6 +32,10 @@ enum class NodeKind : std::uint8_t {
     // Math
     MathAdd,
     MathGreater,
+    // Object / world (editor highlight + prop id into scripts)
+    GetWorldObject,   // pure: objectId + name from strA/intA (world prop id)
+    HighlightObject,  // action: log + editor selects/highlights prop by id
+    PrintObject,      // action: log object id/name
 };
 
 enum class PinKind : std::uint8_t {
@@ -40,6 +44,7 @@ enum class PinKind : std::uint8_t {
     Float,
     String,
     Bool,
+    Object, // world prop / actor id (wire-compatible with Int for codegen)
 };
 
 struct GraphPinDesc {

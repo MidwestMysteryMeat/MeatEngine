@@ -79,11 +79,36 @@ const GraphPinDesc kMathGreater[] = {
     {"b", PinKind::Float, true},
     {"gt", PinKind::Bool, false},
 };
+const GraphPinDesc kGetWorldObject[] = {
+    {"object", PinKind::Object, false},
+    {"id", PinKind::Int, false},
+    {"name", PinKind::String, false},
+};
+const GraphPinDesc kHighlightObject[] = {
+    {"exec", PinKind::Exec, true},
+    {"then", PinKind::Exec, false},
+    {"object", PinKind::Object, true},
+};
+const GraphPinDesc kPrintObject[] = {
+    {"exec", PinKind::Exec, true},
+    {"then", PinKind::Exec, false},
+    {"object", PinKind::Object, true},
+};
 
 struct LayoutRef {
     const GraphPinDesc* pins;
     int count;
 };
+
+bool pinsCompatible(PinKind a, PinKind b) {
+    if (a == b) return true;
+    // Object ids are integers at runtime — allow Object↔Int wiring (UE soft-object feel).
+    if ((a == PinKind::Object && b == PinKind::Int) || (a == PinKind::Int && b == PinKind::Object))
+        return true;
+    if ((a == PinKind::Float && b == PinKind::Int) || (a == PinKind::Int && b == PinKind::Float))
+        return true;
+    return false;
+}
 
 LayoutRef layoutOf(NodeKind k) {
     switch (k) {
@@ -103,6 +128,9 @@ LayoutRef layoutOf(NodeKind k) {
     case NodeKind::Branch: return {kBranch, 4};
     case NodeKind::MathAdd: return {kMathAdd, 3};
     case NodeKind::MathGreater: return {kMathGreater, 3};
+    case NodeKind::GetWorldObject: return {kGetWorldObject, 3};
+    case NodeKind::HighlightObject: return {kHighlightObject, 3};
+    case NodeKind::PrintObject: return {kPrintObject, 3};
     }
     return {kActionLog, 3};
 }
@@ -143,6 +171,9 @@ std::string kindToString(NodeKind k) {
     case NodeKind::Branch: return "Branch";
     case NodeKind::MathAdd: return "MathAdd";
     case NodeKind::MathGreater: return "MathGreater";
+    case NodeKind::GetWorldObject: return "GetWorldObject";
+    case NodeKind::HighlightObject: return "HighlightObject";
+    case NodeKind::PrintObject: return "PrintObject";
     }
     return "ActionLog";
 }
@@ -164,6 +195,9 @@ NodeKind kindFromString(const std::string& s) {
     if (s == "Branch") return NodeKind::Branch;
     if (s == "MathAdd") return NodeKind::MathAdd;
     if (s == "MathGreater") return NodeKind::MathGreater;
+    if (s == "GetWorldObject") return NodeKind::GetWorldObject;
+    if (s == "HighlightObject") return NodeKind::HighlightObject;
+    if (s == "PrintObject") return NodeKind::PrintObject;
     return NodeKind::ActionLog;
 }
 
@@ -241,6 +275,12 @@ std::string emitDataExpr(EmitCtx& ctx, int nodeId, int outPin) {
         r = "((" + a + ") > (" + b + "))";
         break;
     }
+    case NodeKind::GetWorldObject:
+        if (outPin == 0 || outPin == 1)
+            r = std::to_string(n.intA); // object id / id
+        else
+            r = escapeLuaString(n.strA.empty() ? "object" : n.strA);
+        break;
     default:
         r = "0";
         break;
@@ -312,6 +352,13 @@ void emitExecChain(std::ostringstream& out, EmitCtx& ctx, int nodeId, int indent
         out << pad << "end\n";
         break;
     }
+    case NodeKind::HighlightObject:
+    case NodeKind::PrintObject: {
+        const std::string obj = emitInputExpr(ctx, n, 2, std::to_string(n.intA));
+        out << pad << "game.log(\"[blueprint] object \" .. tostring(" << obj << "))\n";
+        nextExec(1);
+        break;
+    }
     default:
         // Pure / event nodes shouldn't be on an exec chain as targets except events' then.
         nextExec(0);
@@ -349,22 +396,25 @@ const GraphPinDesc* nodePinLayout(NodeKind kind, int& outCount) {
 
 const char* nodeKindName(NodeKind kind) {
     switch (kind) {
-    case NodeKind::EventOnInit: return "On Init";
-    case NodeKind::EventOnTick: return "On Tick";
-    case NodeKind::EventOnPlayerJoin: return "On Player Join";
-    case NodeKind::EventOnPlayerDeath: return "On Player Death";
-    case NodeKind::ActionLog: return "Log";
+    case NodeKind::EventOnInit: return "Event BeginPlay";
+    case NodeKind::EventOnTick: return "Event Tick";
+    case NodeKind::EventOnPlayerJoin: return "Event Player Join";
+    case NodeKind::EventOnPlayerDeath: return "Event Player Death";
+    case NodeKind::ActionLog: return "Print String";
     case NodeKind::ActionSetBlock: return "Set Block";
     case NodeKind::ActionSpawnPickup: return "Spawn Pickup";
-    case NodeKind::GetPlayerCount: return "Player Count";
-    case NodeKind::GetItemId: return "Item Id";
-    case NodeKind::Randi: return "Random Int";
-    case NodeKind::ConstInt: return "Const Int";
-    case NodeKind::ConstFloat: return "Const Float";
-    case NodeKind::ConstString: return "Const String";
+    case NodeKind::GetPlayerCount: return "Get Player Count";
+    case NodeKind::GetItemId: return "Get Item Id";
+    case NodeKind::Randi: return "Random Integer";
+    case NodeKind::ConstInt: return "Integer";
+    case NodeKind::ConstFloat: return "Float";
+    case NodeKind::ConstString: return "String";
     case NodeKind::Branch: return "Branch";
     case NodeKind::MathAdd: return "Add";
     case NodeKind::MathGreater: return "Greater";
+    case NodeKind::GetWorldObject: return "Get World Object";
+    case NodeKind::HighlightObject: return "Highlight Object";
+    case NodeKind::PrintObject: return "Print Object";
     }
     return "Node";
 }
@@ -374,10 +424,13 @@ const char* nodeKindCategory(NodeKind kind) {
     switch (kind) {
     case NodeKind::ActionLog:
     case NodeKind::ActionSetBlock:
-    case NodeKind::ActionSpawnPickup: return "Action";
+    case NodeKind::ActionSpawnPickup:
+    case NodeKind::HighlightObject:
+    case NodeKind::PrintObject: return "Action";
     case NodeKind::Branch: return "Flow";
     case NodeKind::MathAdd:
     case NodeKind::MathGreater: return "Math";
+    case NodeKind::GetWorldObject: return "Object";
     default: return "Data";
     }
 }
@@ -434,6 +487,10 @@ int NodeGraph::addNode(NodeKind kind, float x, float y) {
         n.intC = 4;
         n.intD = 1;
     }
+    if (kind == NodeKind::GetWorldObject) {
+        n.strA = "None";
+        n.intA = 0;
+    }
     nodes.push_back(n);
     return n.id;
 }
@@ -453,7 +510,7 @@ bool NodeGraph::addLink(int fromNode, int fromPin, int toNode, int toPin) {
     const GraphPinDesc* pb = nodePinLayout(b->kind, cb);
     if (fromPin < 0 || fromPin >= ca || toPin < 0 || toPin >= cb) return false;
     if (pa[fromPin].isInput || !pb[toPin].isInput) return false;
-    if (pa[fromPin].kind != pb[toPin].kind) return false;
+    if (!pinsCompatible(pa[fromPin].kind, pb[toPin].kind)) return false;
     // Single link per input pin.
     std::erase_if(links, [toNode, toPin](const GraphLink& L) {
         return L.toNode == toNode && L.toPin == toPin;
