@@ -7,6 +7,33 @@
 namespace meat {
 namespace {
 
+// Positions dominate the snapshot payload and don't need 32-bit precision on the wire — clients
+// only interpolate them for rendering; the server stays authoritative. Quantize each component to
+// 16 bits over the world bound (±2048 m → ~6 cm steps), halving a vec3 from 12 to 6 bytes. Absolute
+// (not delta-of-delta), so there's no cumulative drift. (bitsery is vendored for a future full
+// bit-packed codec; this surgical fixed-point pass avoids threading a bit-stream through the
+// byte-aligned framing.)
+constexpr float kPosMin = -2048.0f, kPosMax = 2048.0f;
+std::uint16_t quantize(float v, float lo, float hi) {
+    const float t = std::clamp((v - lo) / (hi - lo), 0.0f, 1.0f);
+    return static_cast<std::uint16_t>(t * 65535.0f + 0.5f);
+}
+float dequantize(std::uint16_t q, float lo, float hi) {
+    return lo + (static_cast<float>(q) / 65535.0f) * (hi - lo);
+}
+void writePos(ByteWriter& w, const glm::vec3& p) {
+    w.write(quantize(p.x, kPosMin, kPosMax));
+    w.write(quantize(p.y, kPosMin, kPosMax));
+    w.write(quantize(p.z, kPosMin, kPosMax));
+}
+bool readPos(ByteReader& r, glm::vec3& p) {
+    std::uint16_t x = 0, y = 0, z = 0;
+    if (!r.read(x) || !r.read(y) || !r.read(z)) return false;
+    p = {dequantize(x, kPosMin, kPosMax), dequantize(y, kPosMin, kPosMax),
+         dequantize(z, kPosMin, kPosMax)};
+    return true;
+}
+
 std::uint8_t playerFlags(const PlayerState& s) {
     return static_cast<std::uint8_t>((s.onGround ? 1u : 0u) | (s.crouched ? 2u : 0u));
 }
@@ -23,7 +50,7 @@ std::uint8_t diffPlayer(const PlayerState& c, const PlayerState& b) {
 }
 
 void writePlayerFields(ByteWriter& w, const PlayerState& s, std::uint8_t m) {
-    if (m & playerfield::Pos)    w.write(s.pos);
+    if (m & playerfield::Pos)    writePos(w, s.pos);
     if (m & playerfield::Vel)    w.write(s.vel);
     if (m & playerfield::Yaw)    w.write(s.yaw);
     if (m & playerfield::Pitch)  w.write(s.pitch);
@@ -32,7 +59,7 @@ void writePlayerFields(ByteWriter& w, const PlayerState& s, std::uint8_t m) {
 }
 
 bool readPlayerFields(ByteReader& r, PlayerState& s, std::uint8_t m) {
-    if ((m & playerfield::Pos)   && !r.read(s.pos))   return false;
+    if ((m & playerfield::Pos)   && !readPos(r, s.pos)) return false;
     if ((m & playerfield::Vel)   && !r.read(s.vel))   return false;
     if ((m & playerfield::Yaw)   && !r.read(s.yaw))   return false;
     if ((m & playerfield::Pitch) && !r.read(s.pitch)) return false;
@@ -59,7 +86,7 @@ std::uint8_t diffEntity(const EntityState& c, const EntityState& b) {
 
 void writeEntityFields(ByteWriter& w, const EntityState& e, std::uint8_t m) {
     if (m & entityfield::Archetype) w.write(e.archetype);
-    if (m & entityfield::Pos)       w.write(e.pos);
+    if (m & entityfield::Pos)       writePos(w, e.pos);
     if (m & entityfield::Yaw)       w.write(e.yaw);
     if (m & entityfield::Anim)      w.write(e.anim);
     if (m & entityfield::Health)    w.write(e.health);
@@ -68,7 +95,7 @@ void writeEntityFields(ByteWriter& w, const EntityState& e, std::uint8_t m) {
 
 bool readEntityFields(ByteReader& r, EntityState& e, std::uint8_t m) {
     if ((m & entityfield::Archetype) && !r.read(e.archetype)) return false;
-    if ((m & entityfield::Pos)       && !r.read(e.pos))       return false;
+    if ((m & entityfield::Pos)       && !readPos(r, e.pos))   return false;
     if ((m & entityfield::Yaw)       && !r.read(e.yaw))       return false;
     if ((m & entityfield::Anim)      && !r.read(e.anim))      return false;
     if ((m & entityfield::Health)    && !r.read(e.health))    return false;
