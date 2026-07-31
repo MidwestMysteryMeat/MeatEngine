@@ -56,30 +56,50 @@ The single biggest visual lift. Do in this order:
 - [ ] **A6. Character shadows for night** — cheap projected/blob shadow under NPCs (point-light
   shadow cubes are too costly for many torches). Pragmatic pairing with A2.
 
-## Pillar B — Engine generality (voxel-optional)
-*Answer to "is forcing voxel obtuse?": voxel-FIRST, not voxel-ONLY.* The renderer already draws
-static meshes + skinned characters (Assimp + ozz) and Jolt handles arbitrary collision — so the
-engine is closer to general than it looks. Making non-voxel games a first-class choice:
-- [ ] **B1. `Level`/`World` abstraction** — an interface with two implementations: `VoxelWorld`
-  (current) and `MeshLevel` (a static-mesh scene). Engine/ServerSim talk to the interface.
-- [ ] **B2. Static-mesh level path** — load a level as meshes + a Jolt `MeshShape` for collision
-  (survey grab: Jolt's under-used `MeshShape`/`CharacterVirtual`); worldgen/navmesh become optional.
-- [ ] **B3. Project flag** — `game.json` picks `world: voxel | mesh`; a dev ships a non-voxel game
-  with zero C++. Keeps the PSX voxel identity as the *default*, not a cage.
+## Pillar B — World creation: templates + environments (UE5-style "New Map")
+The dev picks a starting **template**, then hand-authors/fills it — like UE5's New Level (landscape /
+blank / …), but spanning voxel AND non-voxel AND themed worlds. Physics is already Jolt/world-agnostic
+(it just consumes collider meshes), so this is bounded, not a rewrite. Voxel is the *default*, not a cage.
+- [x] **B1. Terrain modes** — Normal / Superflat / Void (`game.json "terrain"` or `--terrain`),
+  synced to clients in the rules flags byte; Void gets a spawn pad so you don't fall through.
+- [ ] **B2. `Level` abstraction** — a `Level` interface: `VoxelWorld` (current) + `MeshLevel`
+  (static mesh + Jolt `MeshShape` collider). Worldgen/navmesh become optional; the client renders the
+  level mesh instead of chunks. True non-voxel games.
+- [ ] **B3. Environment presets** — per-world **gravity + fog + ambient + skybox + water level**, so
+  a dev builds a **space** game (low/zero gravity, black void, no fog, starfield) or an **underwater**
+  game (buoyant gravity, blue fog, caustic ambient, water plane). Composes with any template. *(Scoped:
+  base gravity = `PhysicsWorld::SetGravity` + controller `t.gravity`; fog/ambient = `PsxOptions` +
+  `setAmbientLight` — all small, bounded hooks.)*
+- [ ] **B3b. Gravity volumes / zoned gravity** ⭐ — gravity is a *field*, not a global: per-region
+  volumes (0-g in open space, normal inside a ship, radial "planet" gravity). The controller samples
+  the active volume's gravity vector each tick. Unlocks **space games**, **ship interiors vs. void**,
+  and **ship builders** (build a voxel/mesh craft that carries its own g-field). Big but on-vision.
+- [ ] **B4. "New Map" dialog** (editor) — pick template (Landscape / Superflat / Blank-Void / Mesh) +
+  environment (Surface / Underwater / Space / custom) + name + seed, then create and fill it.
+- [ ] **B5. `game.json` `world: {template, environment}`** so a project ships its map choice; no C++.
 
-## Pillar C — Editor / GUI overhaul
-From "a game" toward "a tool others use." All ImGui add-ons below are MIT.
-- [ ] **C1. Content/asset browser** — a dockable panel listing project assets (models/textures/
-  scripts/prefabs) with thumbnails + drag-to-place. OSS: ImGuiFileDialog.
-- [ ] **C2. Asset import/export** — import FBX/OBJ/PNG into the project (bake to the cooked format,
-  see D3), export levels/prefabs. Ties to B + D.
-- [ ] **C3. Inspectors** — material editor (drives C4), entity/prefab inspector, block/atlas editor.
-  Struct-reflection via Boost.PFR (BSL-1.0) → auto ImGui widgets + JSON.
-- [ ] **C4. Visual node graphs → Lua** — weapon/ability/behaviour/material graphs. OSS: imnodes.
-- [ ] **C5. Script editor** — in-editor Lua editing w/ syntax highlight. OSS: ImGuiColorTextEdit.
-- [ ] **C6. Packaging / build export** — "export game" that bundles the exe + project assets (cooked)
-  + a zip/pk3 archive into a shippable folder. Ties to D2 (resource archives).
-- [ ] **C7. Profiler panels** — frame/mesh/netcode telemetry. OSS: ImPlot + Tracy (BSD-3).
+## Pillar C — Editor: a usable, UE5-inspired creation suite (USABILITY FIRST)
+The through-line is **usability** — UE5's ergonomics (New Map → drag assets in → tweak → script →
+light → ship) without the bloat/missing pieces that don't fit a PSX voxel FPS. All ImGui add-ons MIT.
+- [x] **C1. Content browser** — recursive `assets/` scan, grouped + filtered + selectable + details.
+- [ ] **C2. Content-browser styling + editor theme** — UE5-style thumbnail **grid**, folders +
+  breadcrumbs, per-type icons, drag-source handles; a polished dark editor theme (one ImGui style
+  pass) applied engine-wide. This is the "feels like a real tool" pass.
+- [ ] **C3. Drag-drop asset placement** ⭐ — drag an asset from the browser into the viewport to place
+  it (raycast to surface), then move/rotate/scale with the existing **ImGuizmo** gizmos; a **world
+  outliner** of placed instances. This is the core "fill the map" loop and the highest-usability win.
+- [ ] **C4. Import/export** — import FBX/OBJ/PNG into the project (bake, see D3); export map/prefab.
+  OSS: ImGuiFileDialog.
+- [ ] **C5. Inspectors** — material, entity/prefab, block/atlas, and **environment settings** (drives
+  B3). Struct-reflection via Boost.PFR (BSL-1.0) → auto widgets + JSON.
+- [ ] **C6. Node scripting / Blueprints + live coding** ⭐ — visual graphs (imnodes) for behaviour/
+  weapon/ability/material, compiled to Lua; paired with an in-editor Lua script editor
+  (ImGuiColorTextEdit). **Live coding** is the killer UE5 ergonomic: Lua already hot-reloads
+  (`loadDir`) + shaders reload on F6 — extend to **edit-a-blueprint/script-and-see-it-live** while the
+  game runs (no restart). C++ live-reload for engine systems is a later stretch (OSS: cr.h, MIT).
+- [ ] **C7. Packaging / export** — bundle exe + cooked assets + a zip/pk3 archive into a shippable
+  build (ties to D2 resource archives + `tools/package.ps1`).
+- [ ] **C8. Profiler panels** — frame/mesh/netcode telemetry. OSS: ImPlot + Tracy (BSD-3).
 
 ## Pillar D — Engine OSS grabs (from the survey)
 - [ ] **D1. Binary greedy meshing** — swap the mesher hot path; graft the v1-branch per-vertex AO
@@ -117,8 +137,11 @@ Human feel-playtests (mouse feel, combat cadence, editor ergonomics), and real L
 
 ---
 
-## Recommended near-term order
-A1 (voxel AO) → A2/A3 (sun shadow + ambient) → E1 (foot-slide) → C1+C2 (content browser + import)
-→ D3 (cooked mesh) → B1–B3 (voxel-optional) → D1 (binary mesher) → C4–C6 (node graphs + packaging)
-→ D4 (EnTT). Lighting first (visible payoff), then the editor/generality push (turns the engine into
-a tool), with the risky hot-path swaps (D1, D4) deliberately late.
+## Recommended near-term order  *(usability-first, per the UE5-style creation-suite vision)*
+**C3 drag-drop asset placement + world outliner** ⭐ (the core "fill the map" loop) → **C2 content-
+browser styling + editor theme** (the UE5 feel) → **B3 environments** (space / underwater) + **B4 New
+Map dialog** → **A1 voxel AO + A2 sun shadow** (lighting payoff) → **C5 inspectors** → **C6 node
+scripting / blueprints** → **B2 non-voxel mesh levels** → **C4/C7 import-export + packaging** → the
+engine OSS grabs (**D** — cooked mesh, binary mesher, EnTT) and anim polish (**E1 foot-slide**) folded
+in as they unblock. Rationale: make it *feel* like a tool a dev wants to build in (place, style, light)
+before the deeper generality (mesh levels) and the risky hot-path swaps (mesher, ECS) that come late.
