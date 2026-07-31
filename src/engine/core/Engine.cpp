@@ -343,15 +343,58 @@ void Engine::loadNpcActor() {
     // these (see submitHumanoid); absent → zombies fall back to the regular locomotion.
     m_zombieWalkClip = loadClip("assets/models/zombie_walk.fbx");
     m_zombieIdleClip = loadClip("assets/models/zombie_idle.fbx");
+    m_pistolWalkClip = loadClip("assets/models/pistol_walk.fbx"); // armed shooter locomotion
+    m_pistolIdleClip = loadClip("assets/models/pistol_idle.fbx");
     actor->clipIndex = m_npcWalkClip >= 0 ? m_npcWalkClip : 0; // single-clip path plays walk
     actor->hasRealClip = !actor->model.clips.empty() &&
                          actor->model.clips[actor->clipIndex].duration /
                                  actor->model.clips[actor->clipIndex].ticksPerSec >=
                              0.02f;
     m_npcActor = std::move(actor);
-    log::info("NPC actor up: {} verts, {} clips (walk={}, idle={}, zwalk={}, zidle={}) (norm x{:.3f})",
-              m_npcActor->model.vertices.size(), m_npcActor->model.clips.size(), m_npcWalkClip,
-              m_npcIdleClip, m_zombieWalkClip, m_zombieIdleClip, norm);
+
+    // Ground the model: the render places the model ORIGIN at the entity's feet (pos.y), but the
+    // rig's origin isn't at the soles — so without this the character floats ("mid air") or sinks.
+    // Skin the bind pose, find its lowest vertex under scale+orient, and bake a vertical shift so
+    // the soles sit exactly at the origin. Constant (bind-pose), no per-frame cost.
+    {
+        const glm::mat4 fit = glm::scale(glm::mat4(1.0f), glm::vec3(norm)) * orient;
+        // Lowest skinned-vertex Y of a pose under a given placement matrix.
+        const auto minSkinnedY = [&](const Pose& p, const glm::mat4& place) {
+            float mn = 1e9f;
+            for (const SkinnedVertex& v : m_npcActor->model.vertices) {
+                glm::vec3 sp(0.0f);
+                for (int i = 0; i < 4; ++i) {
+                    const float w = v.weights[i];
+                    if (w <= 0.0f) continue;
+                    const int b = v.bones[i];
+                    if (b < 0 || b >= static_cast<int>(p.skinningMatrices.size())) continue;
+                    sp += w * glm::vec3(p.skinningMatrices[b] * glm::vec4(v.pos, 1.0f));
+                }
+                mn = std::min(mn, (place * glm::vec4(sp, 1.0f)).y);
+            }
+            return mn;
+        };
+        // Ground the rest pose: shift so the bind soles sit at the origin (= entity feet).
+        const float minY = minSkinnedY(bindPose(m_npcActor->model), fit);
+        m_npcActor->transform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -minY, 0.0f)) * fit;
+        // Precompute each clip's lowest-point curve (in the grounded transform space) so the render
+        // can keep the planted foot on the floor through the whole cycle (kills the walk-float).
+        for (int c = 0; c < static_cast<int>(m_npcActor->model.clips.size()); ++c) {
+            const AnimClip& clip = m_npcActor->model.clips[c];
+            const float durSec = clip.duration / (clip.ticksPerSec > 0.0f ? clip.ticksPerSec : 25.0f);
+            std::array<float, kFootCurveSamples> curve{};
+            for (int s = 0; s < kFootCurveSamples; ++s) {
+                const float ts = durSec * static_cast<float>(s) / kFootCurveSamples;
+                curve[s] = minSkinnedY(samplePose(m_npcActor->model, clip, ts),
+                                       m_npcActor->transform);
+            }
+            m_clipFootCurve[c] = curve;
+        }
+        log::info("NPC actor up: {} verts, {} clips (walk={}, idle={}, zwalk={}, zidle={}) "
+                  "(norm x{:.3f}, grounded {:.3f})",
+                  m_npcActor->model.vertices.size(), m_npcActor->model.clips.size(), m_npcWalkClip,
+                  m_npcIdleClip, m_zombieWalkClip, m_zombieIdleClip, norm, -minY);
+    }
 }
 
 void Engine::simulateClientTick(const PlayerCommand& frameCmd) {
@@ -469,6 +512,20 @@ void Engine::render(float alpha) {
     // made screenshot calibration flip between "sideways" and "backwards". Left at 0 until a
     // booth-style facing rig pins it; the frozen/visibility fixes here are independent of it.
     constexpr float kHumanoidYawOffset = 0.0f;
+    // Sample a clip's precomputed lowest-point curve at time t (linear-interp, wraps over the
+    // clip). Used to drop each pose so its planted foot stays on the ground (no walk-float).
+    const auto footYAt = [&](int clip, float t) -> float {
+        const auto it = m_clipFootCurve.find(clip);
+        if (it == m_clipFootCurve.end() || clip < 0) return 0.0f;
+        const AnimClip& c = m_npcActor->model.clips[clip];
+        const float durSec = c.duration / (c.ticksPerSec > 0.0f ? c.ticksPerSec : 25.0f);
+        if (durSec <= 0.0f) return it->second[0];
+        const float phase = std::fmod(std::fmod(t, durSec) + durSec, durSec) / durSec; // 0..1
+        const float fs = phase * kFootCurveSamples;
+        const int i0 = static_cast<int>(fs) % kFootCurveSamples;
+        const int i1 = (i0 + 1) % kFootCurveSamples;
+        return glm::mix(it->second[i0], it->second[i1], fs - std::floor(fs));
+    };
     // idleClip/walkClip select which locomotion set this humanoid blends (regular NPC vs
     // zombie shamble) — both live on the one shared m_npcActor model.
     const auto submitHumanoid = [&](const glm::vec3& pos, float yaw, std::uint32_t id,
@@ -490,7 +547,16 @@ void Engine::render(float alpha) {
             } else {
                 pose = idlePose(m_npcActor->model, t);
             }
-            const glm::mat4 xform = glm::translate(glm::mat4(1.0f), pos) *
+            // Drop the pose so its lowest point sits at the entity's feet — keeps the planted foot
+            // grounded through the walk cycle instead of the whole body floating on airborne frames.
+            float footY = 0.0f;
+            if (idleClip >= 0 && walkClip >= 0) {
+                const float w = glm::clamp(walkWeight, 0.0f, 1.0f);
+                footY = glm::mix(footYAt(idleClip, t), footYAt(walkClip, t), w);
+            } else if (m_npcActor->hasRealClip) {
+                footY = footYAt(m_npcActor->clipIndex, t);
+            }
+            const glm::mat4 xform = glm::translate(glm::mat4(1.0f), pos - glm::vec3(0, footY, 0)) *
                                     glm::rotate(glm::mat4(1.0f), yaw + kHumanoidYawOffset,
                                                 glm::vec3(0, 1, 0)) *
                                     m_npcActor->transform;
@@ -517,10 +583,15 @@ void Engine::render(float alpha) {
             m_renderer.submitChunk(m_pickupMesh, e.pos);
             m_renderer.submitPointLight(e.pos, glm::vec3(1.0f, 0.1f, 0.1f), 4.0f);
             break;
-        case 4: // NpcChaser / NpcShooter: animated humanoid (or box if none staged)
-        case 5:
+        case 4: // NpcChaser: animated humanoid (or box if none staged)
             submitHumanoid(e.pos, e.yaw, e.id, m_npcIdleClip, m_npcWalkClip, e.anim / 255.0f,
                            MaterialHandle::Invalid);
+            break;
+        case 5: // NpcShooter: armed — uses the pistol locomotion set (falls back to plain)
+            submitHumanoid(e.pos, e.yaw, e.id,
+                           m_pistolIdleClip >= 0 ? m_pistolIdleClip : m_npcIdleClip,
+                           m_pistolWalkClip >= 0 ? m_pistolWalkClip : m_npcWalkClip,
+                           e.anim / 255.0f, MaterialHandle::Invalid);
             break;
         case 6: // Turret: small box + a blue status light
             m_renderer.submitChunk(m_pickupMesh, e.pos);

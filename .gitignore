@@ -25,6 +25,8 @@ assets/models/npc_walk.fbx
 assets/models/npc_idle.fbx
 assets/models/zombie_walk.fbx
 assets/models/zombie_idle.fbx
+assets/models/pistol_walk.fbx
+assets/models/pistol_idle.fbx
 
 # staged licensed Mixamo/artist animation packs (locomotion, zombie, gestures,
 # cover) — local retarget-source only; never commit to the public repo.

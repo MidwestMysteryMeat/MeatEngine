@@ -20,6 +20,7 @@
 #include "game/ServerSim.h"
 #include "game/WorldGen.h"
 
+#include <array>
 #include <atomic>
 #include <memory>
 #include <string>
@@ -126,9 +127,16 @@ private:
     // entities blend these instead of the regular locomotion. -1 → box/regular fallback.
     int m_zombieIdleClip = -1;
     int m_zombieWalkClip = -1;
+    int m_pistolIdleClip = -1; // armed-shooter locomotion (pistol at the ready); same shared mesh
+    int m_pistolWalkClip = -1;
     MaterialHandle m_zombieMaterial{0}; // green-tinted + faintly emissive variant of the NPC
                                         // material so zombies read as zombies (and stay visible
                                         // in the dark) using the same shared mesh.
+    // Per-clip lowest-vertex height (in grounded model space) sampled over the clip cycle. The
+    // render drops each pose by its current lowest point so feet stay planted instead of the whole
+    // body floating on the walk cycle's airborne frames ("mid air"). Precomputed once at load.
+    static constexpr int kFootCurveSamples = 32;
+    std::unordered_map<int, std::array<float, kFootCurveSamples>> m_clipFootCurve;
     // Previous entity positions (client-side), to derive each humanoid's speed for the
     // idle↔walk blend weight without a server-side anim-state byte.
     std::unordered_map<std::uint32_t, glm::vec3> m_entityPrevPos;
