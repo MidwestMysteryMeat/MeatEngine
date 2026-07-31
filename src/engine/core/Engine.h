@@ -137,6 +137,9 @@ private:
     // body floating on the walk cycle's airborne frames ("mid air"). Precomputed once at load.
     static constexpr int kFootCurveSamples = 32;
     std::unordered_map<int, std::array<float, kFootCurveSamples>> m_clipFootCurve;
+    // Yaw correction so the rig faces its movement/target direction. Derived deterministically at
+    // load from the bind-pose foot->toe direction (feet point forward), not guessed from shots.
+    float m_humanoidYawOffset = 0.0f;
     // Previous entity positions (client-side), to derive each humanoid's speed for the
     // idle↔walk blend weight without a server-side anim-state byte.
     std::unordered_map<std::uint32_t, glm::vec3> m_entityPrevPos;

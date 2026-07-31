@@ -394,6 +394,41 @@ void Engine::loadNpcActor() {
                   "(norm x{:.3f}, grounded {:.3f})",
                   m_npcActor->model.vertices.size(), m_npcActor->model.clips.size(), m_npcWalkClip,
                   m_npcIdleClip, m_zombieWalkClip, m_zombieIdleClip, norm, -minY);
+
+        // Facing: derive the rig's forward axis from the bind foot->toe direction (feet point
+        // forward), in the render's post-transform/pre-yaw space, then the offset that rotates it
+        // to the -Z the server yaw convention assumes. Deterministic — no screenshot guessing.
+        const SkeletalModel& mdl = m_npcActor->model;
+        const auto boneBySuffix = [&](const char* suffix) -> int {
+            for (int b = 0; b < static_cast<int>(mdl.bones.size()); ++b) {
+                const std::string& n = mdl.bones[b].name;
+                const std::size_t colon = n.find_last_of(':');
+                if ((colon == std::string::npos ? n : n.substr(colon + 1)) == suffix) return b;
+            }
+            return -1;
+        };
+        const auto jointPos = [&](int b) { // bind position in render space (post-transform, pre-yaw)
+            return glm::vec3(m_npcActor->transform * mdl.rootInverse *
+                             glm::inverse(mdl.bones[b].offset) * glm::vec4(0, 0, 0, 1));
+        };
+        glm::vec3 fwd(0.0f);
+        int contrib = 0;
+        for (const auto& [foot, toe] : {std::pair{"LeftFoot", "LeftToeBase"},
+                                        std::pair{"RightFoot", "RightToeBase"}}) {
+            const int fb = boneBySuffix(foot), tb = boneBySuffix(toe);
+            if (fb < 0 || tb < 0) continue;
+            const glm::vec3 d = jointPos(tb) - jointPos(fb);
+            fwd += glm::vec3(d.x, 0.0f, d.z); // horizontal foot->toe
+            ++contrib;
+        }
+        if (contrib > 0 && glm::length(fwd) > 1e-4f) {
+            fwd = glm::normalize(fwd);
+            m_humanoidYawOffset = std::atan2(fwd.x, -fwd.z); // rotates fwd onto -Z
+            log::info("humanoid facing: forward=({:.2f},{:.2f}) yawOffset={:.1f} deg (from {} feet)",
+                      fwd.x, fwd.z, glm::degrees(m_humanoidYawOffset), contrib);
+        } else {
+            log::warn("humanoid facing: no foot/toe bones found — yaw offset stays 0");
+        }
     }
 }
 
@@ -506,12 +541,8 @@ void Engine::render(float alpha) {
     // per-id phase so a room of NPCs isn't lock-stepped; placed at the entity's pos + yaw.
     // Falls back to the box proxy when no npc_char.fbx is staged.
     if (m_npcActor && m_npcActor->mesh != 0) m_npcActor->time += m_frameDt;
-    // TODO(facing): the npc_char rig's bind forward isn't the -Z the server yaw assumes, so NPCs
-    // render turned from their travel direction. The exact offset needs a DETERMINISTIC fixed-camera
-    // harness — in-game shots vary the camera per run (player spawn/fall + approach angle), which
-    // made screenshot calibration flip between "sideways" and "backwards". Left at 0 until a
-    // booth-style facing rig pins it; the frozen/visibility fixes here are independent of it.
-    constexpr float kHumanoidYawOffset = 0.0f;
+    // Facing correction derived at load from the rig's bind foot->toe direction (see loadNpcActor).
+    const float kHumanoidYawOffset = m_humanoidYawOffset;
     // Sample a clip's precomputed lowest-point curve at time t (linear-interp, wraps over the
     // clip). Used to drop each pose so its planted foot stays on the ground (no walk-float).
     const auto footYAt = [&](int clip, float t) -> float {
