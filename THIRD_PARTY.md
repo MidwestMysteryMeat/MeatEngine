@@ -14,7 +14,7 @@ none are vendored into this repository except where noted.
 | [sol2](https://github.com/ThePhD/sol2) 3.x | Lua bindings | MIT |
 | [Dear ImGui](https://github.com/ocornut/imgui) (docking) | Editor + debug UI | MIT |
 | [ImGuizmo](https://github.com/CedricGuillemet/ImGuizmo) | Editor transform gizmos | MIT |
-| [imnodes](https://github.com/Nelarius/imnodes) | C6 visual scripting / blueprints node editor | MIT |
+| [imnodes](https://github.com/Nelarius/imnodes) | C6 visual scripting / node graphs node editor | MIT |
 | [stb](https://github.com/nothings/stb) (stb_image) | PNG/JPG loading | Public domain / MIT |
 | [miniaudio](https://github.com/mackron/miniaudio) | Audio playback | Public domain / MIT-0 |
 | [nlohmann/json](https://github.com/nlohmann/json) 3.11 | Save files, configs | MIT |

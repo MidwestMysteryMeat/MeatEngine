@@ -444,7 +444,7 @@ void emitExecChain(std::ostringstream& out, EmitCtx& ctx, int nodeId, int indent
     }
     case NodeKind::PrintObject: {
         const std::string obj = emitInputExpr(ctx, n, 2, std::to_string(n.intA));
-        out << pad << "game.log(\"[blueprint] object \" .. tostring(" << obj << "))\n";
+        out << pad << "game.log(\"[nodegraph] object \" .. tostring(" << obj << "))\n";
         nextExec(1);
         break;
     }
@@ -583,7 +583,7 @@ int NodeGraph::addNode(NodeKind kind, float x, float y) {
     n.posY = y;
     if (kind == NodeKind::ConstString) n.strA = "hello";
     if (kind == NodeKind::GetItemId) n.strA = "ammo9mm";
-    if (kind == NodeKind::ActionLog) n.strA = "blueprint log";
+    if (kind == NodeKind::ActionLog) n.strA = "graph log";
     if (kind == NodeKind::Randi) {
         n.intA = -6;
         n.intB = 6;
@@ -653,7 +653,7 @@ NodeGraph NodeGraph::makeExample() {
     // On Init → Log → Spawn Pickup (x5 via loop is freehand; one spawn + pillar)
     const int eInit = g.addNode(NodeKind::EventOnInit, 40, 40);
     const int log1 = g.addNode(NodeKind::ActionLog, 280, 40);
-    g.findNode(log1)->strA = "blueprint world init";
+    g.findNode(log1)->strA = "graph world init";
     const int item = g.addNode(NodeKind::GetItemId, 280, 200);
     g.findNode(item)->strA = "ammo9mm";
     const int spawn = g.addNode(NodeKind::ActionSpawnPickup, 520, 80);
@@ -677,7 +677,7 @@ NodeGraph NodeGraph::makeExample() {
     g.findNode(zero)->intA = 0;
     const int branch = g.addNode(NodeKind::Branch, 620, 360);
     const int logTick = g.addNode(NodeKind::ActionLog, 840, 340);
-    g.findNode(logTick)->strA = "players online (blueprint tick)";
+    g.findNode(logTick)->strA = "players online (graph tick)";
     g.addLink(eTick, 0, branch, 0);
     g.addLink(players, 0, gt, 0);
     g.addLink(zero, 0, gt, 1);
@@ -686,7 +686,7 @@ NodeGraph NodeGraph::makeExample() {
 
     const int eJoin = g.addNode(NodeKind::EventOnPlayerJoin, 40, 600);
     const int logJoin = g.addNode(NodeKind::ActionLog, 280, 600);
-    g.findNode(logJoin)->strA = "player joined (blueprint)";
+    g.findNode(logJoin)->strA = "player joined (graph)";
     g.addLink(eJoin, 0, logJoin, 0);
     return g;
 }
@@ -767,9 +767,9 @@ bool loadGraphJson(NodeGraph& out, const std::string& jsonText) {
 
 std::string emitGraphLua(const NodeGraph& g) {
     std::ostringstream out;
-    out << "-- AUTO-GENERATED from blueprint graph '" << g.name
-        << "' — edit the graph in the Blueprints panel, not this file.\n";
-    out << "-- C6 visual scripting → sandboxed Lua (ScriptHost game.* API).\n\n";
+    out << "-- AUTO-GENERATED from node graph '" << g.name
+        << "' — edit the graph in the Node Graph panel, not this file.\n";
+    out << "-- C6 visual scripting (node graph) → sandboxed Lua (ScriptHost game.* API).\n\n";
     emitEventFunction(out, g, NodeKind::EventOnInit, "on_init", "seed");
     emitEventFunction(out, g, NodeKind::EventOnTick, "on_tick", "t");
     emitEventFunction(out, g, NodeKind::EventOnPlayerJoin, "on_player_join", "peer");

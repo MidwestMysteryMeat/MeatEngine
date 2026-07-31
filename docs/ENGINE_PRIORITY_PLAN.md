@@ -17,7 +17,7 @@ These are **already shipped** (or mostly shipped) even if older checklist lines 
 | C3 props + outliner + gizmo move/delete | ✅ server-authoritative |
 | B1/B3/B4 New Map + env + terrain | ✅ |
 | A1 AO, A3 hemi ambient | ✅ |
-| C6 blueprints (imnodes → Lua) + ScriptFx | ✅ slices 1–3 |
+| C6 node graphs (imnodes → Lua) + ScriptFx | ✅ slices 1–3 |
 | H1 FPS/TPS/Space/Racer templates | ✅ first slices |
 | H2/H3 weapons, H4 ships (multi-seat, AI, EVA) | ✅ first slices |
 | B3b GravityField + local-up | ✅ first slice |
@@ -38,8 +38,8 @@ Scoring: **creator value** × **engine leverage** × **dependency readiness** �
 
 | # | ID | Item | Why highest | Size | Deps |
 |---|-----|------|-------------|------|------|
-| 1 | **C9** | **Output Log browser (UE5-style)** ⭐ | Blueprints/Lua fail silently into stdout/stderr today. Without an in-editor log, C6 is half-finished for real use. Mirrors UE Output Log (severity, search, clear). | S–M | Log sink only |
-| 2 | **C6-a** | **Blueprint reliability + compile feedback** | Compile/reload must dump to C9; surface Lua parse errors on Compile; optional “open generated lua”. Makes C6 trustworthy. | S | C9 ideal |
+| 1 | **C9** | **Output Log browser (UE5-style)** ⭐ | Node graphs/Lua fail silently into stdout/stderr today. Without an in-editor log, C6 is half-finished for real use. Mirrors UE Output Log (severity, search, clear). | S–M | Log sink only |
+| 2 | **C6-a** | **Node-graph reliability + compile feedback** | Compile/reload must dump to C9; surface Lua parse errors on Compile; optional “open generated lua”. Makes C6 trustworthy. | S | C9 ideal |
 | 3 | **Debt-doc** | **Reconcile ROLLOUT / NEXT_SESSION / ARCHITECTURE** | Wrong checkboxes cause wrong prioritization forever. Mark shipped C2/C3/B4/A1/C6; rewrite “Recommended near-term”. | S | none |
 
 ### P1 — Creation suite completeness (UE5 feel)
@@ -50,7 +50,7 @@ Scoring: **creator value** × **engine leverage** × **dependency readiness** �
 | 5 | **C5** | **Inspectors (prop/env/material lite)** | UE Details-panel depth for selected prop/env/rules. Outliner already exists; needs richer fields. | M | C3 done |
 | 6 | **C4** | **Import polish + path UX** | Paste-path import exists; file dialog (ImGuiFileDialog MIT) + clearer reject reasons. | S–M | C1 |
 | 7 | **B3b-e** | **Editor gravity volumes** | Place habitat boxes in editor; save + Welcome/replay. Unlocks Space level design without code. | M | GravityField done |
-| 8 | **C6-c** | **Subgraphs / multi-graph / watches** | Power-user UE Blueprint features. **After** log + basic API reliability. | L | C6-a, C9 |
+| 8 | **C6-c** | **Subgraphs / multi-graph / watches** | Power-user visual-script subgraph features. **After** log + basic API reliability. | L | C6-a, C9 |
 
 ### P2 — Visual & world payoff (player-facing quality)
 
@@ -105,7 +105,7 @@ Your list:
 
 | Rank | Item | Change vs your list |
 |------|------|---------------------|
-| **1** | **C9 Output Log** | **Promote above further C6 features.** ScriptFx + many nodes already landed (`3c9920d`). Log is the missing half of “usable blueprints.” |
+| **1** | **C9 Output Log** | **Promote above further C6 features.** ScriptFx + many nodes already landed (`3c9920d`). Log is the missing half of “usable node graphs.” |
 | **2** | **C6-a reliability** (compile → log, error surfacing) | Thin slice right after or with C9. |
 | **3** | **C6-b selective API nodes** | Only nodes that unblock real graphs (not infinite node catalog). |
 | **4** | **C5 lite inspectors / C4 import dialog** | Suite ergonomics; parallel-safe with small C6. |
@@ -145,7 +145,7 @@ Track D — Scale (late)
 1. `meat::log::{info,warn,error}` append to a fixed-size ring (e.g. 2000 lines) with timestamp + level.  
 2. Editor window **Output Log**: filter All | Messages | Warnings | Errors; substring search; Clear; auto-scroll toggle; copy selected.  
 3. ScriptHost load/dispatch failures already use `log::error` — they appear automatically.  
-4. Blueprint Save+Compile posts success/fail via `log::info` / `log::error`.  
+4. Node Graph Save+Compile posts success/fail via `log::info` / `log::error`.  
 5. Optional: `game.log` already goes through server `[lua]` → `log::info` — shows as Messages.  
 6. Hotkey (e.g. `` ` `` or **Window → Output Log**) opens panel even outside full editor if desired.
 
@@ -155,7 +155,7 @@ Hook point: `src/engine/core/Log.h` (`write()`). UI: `RoomEditor` or a small alw
 
 ## 5. What not to prioritize right now
 
-- Infinite blueprint node catalogs without log  
+- Infinite node-graph catalogs without log  
 - EnTT / binary mesher “because OSS is cool”  
 - Full PSSM/LiSPSM before basic A2 sun map  
 - Game-mode framework before creators can place + script + see errors  
@@ -168,7 +168,7 @@ Hook point: `src/engine/core/Log.h` (`write()`). UI: `RoomEditor` or a small alw
 Use this as the working list until the next research pass:
 
 1. ⭐ **C9 — Output Log browser**  
-2. **C6-a — Blueprint compile/runtime → log**  
+2. **C6-a — node-graph compile/runtime → log**  
 3. **Docs debt — mark shipped items in ROLLOUT**  
 4. **C6-b — High-value game API nodes only**  
 5. **C5 lite — Prop/env inspectors**  
@@ -189,7 +189,7 @@ Use this as the working list until the next research pass:
 
 | Decision | Rationale |
 |----------|-----------|
-| C9 before more C6 features | Blueprint authoring without error visibility is not UE-like; log is S–M and high leverage |
+| C9 before more C6 features | Node-graph authoring without error visibility is not UE-like; log is S–M and high leverage |
 | C6-c demoted | Subgraphs amplify complexity; need log + stable single graph first |
 | A2 before B2 | Visual payoff for all templates; B2 is a large architecture cut |
 | Keep H/G genre work below suite | Engine vision is creation suite first; genres already have playable slices |

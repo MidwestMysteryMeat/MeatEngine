@@ -123,7 +123,7 @@ struct MovePropMsg {
     glm::mat4 transform{1.0f};
 };
 
-// Server→client: blueprint/script visual FX. kind 0 = prop highlight (id = prop id).
+// Server→client: node-graph / script visual FX. kind 0 = prop highlight (id = prop id).
 struct ScriptFxMsg {
     std::uint8_t kind = 0; // 0 highlight prop
     std::uint32_t id = 0;

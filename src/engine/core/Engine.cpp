@@ -686,7 +686,7 @@ void Engine::simulateClientTick(const PlayerCommand& frameCmd) {
     // ticks still send commands so the server integrates thrusters. Passengers
     // do not thruster-predict (vehicleRole == 2).
 
-    m_client.tickScriptFx(kFixedDt); // C6 blueprint highlight timers
+    m_client.tickScriptFx(kFixedDt); // C6 node-graph highlight timers
 
     // Footsteps: paced by horizontal speed while grounded (on foot only).
     const glm::vec3 vel = m_player.velocity();
@@ -1052,7 +1052,7 @@ void Engine::render(float alpha) {
         if (pm.mesh != 0) m_renderer.submitMesh(pm.mesh, prop.transform, pm.material);
     }
 
-    // C6: blueprint/script prop highlights (server ScriptFx → all clients).
+    // C6: node-graph/script prop highlights (server ScriptFx → all clients).
     for (const Client::ScriptFx& fx : m_client.scriptFx()) {
         const EditorProp* prop = nullptr;
         for (const EditorProp& p : m_editorProps) {

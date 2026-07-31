@@ -120,7 +120,7 @@ void RoomEditor::update(EditorContext& ctx, float dt) {
     if (m_statusTtl > 0.0f && (m_statusTtl -= dt) <= 0.0f) m_status.clear();
     if (m_codeStatusTtl > 0.0f && (m_codeStatusTtl -= dt) <= 0.0f) m_codeStatus.clear();
     if (m_importStatusTtl > 0.0f && (m_importStatusTtl -= dt) <= 0.0f) m_importStatus.clear();
-    if (m_bpStatusTtl > 0.0f && (m_bpStatusTtl -= dt) <= 0.0f) m_bpStatus.clear();
+    if (m_graphStatusTtl > 0.0f && (m_graphStatusTtl -= dt) <= 0.0f) m_graphStatus.clear();
 
     // OS drag-drop: any files dropped on the window this frame get imported, so a
     // dev can drop an .fbx straight onto the viewport instead of typing a path.
@@ -139,8 +139,8 @@ void RoomEditor::update(EditorContext& ctx, float dt) {
     drawAssetBrowser(ctx);
     drawContentBrowser(ctx);
     drawCodeEditor(ctx);
-    drawBlueprints(ctx);
-    drawBlueprintDetails(ctx);
+    drawNodeGraph(ctx);
+    drawNodeGraphDetails(ctx);
     updateObjectHighlight(ctx);
     if (!m_flying) drawGizmo(ctx, view, proj);
 
@@ -300,8 +300,8 @@ void RoomEditor::applyEditorTheme() {
     c[ImGuiCol_TableRowBgAlt] = ImVec4(1.0f, 1.0f, 1.0f, 0.02f);
 }
 
-void RoomEditor::applyBlueprintNodeStyle() {
-    // UE Blueprint graph: dark grid, red events, blue functions, pure teal/green.
+void RoomEditor::applyNodeGraphStyle() {
+    // Node graph canvas: dark grid, red events, blue actions, pure teal/green.
     ImNodesStyle& ns = ImNodes::GetStyle();
     ns.NodeCornerRounding = 3.0f;
     ns.NodePadding = ImVec2(8.0f, 6.0f);
@@ -375,10 +375,10 @@ void RoomEditor::drawTopBar(EditorContext& ctx) {
         m_newMapSeed = static_cast<int>(ctx.currentSeed);
     }
     ImGui::SameLine();
-    if (ImGui::Button(m_blueprintsOpen ? "Blueprints##hide" : "Blueprints##show"))
-        m_blueprintsOpen = !m_blueprintsOpen;
+    if (ImGui::Button(m_nodeGraphOpen ? "Node Graph##hide" : "Node Graph##show"))
+        m_nodeGraphOpen = !m_nodeGraphOpen;
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("C6 visual scripting — node graph compiles to Lua");
+        ImGui::SetTooltip("C6 visual scripting — node graph compiles to Lua (not UE Blueprints)");
     if (ctx.setHemisphereAmbient) {
         bool hemi = ctx.hemisphereAmbient;
         if (ImGui::Checkbox("hemisphere ambient", &hemi)) ctx.setHemisphereAmbient(hemi);
@@ -591,18 +591,18 @@ void RoomEditor::drawOutliner(EditorContext& ctx) {
         ImGui::RadioButton("rotate", &m_propGizmoOp, 1);
         ImGui::SameLine();
         ImGui::RadioButton("scale", &m_propGizmoOp, 2);
-        // Bridge to Blueprints: create Get World Object + open/focus graph (UE "create node").
-        if (ImGui::Button("Create Blueprint Node")) {
-            m_blueprintsOpen = true;
+        // Bridge to Node Graph: create Get World Object + open/focus graph.
+        if (ImGui::Button("Create Graph Node")) {
+            m_nodeGraphOpen = true;
             createObjectNodeFromSelection(ctx);
         }
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Add Get World Object for this prop and open Details");
         ImGui::SameLine();
         if (ImGui::Button("Highlight")) {
-            m_bpHighlightPropId = prop.id;
-            m_bpHighlightPulse = 2.5f;
-            m_blueprintsOpen = true;
+            m_graphHighlightPropId = prop.id;
+            m_graphHighlightPulse = 2.5f;
+            m_nodeGraphOpen = true;
         }
         if (ImGui::Button("Delete")) {
             // Server-authoritative: request remove; echo drops it from ctx.props.
@@ -1243,12 +1243,15 @@ void RoomEditor::placeSelectedProp(EditorContext& ctx) {
     setStatus("placed " + assetPath);
 }
 
-// ===== Blueprints (C6 visual scripting) ====================================
+// ===== Node Graph (C6 visual scripting — not "Blueprints"; UE trademark) ====
 
 namespace {
-constexpr const char* kGraphPath = "scripts/blueprints/main.graph.json";
+constexpr const char* kGraphPath = "scripts/graphs/main.graph.json";
+// Legacy path still accepted on load if the new one is missing.
+constexpr const char* kGraphPathLegacy = "scripts/blueprints/main.graph.json";
 // Load last alphabetically so hand-written example.lua does not stomp it.
-constexpr const char* kEmitLuaPath = "scripts/zz_blueprint.lua";
+constexpr const char* kEmitLuaPath = "scripts/zz_nodegraph.lua";
+constexpr const char* kEmitLuaPathLegacy = "scripts/zz_blueprint.lua";
 
 const NodeKind kPaletteKinds[] = {
     NodeKind::EventOnInit,       NodeKind::EventOnTick,       NodeKind::EventOnPlayerJoin,
@@ -1263,7 +1266,7 @@ const NodeKind kPaletteKinds[] = {
 };
 constexpr int kPaletteCount = static_cast<int>(sizeof(kPaletteKinds) / sizeof(kPaletteKinds[0]));
 
-// UE Blueprint title bar hues (packed ImU32).
+// Node title bar hues by category (packed ImU32).
 ImU32 categoryTitleColor(const char* cat) {
     if (std::strcmp(cat, "Event") == 0) return IM_COL32(160, 28, 28, 255);   // red
     if (std::strcmp(cat, "Action") == 0) return IM_COL32(28, 72, 140, 255);  // blue function
@@ -1298,81 +1301,95 @@ bool paletteMatchesSearch(NodeKind kind, const char* search) {
 }
 } // namespace
 
-void RoomEditor::ensureBlueprintContext() {
+void RoomEditor::ensureNodeGraphContext() {
     if (m_imnodes) return;
     ImNodes::SetImGuiContext(ImGui::GetCurrentContext());
     m_imnodes = ImNodes::CreateContext();
-    applyBlueprintNodeStyle();
+    applyNodeGraphStyle();
     ImNodes::GetIO().LinkDetachWithModifierClick.Modifier = &ImGui::GetIO().KeyCtrl;
     ImNodes::GetIO().EmulateThreeButtonMouse.Modifier = &ImGui::GetIO().KeyAlt;
 }
 
-void RoomEditor::loadOrSeedBlueprint(EditorContext& ctx) {
-    if (m_blueprintLoaded) return;
-    m_blueprintLoaded = true;
+void RoomEditor::loadOrSeedNodeGraph(EditorContext& ctx) {
+    if (m_nodeGraphLoaded) return;
+    m_nodeGraphLoaded = true;
     bool ok = false;
+    std::string loadedFrom;
     if (ctx.readFile) {
-        const std::string text = ctx.readFile(kGraphPath);
-        if (!text.empty()) ok = loadGraphJson(m_blueprint, text);
+        std::string text = ctx.readFile(kGraphPath);
+        if (!text.empty()) {
+            ok = loadGraphJson(m_nodeGraph, text);
+            if (ok) loadedFrom = kGraphPath;
+        }
+        if (!ok) {
+            // Pre-rename projects used scripts/blueprints/ (avoid "Blueprints" branding).
+            text = ctx.readFile(kGraphPathLegacy);
+            if (!text.empty()) {
+                ok = loadGraphJson(m_nodeGraph, text);
+                if (ok) loadedFrom = kGraphPathLegacy;
+            }
+        }
     }
-    m_bpPlacedIds.clear();
+    m_graphPlacedIds.clear();
     if (!ok) {
-        m_blueprint = NodeGraph::makeExample();
-        m_blueprintDirty = true;
-        m_bpStatus = "seeded example blueprint graph";
-        m_bpStatusTtl = 4.0f;
+        m_nodeGraph = NodeGraph::makeExample();
+        m_nodeGraphDirty = true;
+        m_graphStatus = "seeded example node graph";
+        m_graphStatusTtl = 4.0f;
     } else {
-        m_bpStatus = "loaded " + std::string(kGraphPath);
-        m_bpStatusTtl = 3.0f;
+        m_graphStatus = "loaded " + loadedFrom;
+        m_graphStatusTtl = 3.0f;
+        if (loadedFrom == kGraphPathLegacy) m_nodeGraphDirty = true; // re-save under new path
     }
+    (void)kEmitLuaPathLegacy;
 }
 
-bool RoomEditor::saveAndCompileBlueprint(EditorContext& ctx) {
+bool RoomEditor::saveAndCompileNodeGraph(EditorContext& ctx) {
     if (!ctx.writeFile) {
-        m_bpStatus = "writeFile unavailable";
-        m_bpStatusTtl = 4.0f;
+        m_graphStatus = "writeFile unavailable";
+        m_graphStatusTtl = 4.0f;
         return false;
     }
     // Sync node positions from imnodes before save.
-    for (GraphNode& n : m_blueprint.nodes) {
+    for (GraphNode& n : m_nodeGraph.nodes) {
         const ImVec2 p = ImNodes::GetNodeGridSpacePos(n.id);
         n.posX = p.x;
         n.posY = p.y;
     }
-    const std::string json = saveGraphJson(m_blueprint);
+    const std::string json = saveGraphJson(m_nodeGraph);
     if (!ctx.writeFile(kGraphPath, json)) {
-        m_bpStatus = "failed to write graph JSON";
-        m_bpStatusTtl = 4.0f;
+        m_graphStatus = "failed to write graph JSON";
+        m_graphStatusTtl = 4.0f;
         return false;
     }
-    const std::string lua = emitGraphLua(m_blueprint);
+    const std::string lua = emitGraphLua(m_nodeGraph);
     if (!ctx.writeFile(kEmitLuaPath, lua)) {
-        m_bpStatus = "failed to write generated Lua";
-        m_bpStatusTtl = 4.0f;
+        m_graphStatus = "failed to write generated Lua";
+        m_graphStatusTtl = 4.0f;
         return false;
     }
-    m_blueprintDirty = false;
+    m_nodeGraphDirty = false;
     bool reloaded = false;
     if (ctx.reloadScripts) reloaded = ctx.reloadScripts();
-    m_bpStatus = reloaded ? "saved + compiled + scripts reloaded"
+    m_graphStatus = reloaded ? "saved + compiled + scripts reloaded"
                           : "saved + compiled (reload skipped / host only)";
-    m_bpStatusTtl = 5.0f;
+    m_graphStatusTtl = 5.0f;
     return true;
 }
 
-void RoomEditor::openBlueprintNode(int nodeId) {
-    if (!m_blueprint.findNode(nodeId)) return;
-    ensureBlueprintContext();
+void RoomEditor::openGraphNode(int nodeId) {
+    if (!m_nodeGraph.findNode(nodeId)) return;
+    ensureNodeGraphContext();
     ImNodes::SetCurrentContext(m_imnodes);
-    m_bpOpenNodeId = nodeId;
-    m_blueprintsOpen = true;
+    m_graphOpenNodeId = nodeId;
+    m_nodeGraphOpen = true;
     // Selecting in imnodes so the graph shows focus.
     ImNodes::ClearNodeSelection();
     ImNodes::SelectNode(nodeId);
-    focusBlueprintNode(nodeId);
+    focusGraphNode(nodeId);
 }
 
-void RoomEditor::focusBlueprintNode(int nodeId) {
+void RoomEditor::focusGraphNode(int nodeId) {
     if (!m_imnodes) return;
     ImNodes::SetCurrentContext(m_imnodes);
     ImNodes::EditorContextMoveToNode(nodeId);
@@ -1382,28 +1399,28 @@ void RoomEditor::createObjectNodeFromSelection(EditorContext& ctx) {
     if (m_selKind != Selection::Prop || m_selIndex < 0 ||
         m_selIndex >= static_cast<int>(ctx.props.size()))
         return;
-    ensureBlueprintContext();
-    loadOrSeedBlueprint(ctx);
+    ensureNodeGraphContext();
+    loadOrSeedNodeGraph(ctx);
     ImNodes::SetCurrentContext(m_imnodes);
     const EditorProp& prop = ctx.props[static_cast<std::size_t>(m_selIndex)];
     const ImVec2 pan = ImNodes::EditorContextGetPanning();
-    const int id = m_blueprint.addNode(NodeKind::GetWorldObject, 120.0f - pan.x, 120.0f - pan.y);
-    if (GraphNode* n = m_blueprint.findNode(id)) {
+    const int id = m_nodeGraph.addNode(NodeKind::GetWorldObject, 120.0f - pan.x, 120.0f - pan.y);
+    if (GraphNode* n = m_nodeGraph.findNode(id)) {
         n->intA = static_cast<int>(prop.id);
         const std::size_t slash = prop.assetPath.find_last_of('/');
         n->strA = slash == std::string::npos ? prop.assetPath : prop.assetPath.substr(slash + 1);
     }
-    m_blueprintDirty = true;
-    m_bpHighlightPropId = prop.id;
-    m_bpHighlightPulse = 2.0f;
-    openBlueprintNode(id);
-    m_bpStatus = "created Get World Object for prop " + std::to_string(prop.id);
-    m_bpStatusTtl = 4.0f;
+    m_nodeGraphDirty = true;
+    m_graphHighlightPropId = prop.id;
+    m_graphHighlightPulse = 2.0f;
+    openGraphNode(id);
+    m_graphStatus = "created Get World Object for prop " + std::to_string(prop.id);
+    m_graphStatusTtl = 4.0f;
 }
 
 void RoomEditor::updateObjectHighlight(EditorContext& ctx) {
     // Pulse highlight: bright point lights around the referenced prop (UE select silhouette feel).
-    if (m_bpHighlightPulse > 0.0f) m_bpHighlightPulse -= 1.0f / 60.0f;
+    if (m_graphHighlightPulse > 0.0f) m_graphHighlightPulse -= 1.0f / 60.0f;
 
     // Prefer open node / selected GetWorldObject for live highlight.
     auto resolvePropId = [&](const GraphNode& n) -> std::uint32_t {
@@ -1412,28 +1429,28 @@ void RoomEditor::updateObjectHighlight(EditorContext& ctx) {
             return static_cast<std::uint32_t>(n.intA);
         return 0;
     };
-    if (m_bpOpenNodeId != 0) {
-        if (const GraphNode* n = m_blueprint.findNode(m_bpOpenNodeId)) {
+    if (m_graphOpenNodeId != 0) {
+        if (const GraphNode* n = m_nodeGraph.findNode(m_graphOpenNodeId)) {
             if (const std::uint32_t pid = resolvePropId(*n); pid != 0)
-                m_bpHighlightPropId = pid;
+                m_graphHighlightPropId = pid;
         }
     } else if (m_imnodes) {
         ImNodes::SetCurrentContext(m_imnodes);
         if (ImNodes::NumSelectedNodes() == 1) {
             int id = 0;
             ImNodes::GetSelectedNodes(&id);
-            if (const GraphNode* n = m_blueprint.findNode(id)) {
+            if (const GraphNode* n = m_nodeGraph.findNode(id)) {
                 if (const std::uint32_t pid = resolvePropId(*n); pid != 0)
-                    m_bpHighlightPropId = pid;
+                    m_graphHighlightPropId = pid;
             }
         }
     }
 
-    if (m_bpHighlightPropId == 0) return;
+    if (m_graphHighlightPropId == 0) return;
     const EditorProp* prop = nullptr;
     int propIndex = -1;
     for (int i = 0; i < static_cast<int>(ctx.props.size()); ++i) {
-        if (ctx.props[static_cast<std::size_t>(i)].id == m_bpHighlightPropId) {
+        if (ctx.props[static_cast<std::size_t>(i)].id == m_graphHighlightPropId) {
             prop = &ctx.props[static_cast<std::size_t>(i)];
             propIndex = i;
             break;
@@ -1441,14 +1458,14 @@ void RoomEditor::updateObjectHighlight(EditorContext& ctx) {
     }
     if (!prop) return;
 
-    // Keep Outliner in sync when focusing a blueprint object node (highlight selection).
-    if (m_bpOpenNodeId != 0 || m_bpHighlightPulse > 0.0f) {
+    // Keep Outliner in sync when focusing a graph object node (highlight selection).
+    if (m_graphOpenNodeId != 0 || m_graphHighlightPulse > 0.0f) {
         m_selKind = Selection::Prop;
         m_selIndex = propIndex;
     }
 
     const glm::vec3 center = glm::vec3(prop->transform[3]);
-    const float pulse = 0.55f + 0.45f * std::abs(std::sin(m_bpHighlightPulse * 8.0f));
+    const float pulse = 0.55f + 0.45f * std::abs(std::sin(m_graphHighlightPulse * 8.0f));
     const glm::vec3 col(0.15f * pulse, 0.65f * pulse, 1.0f * pulse);
     // Corner markers around the prop origin.
     constexpr float r = 1.2f;
@@ -1459,23 +1476,23 @@ void RoomEditor::updateObjectHighlight(EditorContext& ctx) {
     submitPreviewLight(ctx, center + glm::vec3(0.0f, 1.5f, 0.0f), col * 1.2f, 5.0f);
 }
 
-void RoomEditor::drawBlueprintContextMenu(EditorContext& ctx) {
+void RoomEditor::drawNodeGraphContextMenu(EditorContext& ctx) {
     (void)ctx;
-    if (!m_bpContextOpen) return;
-    ImGui::OpenPopup("##bp_place_node");
-    m_bpContextOpen = false;
-    if (!ImGui::BeginPopup("##bp_place_node")) return;
+    if (!m_graphContextOpen) return;
+    ImGui::OpenPopup("##graph_place_node");
+    m_graphContextOpen = false;
+    if (!ImGui::BeginPopup("##graph_place_node")) return;
 
     ImGui::TextDisabled("Place a new node");
     ImGui::SetNextItemWidth(220.0f);
-    ImGui::InputTextWithHint("##bpsearch", "Search nodes...", m_bpSearch, sizeof(m_bpSearch));
+    ImGui::InputTextWithHint("##graphsearch", "Search nodes...", m_graphSearch, sizeof(m_graphSearch));
     ImGui::Separator();
 
     // Grouped like UE's right-click palette.
     const char* lastCat = "";
     for (int i = 0; i < kPaletteCount; ++i) {
         const NodeKind kind = kPaletteKinds[i];
-        if (!paletteMatchesSearch(kind, m_bpSearch)) continue;
+        if (!paletteMatchesSearch(kind, m_graphSearch)) continue;
         const char* cat = nodeKindCategory(kind);
         if (std::strcmp(cat, lastCat) != 0) {
             if (lastCat[0] != '\0') ImGui::Separator();
@@ -1484,20 +1501,20 @@ void RoomEditor::drawBlueprintContextMenu(EditorContext& ctx) {
         }
         if (ImGui::MenuItem(nodeKindName(kind))) {
             const int id =
-                m_blueprint.addNode(kind, m_bpContextGridX, m_bpContextGridY);
-            m_blueprintDirty = true;
-            openBlueprintNode(id);
+                m_nodeGraph.addNode(kind, m_graphContextGridX, m_graphContextGridY);
+            m_nodeGraphDirty = true;
+            openGraphNode(id);
             ImGui::CloseCurrentPopup();
         }
     }
     ImGui::EndPopup();
 }
 
-void RoomEditor::drawBlueprintDetails(EditorContext& ctx) {
-    if (m_bpOpenNodeId == 0) return;
-    GraphNode* n = m_blueprint.findNode(m_bpOpenNodeId);
+void RoomEditor::drawNodeGraphDetails(EditorContext& ctx) {
+    if (m_graphOpenNodeId == 0) return;
+    GraphNode* n = m_nodeGraph.findNode(m_graphOpenNodeId);
     if (!n) {
-        m_bpOpenNodeId = 0;
+        m_graphOpenNodeId = 0;
         return;
     }
 
@@ -1508,11 +1525,11 @@ void RoomEditor::drawBlueprintDetails(EditorContext& ctx) {
     bool open = true;
     if (!ImGui::Begin("Node Details", &open, ImGuiWindowFlags_None)) {
         ImGui::End();
-        if (!open) m_bpOpenNodeId = 0;
+        if (!open) m_graphOpenNodeId = 0;
         return;
     }
     if (!open) {
-        m_bpOpenNodeId = 0;
+        m_graphOpenNodeId = 0;
         ImGui::End();
         return;
     }
@@ -1529,28 +1546,28 @@ void RoomEditor::drawBlueprintDetails(EditorContext& ctx) {
         std::snprintf(buf, sizeof(buf), "%s", n->strA.c_str());
         if (ImGui::InputText("String", buf, sizeof(buf))) {
             n->strA = buf;
-            m_blueprintDirty = true;
+            m_nodeGraphDirty = true;
         }
     }
     if (n->kind == NodeKind::ConstInt || n->kind == NodeKind::GetWorldObject ||
         n->kind == NodeKind::Randi || n->kind == NodeKind::ActionSetBlock ||
         n->kind == NodeKind::ActionSpawnPickup || n->kind == NodeKind::HighlightObject ||
         n->kind == NodeKind::PrintObject) {
-        if (ImGui::InputInt("Int A / Object Id", &n->intA)) m_blueprintDirty = true;
+        if (ImGui::InputInt("Int A / Object Id", &n->intA)) m_nodeGraphDirty = true;
         if (n->kind == NodeKind::Randi || n->kind == NodeKind::ActionSetBlock)
-            if (ImGui::InputInt("Int B", &n->intB)) m_blueprintDirty = true;
+            if (ImGui::InputInt("Int B", &n->intB)) m_nodeGraphDirty = true;
         if (n->kind == NodeKind::ActionSetBlock) {
-            if (ImGui::InputInt("Int C", &n->intC)) m_blueprintDirty = true;
-            if (ImGui::InputInt("Block", &n->intD)) m_blueprintDirty = true;
+            if (ImGui::InputInt("Int C", &n->intC)) m_nodeGraphDirty = true;
+            if (ImGui::InputInt("Block", &n->intD)) m_nodeGraphDirty = true;
         }
         if (n->kind == NodeKind::ActionSpawnPickup)
-            if (ImGui::InputInt("Count", &n->intD)) m_blueprintDirty = true;
+            if (ImGui::InputInt("Count", &n->intD)) m_nodeGraphDirty = true;
     }
     if (n->kind == NodeKind::ConstFloat || n->kind == NodeKind::ActionSpawnPickup ||
         n->kind == NodeKind::MathAdd || n->kind == NodeKind::HighlightObject) {
         const char* flabel =
             n->kind == NodeKind::HighlightObject ? "Duration (s)" : "Float";
-        if (ImGui::InputFloat(flabel, &n->floatA, 0.1f, 1.0f, "%.2f")) m_blueprintDirty = true;
+        if (ImGui::InputFloat(flabel, &n->floatA, 0.1f, 1.0f, "%.2f")) m_nodeGraphDirty = true;
     }
 
     if (n->kind == NodeKind::GetWorldObject) {
@@ -1568,18 +1585,18 @@ void RoomEditor::drawBlueprintDetails(EditorContext& ctx) {
                 if (ImGui::Selectable(lab, sel)) {
                     n->intA = static_cast<int>(p.id);
                     n->strA = leaf;
-                    m_blueprintDirty = true;
-                    m_bpHighlightPropId = p.id;
-                    m_bpHighlightPulse = 1.5f;
+                    m_nodeGraphDirty = true;
+                    m_graphHighlightPropId = p.id;
+                    m_graphHighlightPulse = 1.5f;
                 }
             }
             ImGui::EndCombo();
         }
         if (ImGui::Button("Select in Outliner / Viewport")) {
-            m_bpHighlightPropId = static_cast<std::uint32_t>(n->intA);
-            m_bpHighlightPulse = 2.5f;
+            m_graphHighlightPropId = static_cast<std::uint32_t>(n->intA);
+            m_graphHighlightPulse = 2.5f;
             for (int i = 0; i < static_cast<int>(ctx.props.size()); ++i) {
-                if (ctx.props[static_cast<std::size_t>(i)].id == m_bpHighlightPropId) {
+                if (ctx.props[static_cast<std::size_t>(i)].id == m_graphHighlightPropId) {
                     m_selKind = Selection::Prop;
                     m_selIndex = i;
                     break;
@@ -1587,82 +1604,82 @@ void RoomEditor::drawBlueprintDetails(EditorContext& ctx) {
             }
         }
         ImGui::SameLine();
-        if (ImGui::Button("Focus Graph")) focusBlueprintNode(n->id);
+        if (ImGui::Button("Focus Graph")) focusGraphNode(n->id);
     }
 
     ImGui::Separator();
-    if (ImGui::Button("Close")) m_bpOpenNodeId = 0;
+    if (ImGui::Button("Close")) m_graphOpenNodeId = 0;
     ImGui::SameLine();
     if (ImGui::Button("Delete Node")) {
-        m_blueprint.removeNode(n->id);
-        m_bpOpenNodeId = 0;
-        m_blueprintDirty = true;
+        m_nodeGraph.removeNode(n->id);
+        m_graphOpenNodeId = 0;
+        m_nodeGraphDirty = true;
     }
     ImGui::End();
 }
 
-void RoomEditor::drawBlueprints(EditorContext& ctx) {
-    if (!m_blueprintsOpen) return;
-    ensureBlueprintContext();
-    loadOrSeedBlueprint(ctx);
+void RoomEditor::drawNodeGraph(EditorContext& ctx) {
+    if (!m_nodeGraphOpen) return;
+    ensureNodeGraphContext();
+    loadOrSeedNodeGraph(ctx);
     ImNodes::SetCurrentContext(m_imnodes);
 
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos({vp->Pos.x + 300.0f, vp->Pos.y + 40.0f}, ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize({780.0f, 520.0f}, ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Blueprints", &m_blueprintsOpen)) {
+    if (!ImGui::Begin("Node Graph", &m_nodeGraphOpen)) {
         ImGui::End();
         return;
     }
 
     // Toolbar strip (UE Graph editor style).
-    if (ImGui::Button("Compile")) saveAndCompileBlueprint(ctx);
+    if (ImGui::Button("Compile")) saveAndCompileNodeGraph(ctx);
     ImGui::SameLine();
-    if (ImGui::Button("Save")) saveAndCompileBlueprint(ctx);
+    if (ImGui::Button("Save")) saveAndCompileNodeGraph(ctx);
     ImGui::SameLine();
-    if (ImGui::Button("Browse...")) m_bpContextOpen = true;
+    if (ImGui::Button("Browse...")) m_graphContextOpen = true;
     ImGui::SameLine();
     if (ImGui::Button("Open Node") && ImNodes::NumSelectedNodes() == 1) {
         int id = 0;
         ImNodes::GetSelectedNodes(&id);
-        openBlueprintNode(id);
+        openGraphNode(id);
     }
     ImGui::SameLine();
     if (ImGui::Button("Delete") && ImNodes::NumSelectedNodes() > 0) {
         std::vector<int> ids(static_cast<std::size_t>(ImNodes::NumSelectedNodes()));
         ImNodes::GetSelectedNodes(ids.data());
         for (int id : ids) {
-            if (id == m_bpOpenNodeId) m_bpOpenNodeId = 0;
-            m_blueprint.removeNode(id);
+            if (id == m_graphOpenNodeId) m_graphOpenNodeId = 0;
+            m_nodeGraph.removeNode(id);
         }
         ImNodes::ClearNodeSelection();
-        m_blueprintDirty = true;
+        m_nodeGraphDirty = true;
     }
     ImGui::SameLine();
     if (ImGui::Button("Reset Graph")) {
-        m_blueprint = NodeGraph::makeExample();
-        m_bpPlacedIds.clear();
-        m_bpOpenNodeId = 0;
-        m_blueprintDirty = true;
+        m_nodeGraph = NodeGraph::makeExample();
+        m_graphPlacedIds.clear();
+        m_graphOpenNodeId = 0;
+        m_nodeGraphDirty = true;
     }
-    if (m_blueprintDirty) {
+    if (m_nodeGraphDirty) {
         ImGui::SameLine();
         ImGui::TextColored({1.0f, 0.75f, 0.2f, 1.0f}, "* dirty");
     }
-    if (!m_bpStatus.empty()) {
+    if (!m_graphStatus.empty()) {
         ImGui::SameLine();
-        ImGui::TextColored({0.4f, 0.85f, 0.55f, 1.0f}, "%s", m_bpStatus.c_str());
+        ImGui::TextColored({0.4f, 0.85f, 0.55f, 1.0f}, "%s", m_graphStatus.c_str());
     }
     ImGui::TextDisabled("RMB empty graph: place node  |  Double-click node: open Details  |  "
-                        "Ctrl+drag link detach  |  Outliner: Create Blueprint Node");
+                        "Ctrl+drag link detach  |  Outliner: Create Graph Node");
 
     ImNodes::BeginNodeEditor();
-    for (GraphNode& n : m_blueprint.nodes) {
-        if (std::find(m_bpPlacedIds.begin(), m_bpPlacedIds.end(), n.id) == m_bpPlacedIds.end()) {
+    for (GraphNode& n : m_nodeGraph.nodes) {
+        if (std::find(m_graphPlacedIds.begin(), m_graphPlacedIds.end(), n.id) == m_graphPlacedIds.end()) {
             ImNodes::SetNodeGridSpacePos(n.id, ImVec2(n.posX, n.posY));
-            m_bpPlacedIds.push_back(n.id);
+            m_graphPlacedIds.push_back(n.id);
         }
-        const bool isOpen = n.id == m_bpOpenNodeId;
+        const bool isOpen = n.id == m_graphOpenNodeId;
         ImNodes::PushColorStyle(ImNodesCol_TitleBar, categoryTitleColor(nodeKindCategory(n.kind)));
         ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered,
                                 categoryTitleColor(nodeKindCategory(n.kind)));
@@ -1696,7 +1713,7 @@ void RoomEditor::drawBlueprints(EditorContext& ctx) {
                     ImGui::SetNextItemWidth(120.0f);
                     if (ImGui::InputText("##msg", buf, sizeof(buf))) {
                         n.strA = buf;
-                        m_blueprintDirty = true;
+                        m_nodeGraphDirty = true;
                     }
                 }
                 ImNodes::EndInputAttribute();
@@ -1704,18 +1721,18 @@ void RoomEditor::drawBlueprints(EditorContext& ctx) {
                 ImNodes::BeginOutputAttribute(attr, shape);
                 if (n.kind == NodeKind::ConstInt) {
                     ImGui::SetNextItemWidth(64.0f);
-                    if (ImGui::InputInt("##ci", &n.intA, 0, 0)) m_blueprintDirty = true;
+                    if (ImGui::InputInt("##ci", &n.intA, 0, 0)) m_nodeGraphDirty = true;
                 } else if (n.kind == NodeKind::ConstFloat) {
                     ImGui::SetNextItemWidth(64.0f);
                     if (ImGui::InputFloat("##cf", &n.floatA, 0, 0, "%.2f"))
-                        m_blueprintDirty = true;
+                        m_nodeGraphDirty = true;
                 } else if (n.kind == NodeKind::ConstString) {
                     char buf[96];
                     std::snprintf(buf, sizeof(buf), "%s", n.strA.c_str());
                     ImGui::SetNextItemWidth(100.0f);
                     if (ImGui::InputText("##cs", buf, sizeof(buf))) {
                         n.strA = buf;
-                        m_blueprintDirty = true;
+                        m_nodeGraphDirty = true;
                     }
                 } else if (n.kind == NodeKind::GetWorldObject && p == 0) {
                     ImGui::Text("%s #%d", pins[p].name, n.intA);
@@ -1734,7 +1751,7 @@ void RoomEditor::drawBlueprints(EditorContext& ctx) {
         ImNodes::PopColorStyle();
     }
 
-    for (const GraphLink& L : m_blueprint.links) {
+    for (const GraphLink& L : m_nodeGraph.links) {
         // Color exec links white, data links by approximate type.
         ImNodes::PushColorStyle(ImNodesCol_Link, IM_COL32(200, 200, 200, 255));
         ImNodes::Link(L.id, pinAttrId(L.fromNode, L.fromPin), pinAttrId(L.toNode, L.toPin));
@@ -1748,13 +1765,13 @@ void RoomEditor::drawBlueprints(EditorContext& ctx) {
     // Double-click node → Open Details (UE: open node).
     if (editorHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         int hovered = -1;
-        if (ImNodes::IsNodeHovered(&hovered) && hovered > 0) openBlueprintNode(hovered);
+        if (ImNodes::IsNodeHovered(&hovered) && hovered > 0) openGraphNode(hovered);
     }
     // Single click still selects; if selection changes and user presses F, open.
     if (ImGui::IsKeyPressed(ImGuiKey_F) && ImNodes::NumSelectedNodes() == 1) {
         int id = 0;
         ImNodes::GetSelectedNodes(&id);
-        openBlueprintNode(id);
+        openGraphNode(id);
     }
     // Delete key
     if (ImGui::IsKeyPressed(ImGuiKey_Delete) && ImNodes::NumSelectedNodes() > 0 &&
@@ -1762,11 +1779,11 @@ void RoomEditor::drawBlueprints(EditorContext& ctx) {
         std::vector<int> ids(static_cast<std::size_t>(ImNodes::NumSelectedNodes()));
         ImNodes::GetSelectedNodes(ids.data());
         for (int id : ids) {
-            if (id == m_bpOpenNodeId) m_bpOpenNodeId = 0;
-            m_blueprint.removeNode(id);
+            if (id == m_graphOpenNodeId) m_graphOpenNodeId = 0;
+            m_nodeGraph.removeNode(id);
         }
         ImNodes::ClearNodeSelection();
-        m_blueprintDirty = true;
+        m_nodeGraphDirty = true;
     }
 
     // Right-click empty canvas → place node menu (UE Graph action menu).
@@ -1780,38 +1797,38 @@ void RoomEditor::drawBlueprints(EditorContext& ctx) {
             const ImVec2 pan = ImNodes::EditorContextGetPanning();
             const ImVec2 mouse = ImGui::GetMousePos();
             const ImVec2 win = ImGui::GetWindowPos();
-            m_bpContextGridX = mouse.x - win.x - pan.x;
-            m_bpContextGridY = mouse.y - win.y - pan.y - 40.0f;
-            m_bpContextOpen = true;
-            m_bpSearch[0] = '\0';
+            m_graphContextGridX = mouse.x - win.x - pan.x;
+            m_graphContextGridY = mouse.y - win.y - pan.y - 40.0f;
+            m_graphContextOpen = true;
+            m_graphSearch[0] = '\0';
         } else if (onNode && nodeH > 0) {
             // Right-click node → open details.
-            openBlueprintNode(nodeH);
+            openGraphNode(nodeH);
         }
     }
-    drawBlueprintContextMenu(ctx);
+    drawNodeGraphContextMenu(ctx);
 
     // Link create / destroy
     int startAttr = 0, endAttr = 0;
     if (ImNodes::IsLinkCreated(&startAttr, &endAttr)) {
         int sn = pinNodeId(startAttr), sp = pinIndexOf(startAttr);
         int en = pinNodeId(endAttr), ep = pinIndexOf(endAttr);
-        const GraphNode* a = m_blueprint.findNode(sn);
-        const GraphNode* b = m_blueprint.findNode(en);
+        const GraphNode* a = m_nodeGraph.findNode(sn);
+        const GraphNode* b = m_nodeGraph.findNode(en);
         if (a && b) {
             int ca = 0, cb = 0;
             const GraphPinDesc* pa = nodePinLayout(a->kind, ca);
             const GraphPinDesc* pb = nodePinLayout(b->kind, cb);
             if (sp < ca && ep < cb) {
                 if (pa[sp].isInput && !pb[ep].isInput) std::swap(sn, en), std::swap(sp, ep);
-                if (m_blueprint.addLink(sn, sp, en, ep)) m_blueprintDirty = true;
+                if (m_nodeGraph.addLink(sn, sp, en, ep)) m_nodeGraphDirty = true;
             }
         }
     }
     int destroyed = 0;
     if (ImNodes::IsLinkDestroyed(&destroyed)) {
-        m_blueprint.removeLink(destroyed);
-        m_blueprintDirty = true;
+        m_nodeGraph.removeLink(destroyed);
+        m_nodeGraphDirty = true;
     }
 
     ImGui::End();

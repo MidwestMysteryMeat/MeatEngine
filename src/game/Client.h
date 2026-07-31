@@ -72,7 +72,7 @@ public:
     float ownYaw() const { return m_ownYaw; }
     float ownPitch() const { return m_ownPitch; }
 
-    // C6 script FX (prop highlights from blueprints). Tick down remaining; Engine draws.
+    // C6 script FX (prop highlights from node graphs). Tick down remaining; Engine draws.
     struct ScriptFx {
         std::uint32_t propId = 0;
         float remaining = 0.0f;

@@ -30,16 +30,16 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
    `kVoxelSize` (voxel cell 16,16,16).
 
 ## Stretch / bigger pieces (pull in as the sprint allows)
-- ~~**C6 — node scripting / blueprints + live coding**~~ ✅ (slice 2) — UE5-Slate editor theme;
+- ~~**C6 — node scripting / Node graphs + live coding**~~ ✅ (slice 2) — UE5-Slate editor theme;
   imnodes graph with RMB place menu, double-click/F open Node Details, object highlight from
   Outliner↔Get World Object; compiles to sandboxed Lua + live reload. Open: more API, subgraphs.
 - **C9 — Output Log browser (UE5-style)** ⭐ *planned* — in-editor panel that mirrors UE's
   **Output Log**: ring buffer of engine/script messages with **verbosity filters** (All /
   Messages / **Warnings** / **Errors**), search/filter text, clear, auto-scroll, click-to-copy.
   Must capture `meat::log` (info/warn/error), ScriptHost Lua failures (`script: … failed`),
-  blueprint compile/reload status, and optional `[lua]` `game.log` lines. Hook: ring sink in
+  node-graph compile/reload status, and optional `[lua]` `game.log` lines. Hook: ring sink in
   `engine/core/Log.h` → ImGui "Output Log" window in Room Designer (and optionally always-on
-  with `~` / Window menu). Without this, blueprint authors cannot catch graph/Lua errors the
+  with `~` / Window menu). Without this, graph authors cannot catch graph/Lua errors the
   way UE5 does. **Do next after C6 API nodes** (or in parallel with ScriptFx polish).
 - **B2 — non-voxel MeshLevel** (Level interface: VoxelWorld vs static-mesh + Jolt MeshShape).
 - ~~**B3b — gravity volumes / zoned gravity**~~ ✅ (first slice) — `GravityField` with base + AABB

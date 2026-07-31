@@ -292,7 +292,7 @@ void ServerSim::setupScripting() {
         if (n == "shotgun") return m_defaultItems.shotgun;
         return 0;
     };
-    // C6: prop helpers for blueprints (Get World Object / Highlight Object).
+    // C6: prop helpers for node graphs (Get World Object / Highlight Object).
     api.highlightProp = [this](int propId, float seconds) {
         if (propId <= 0) return;
         const float dur = std::clamp(seconds, 0.1f, 30.0f);

@@ -6,8 +6,9 @@
 
 namespace meat {
 
-// C6 visual scripting: a UE-style node graph that compiles to sandboxed Lua
+// C6 visual scripting: a node graph that compiles to sandboxed Lua
 // (on_init / on_tick / on_player_join / on_player_death + game.* API).
+// Called "Node Graph" in UI — not "Blueprints" (Epic/UE trademark).
 // Graph JSON is the authoring source; emitted .lua is what ScriptHost loads.
 
 enum class NodeKind : std::uint8_t {

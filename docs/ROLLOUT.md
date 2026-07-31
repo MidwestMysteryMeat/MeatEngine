@@ -41,7 +41,7 @@ docs/ENGINE_REUSE_SURVEY.md + the memory OSS-grabs reference) and its verificati
   geometry), **NpcZombie + armed NpcShooter**, and **ozz-animation vendored + two-bone foot IK**
   (terrain foot planting, VLM-verified no-regression). Auto-rig Blender tool (`tools/autorig/`).
 - **Platform**: Linux build + CI (Linux hw unverified), positional 3D audio, Lua+sol2 scripting,
-  ImGui room editor + ImGuizmo, **C6 blueprints** (imnodes → Lua, first slice).
+  ImGui room editor + ImGuizmo, **C6 node graphs** (imnodes → Lua, first slice).
 
 ---
 
@@ -96,8 +96,8 @@ light → ship) without the bloat/missing pieces that don't fit a PSX voxel FPS.
   OSS: ImGuiFileDialog.
 - [ ] **C5. Inspectors** — material, entity/prefab, block/atlas, and **environment settings** (drives
   B3). Struct-reflection via Boost.PFR (BSL-1.0) → auto widgets + JSON.
-- [~] **C6. Node scripting / Blueprints + live coding** ⭐ — first slices shipped: imnodes graph in
-  Room Designer (events/actions/data/flow/math/object) → JSON + sandboxed Lua (`zz_blueprint.lua`) +
+- [~] **C6. Node scripting / Node graphs + live coding** ⭐ — first slices shipped: imnodes graph in
+  Room Designer (events/actions/data/flow/math/object) → JSON + sandboxed Lua (`zz_nodegraph.lua`) +
   Save+Compile live reload; UE-style open node / object highlight. Still open: more game API nodes,
   subgraphs, debug pins, ImGuiColorTextEdit for the text path; C++ live-reload later (cr.h).
 - [ ] **C7. Packaging / export** — bundle exe + cooked assets + a zip/pk3 archive into a shippable
@@ -105,8 +105,8 @@ light → ship) without the bloat/missing pieces that don't fit a PSX voxel FPS.
 - [ ] **C8. Profiler panels** — frame/mesh/netcode telemetry. OSS: ImPlot + Tracy (BSD-3).
 - [ ] **C9. Output Log browser (UE5-style)** ⭐ — in-editor **Output Log** panel (like UE5 Window →
   Developer Tools → Output Log): ring buffer of `meat::log` Info/Warn/Error + ScriptHost/Lua
-  failures + blueprint compile messages; filter by severity; search; clear; auto-scroll; copy.
-  Required so creators catch blueprint compile/runtime errors without digging console windows.
+  failures + node-graph compile messages; filter by severity; search; clear; auto-scroll; copy.
+  Required so creators catch node-graph compile/runtime errors without digging console windows.
   Implementation sketch: thread-safe ring in `Log.h` (`log::addSink` / fixed-size deque), ImGui
   panel in Room Designer, optional hotkey. Pairs tightly with C6.
 
@@ -168,5 +168,5 @@ Human feel-playtests (mouse feel, combat cadence, editor ergonomics), and real L
 **A2 sun shadow** ⭐ → **B3b editor gravity volumes** → **C6 subgraphs/watches** → **B2 MeshLevel** →
 **C7 packaging** → **F netcode / D OSS** as scale demands.
 
-Rationale: creators already place assets and run blueprints; the gap is **seeing errors** (C9), then
+Rationale: creators already place assets and run node graphs; the gap is **seeing errors** (C9), then
 **finishing the tool loop** (inspectors, shadows), then **generality** (mesh levels) and **scale** (net/ECS).

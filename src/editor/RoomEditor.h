@@ -30,7 +30,7 @@ private:
     // One-time Dear ImGui style: UE5-Slate-inspired dark charcoal + blue select.
     // Editor windows only — the in-game HUD is not drawn while this is active.
     void applyEditorTheme();
-    void applyBlueprintNodeStyle(); // imnodes palette (UE blueprint colors)
+    void applyNodeGraphStyle(); // imnodes palette (visual script node colors)
 
     void updateFlyCamera(EditorContext& ctx, float dt);
     void drawTopBar(EditorContext& ctx);
@@ -39,10 +39,10 @@ private:
     void drawOutliner(EditorContext& ctx);
     void drawGizmo(EditorContext& ctx, const glm::mat4& view, const glm::mat4& proj);
     void handleTool(EditorContext& ctx, glm::vec3 rayOrigin, glm::vec3 rayDir);
-    void drawBlueprintDetails(EditorContext& ctx);
-    void drawBlueprintContextMenu(EditorContext& ctx);
-    void openBlueprintNode(int nodeId);
-    void focusBlueprintNode(int nodeId);
+    void drawNodeGraphDetails(EditorContext& ctx);
+    void drawNodeGraphContextMenu(EditorContext& ctx);
+    void openGraphNode(int nodeId);
+    void focusGraphNode(int nodeId);
     void createObjectNodeFromSelection(EditorContext& ctx);
     void updateObjectHighlight(EditorContext& ctx);
 
@@ -55,11 +55,11 @@ private:
     void drawCodeEditor(EditorContext& ctx);
     void openLuaFile(EditorContext& ctx, const std::string& path);
 
-    // C6 Blueprints — imnodes graph that compiles to sandboxed Lua.
-    void drawBlueprints(EditorContext& ctx);
-    void ensureBlueprintContext();
-    void loadOrSeedBlueprint(EditorContext& ctx);
-    bool saveAndCompileBlueprint(EditorContext& ctx);
+    // C6 Node Graph (visual scripting) — imnodes graph that compiles to sandboxed Lua.
+    void drawNodeGraph(EditorContext& ctx);
+    void ensureNodeGraphContext();
+    void loadOrSeedNodeGraph(EditorContext& ctx);
+    bool saveAndCompileNodeGraph(EditorContext& ctx);
 
     // Content browser: a flat, cached, type-grouped listing of the project's
     // assets with per-file sizes. Unlike the Assets tree (which lazily lists via
@@ -166,27 +166,27 @@ private:
     int m_newMapEnvironment = 0; // 0 Surface, 1 Underwater, 2 Space
     int m_newMapSeed = 1337;
 
-    // --- Blueprints (C6) ---------------------------------------------------
-    bool m_blueprintsOpen = true;
-    bool m_blueprintLoaded = false;
-    bool m_blueprintDirty = false;
-    NodeGraph m_blueprint;
+    // --- Node Graph (C6 visual scripting; not "Blueprints" — UE trademark) ---
+    bool m_nodeGraphOpen = true;
+    bool m_nodeGraphLoaded = false;
+    bool m_nodeGraphDirty = false;
+    NodeGraph m_nodeGraph;
     ImNodesContext* m_imnodes = nullptr;
-    std::string m_bpStatus;
-    float m_bpStatusTtl = 0.0f;
-    int m_bpAddKind = 0; // palette index for "Add node"
+    std::string m_graphStatus;
+    float m_graphStatusTtl = 0.0f;
+    int m_graphAddKind = 0; // palette index for "Add node"
     // Node ids that already received SetNodeGridSpacePos (imnodes owns drag after).
-    std::vector<int> m_bpPlacedIds;
-    // UE-style: double-click / Open opens a Details panel for this node id (0 = none).
-    int m_bpOpenNodeId = 0;
+    std::vector<int> m_graphPlacedIds;
+    // Double-click / Open opens a Details panel for this node id (0 = none).
+    int m_graphOpenNodeId = 0;
     // Right-click "place node here" spawn position in grid space.
-    float m_bpContextGridX = 80.0f;
-    float m_bpContextGridY = 80.0f;
-    bool m_bpContextOpen = false;
-    char m_bpSearch[64] = {};
+    float m_graphContextGridX = 80.0f;
+    float m_graphContextGridY = 80.0f;
+    bool m_graphContextOpen = false;
+    char m_graphSearch[64] = {};
     // World object highlight driven by selected GetWorldObject / Highlight nodes.
-    std::uint32_t m_bpHighlightPropId = 0;
-    float m_bpHighlightPulse = 0.0f;
+    std::uint32_t m_graphHighlightPropId = 0;
+    float m_graphHighlightPulse = 0.0f;
 };
 
 } // namespace meat
