@@ -104,4 +104,25 @@ inline float unpackShipPitch(std::uint16_t data) {
     return static_cast<float>(static_cast<std::int16_t>(data)) / 1000.0f;
 }
 
+// AI traffic: steer toward a world-space target at cruise speed (deterministic).
+inline void integrateShipAi(ShipPose& ship, glm::vec3 target, float dt, float cruiseSpeed,
+                            glm::vec3 gravityAccel) {
+    const glm::vec3 to = target - ship.pos;
+    const float dist = glm::length(to);
+    glm::vec3 desiredVel{0.0f};
+    if (dist > 0.5f) {
+        desiredVel = (to / dist) * cruiseSpeed;
+        // Face velocity (yaw from XZ, pitch from vertical component).
+        ship.yaw = std::atan2(-desiredVel.x, -desiredVel.z);
+        const float horiz = std::sqrt(desiredVel.x * desiredVel.x + desiredVel.z * desiredVel.z);
+        ship.pitch = glm::clamp(std::atan2(desiredVel.y, std::max(horiz, 0.01f)), -0.6f, 0.6f);
+    }
+    // Soft accel toward desired vel + light gravity.
+    ship.vel += (desiredVel - ship.vel) * std::min(1.0f, 2.5f * dt);
+    ship.vel += gravityAccel * 0.12f * dt;
+    const float speed = glm::length(ship.vel);
+    if (speed > cruiseSpeed * 1.4f) ship.vel *= (cruiseSpeed * 1.4f) / speed;
+    ship.pos += ship.vel * dt;
+}
+
 } // namespace meat

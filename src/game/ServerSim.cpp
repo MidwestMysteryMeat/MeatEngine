@@ -391,7 +391,39 @@ void ServerSim::spawnDemoShip() {
                   ship.id, hull.id, hull.author, ship.halfExtents.x, ship.halfExtents.y,
                   ship.halfExtents.z);
     }
-    if (space) spawnSpaceDecor();
+    if (space) {
+        spawnSpaceDecor();
+        spawnAiTraffic();
+    }
+}
+
+void ServerSim::spawnAiTraffic() {
+    // 4 patrol craft orbiting the pad — not boardable, light hostile if a player
+    // comes within range. Deterministic phase offsets from the world seed.
+    const glm::vec3 pad = defaultSpawnPos();
+    constexpr int kTraffic = 4;
+    for (int i = 0; i < kTraffic; ++i) {
+        Ship ship;
+        ship.id = m_nextEntityId++;
+        ship.ai = true;
+        ship.hullVariant = i % kShipHullCount;
+        glm::vec3 half = kShipHalfExtents;
+        if (loadShipHull(ship.hullVariant, half)) ship.halfExtents = half;
+        ship.health = 180.0f;
+        ship.patrolCenter = pad + glm::vec3(0.0f, 14.0f, 0.0f);
+        ship.patrolRadius = 28.0f + 6.0f * static_cast<float>(i);
+        ship.patrolPhase = static_cast<float>((m_seed + static_cast<std::uint32_t>(i) * 97u) % 628) *
+                           0.01f;
+        ship.patrolOmega = 0.18f + 0.04f * static_cast<float>(i % 3);
+        ship.patrolAltitude = 10.0f + 3.0f * static_cast<float>(i);
+        const float c = std::cos(ship.patrolPhase), s = std::sin(ship.patrolPhase);
+        ship.pos = ship.patrolCenter +
+                   glm::vec3(c * ship.patrolRadius, ship.patrolAltitude * 0.15f * s,
+                             s * ship.patrolRadius);
+        // No kinematic body — AI ships move every tick; board blocked by ai flag.
+        m_ships.push_back(ship);
+    }
+    log::info("server: spawned {} AI patrol ships", kTraffic);
 }
 
 const ServerSim::Ship* ServerSim::findShip(std::uint32_t id) const {
@@ -415,8 +447,106 @@ glm::vec3 ServerSim::combatMuzzle(const Player& player) const {
     return player.controller.position() + glm::vec3(0.0f, player.controller.eyeHeight(), 0.0f);
 }
 
-void ServerSim::updateShips() {
+void ServerSim::damageShip(Transport& transport, Ship& ship, float damage, PeerId source) {
+    if (ship.health <= 0.0f) return;
+    ship.health -= damage;
+    if (ship.health > 0.0f) return;
+    log::info("server: ship {} destroyed by peer {}", ship.id, source);
+    // Eject pilot if any.
+    if (ship.pilot != 0) {
+        if (auto it = m_players.find(ship.pilot); it != m_players.end() && it->second) {
+            it->second->pilotingShip = 0;
+            it->second->controller.setState(ship.pos + glm::vec3(0, 2, 0), glm::vec3(0));
+            it->second->health = std::max(10.0f, it->second->health - 30.0f);
+        }
+        ship.pilot = 0;
+    }
+    clearShipBody(ship);
+    // Small loot scatter.
+    spawnPickup(m_defaultItems.rockets, 2, ship.pos + glm::vec3(0, 1, 0));
+    spawnPickup(m_defaultItems.medkit, 1, ship.pos + glm::vec3(0.5f, 1, 0));
+    (void)transport;
+}
+
+void ServerSim::updateShips(Transport& transport) {
+    constexpr float kAiEngage = 42.0f;
+    constexpr float kAiDamage = 8.0f;
+    constexpr float kAiFireInterval = 0.55f;
+    constexpr float kAiCruise = 11.0f;
+
     for (Ship& ship : m_ships) {
+        if (ship.health <= 0.0f) continue;
+
+        if (ship.ai) {
+            ship.fireCooldown -= kFixedDtServer;
+            ship.patrolPhase += ship.patrolOmega * kFixedDtServer;
+            const float c = std::cos(ship.patrolPhase), s = std::sin(ship.patrolPhase);
+            const glm::vec3 target =
+                ship.patrolCenter +
+                glm::vec3(c * ship.patrolRadius, ship.patrolAltitude * 0.2f * s,
+                          s * ship.patrolRadius);
+            ShipPose pose{ship.pos, ship.vel, ship.yaw, ship.pitch};
+            integrateShipAi(pose, target, kFixedDtServer, kAiCruise, m_gravity.sample(ship.pos));
+            ship.pos = pose.pos;
+            ship.vel = pose.vel;
+            ship.yaw = pose.yaw;
+            ship.pitch = pose.pitch;
+
+            // Hostile: shoot nearest living player in range (simple aim, no lead).
+            if (ship.fireCooldown <= 0.0f) {
+                PeerId bestPeer = 0;
+                Player* best = nullptr;
+                float bestD = kAiEngage;
+                for (auto& [peer, pl] : m_players) {
+                    if (!pl || !pl->spawned || pl->health <= 0.0f) continue;
+                    const float d = glm::length(pl->controller.position() - ship.pos);
+                    if (d < bestD) {
+                        bestD = d;
+                        best = pl.get();
+                        bestPeer = peer;
+                    }
+                }
+                if (best) {
+                    ship.fireCooldown = kAiFireInterval;
+                    ship.hardpoint ^= 1;
+                    const float side = (ship.hardpoint & 1) == 0 ? -1.0f : 1.0f;
+                    const glm::vec3 muzzle =
+                        shipHardpointWorld(ship.pos, ship.yaw, ship.pitch, ship.halfExtents, side);
+                    const glm::vec3 aim = best->controller.position() +
+                                         glm::vec3(0.0f, best->controller.eyeHeight() * 0.5f, 0.0f);
+                    const glm::vec3 to = aim - muzzle;
+                    const float dist = glm::length(to);
+                    if (dist > 0.5f) {
+                        const glm::vec3 dir = to / dist;
+                        // Hitscan vs player capsule only (no voxel march — open space).
+                        const glm::vec3 feet = best->controller.position();
+                        const float height = best->controller.crouched() ? 0.95f : 1.8f;
+                        const glm::vec3 a = feet + glm::vec3(0, kCapsuleRadius, 0);
+                        const glm::vec3 b = feet + glm::vec3(0, height - kCapsuleRadius, 0);
+                        float tRay = 0;
+                        if (raySegmentDistance(muzzle, dir, dist + 2.0f, a, b, tRay) <=
+                            kCapsuleRadius) {
+                            best->health -= kAiDamage;
+                            if (best->health <= 0.0f) {
+                                log::info("server: AI ship {} downed player {}", ship.id, bestPeer);
+                                dropPlayerLoot(*best, best->controller.position());
+                                best->controller.setState(defaultSpawnPos(), glm::vec3(0));
+                                best->health = 100.0f;
+                                if (best->pilotingShip != 0) {
+                                    if (Ship* ps = findShip(best->pilotingShip)) {
+                                        ps->pilot = 0;
+                                        ensureShipBody(*ps);
+                                    }
+                                    best->pilotingShip = 0;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+
         if (ship.pilot == 0) {
             // Empty hull still feels a light field pull (drifts in orbital SOI).
             const glm::vec3 g = m_gravity.sample(ship.pos);
@@ -445,6 +575,10 @@ void ServerSim::updateShips() {
             ship.pos + shipOrientation(ship.yaw, ship.pitch) * ship.seatOffset;
         pilot.controller.setState(seat, ship.vel);
     }
+
+    // Remove destroyed ships after the tick (stable erase).
+    std::erase_if(m_ships, [](const Ship& s) { return s.health <= 0.0f; });
+    (void)transport;
 }
 
 bool ServerSim::tryBoardOrLeaveShip(Player& player) {
@@ -477,7 +611,7 @@ bool ServerSim::tryBoardOrLeaveShip(Player& player) {
     Ship* nearest = nullptr;
     float best = 1.0e9f;
     for (Ship& s : m_ships) {
-        if (s.pilot != 0) continue;
+        if (s.pilot != 0 || s.ai || s.health <= 0.0f) continue; // AI / occupied not boardable
         const float reach =
             std::max(kShipBoardRange, glm::length(glm::vec2(s.halfExtents.x, s.halfExtents.z)) + 1.5f);
         const float d = glm::length(s.pos - feet);
@@ -915,6 +1049,27 @@ void ServerSim::marchBullet(Transport& transport, PeerId peer, Player& player,
             }
         }
 
+        // H4: ship hulls compete for the closest hit (AABB-ish sphere radius).
+        Ship* shipVictim = nullptr;
+        for (Ship& sh : m_ships) {
+            if (sh.health <= 0.0f) continue;
+            // Don't shoot your own seat out from under yourself.
+            if (sh.pilot == peer) continue;
+            const float rad = glm::length(sh.halfExtents) * 0.65f;
+            const glm::vec3 a = sh.pos - glm::vec3(0, sh.halfExtents.y * 0.3f, 0);
+            const glm::vec3 b = sh.pos + glm::vec3(0, sh.halfExtents.y * 0.3f, 0);
+            float tRay = 0;
+            if (raySegmentDistance(origin, dir, segmentEnd, a, b, tRay) <= rad && tRay < bestT) {
+                bestT = tRay;
+                shipVictim = &sh;
+                npcVictim = nullptr;
+                victim = nullptr;
+            }
+        }
+        if (shipVictim) {
+            damageShip(transport, *shipVictim, shotDamage * damageScale, peer);
+            return;
+        }
         if (npcVictim) {
             damageNpc(transport, *npcVictim, shotDamage * damageScale);
             return;
@@ -1358,7 +1513,7 @@ void ServerSim::tick(Transport& transport) {
             first = false;
         }
     }
-    updateShips(); // H4: thrusters + seat glue (after player cmds applied)
+    updateShips(transport); // H4: thrusters, AI traffic, seat glue
     m_physics.step(kFixedDtServer);
     updateProjectiles(transport);
     updateNpcs(transport);
@@ -1776,8 +1931,9 @@ void ServerSim::broadcastSnapshot(Transport& transport) {
     for (const Ship& s : m_ships) {
         if (snap.entities.size() >= kMaxSnapshotEntities) break;
         // anim packs hull variant + occupied bit (see ShipHulls.h).
+        if (s.health <= 0.0f) continue;
         snap.entities.push_back({s.id, static_cast<std::uint8_t>(EntityArchetype::Ship), s.pos,
-                                 s.yaw, packShipAnim(s.pilot != 0, s.hullVariant), s.health,
+                                 s.yaw, packShipAnim(s.pilot != 0, s.ai, s.hullVariant), s.health,
                                  packShipPitch(s.pitch)});
     }
     // Threats first: if the entity cap ever bites, invisible-but-lethal NPCs and

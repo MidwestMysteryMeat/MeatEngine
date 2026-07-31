@@ -101,13 +101,15 @@ inline std::optional<StaticModel> loadShipHull(int variant, glm::vec3& outHalfEx
     return model;
 }
 
-// EntityState.anim packing for ships: bit7 = occupied, low bits = hull variant.
-inline std::uint8_t packShipAnim(bool occupied, int variant) {
-    const auto v = static_cast<std::uint8_t>(variant < 0 ? 0 : variant & 0x7f);
-    return static_cast<std::uint8_t>((occupied ? 0x80u : 0u) | v);
+// EntityState.anim packing for ships:
+//   bit7 = occupied (player pilot), bit6 = AI traffic, bits0-5 = hull variant.
+inline std::uint8_t packShipAnim(bool occupied, bool ai, int variant) {
+    const auto v = static_cast<std::uint8_t>(variant < 0 ? 0 : (variant & 0x3f));
+    return static_cast<std::uint8_t>((occupied ? 0x80u : 0u) | (ai ? 0x40u : 0u) | v);
 }
-inline int shipVariantFromAnim(std::uint8_t anim) { return static_cast<int>(anim & 0x7f); }
+inline int shipVariantFromAnim(std::uint8_t anim) { return static_cast<int>(anim & 0x3f); }
 inline bool shipOccupiedFromAnim(std::uint8_t anim) { return (anim & 0x80u) != 0; }
+inline bool shipAiFromAnim(std::uint8_t anim) { return (anim & 0x40u) != 0; }
 
 // Decor props (station / junkyard) — vault or staged; optional.
 // junkyard → Sebastian Sosnowski (SpaceShips Junk Yard ASSET part2)

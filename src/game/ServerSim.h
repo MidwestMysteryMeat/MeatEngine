@@ -175,18 +175,28 @@ private:
         float animSpeed = 0.0f;       // see Npc::animSpeed
     };
     // H4: thruster vehicle + kinematic Jolt hull (disabled while piloted so the
-    // seat capsule doesn't explode out of the box).
+    // seat capsule doesn't explode out of the box). AI traffic ships are not
+    // boardable and fly patrol loops (Space template).
     struct Ship {
         std::uint32_t id = 0;
         glm::vec3 pos{0};
         glm::vec3 vel{0};
         float yaw = 0.0f;
         float pitch = 0.0f;
-        PeerId pilot = 0; // 0 = empty seat
+        PeerId pilot = 0; // 0 = empty seat (AI ships always 0)
+        bool ai = false;
         float health = 500.0f;
         int hullVariant = 0; // ShipHulls catalog index
         glm::vec3 halfExtents{kShipHalfExtents};
         glm::vec3 seatOffset{kShipSeatOffset}; // local seat relative to hull center
+        // AI patrol: orbit center + radius/phase; fireCooldown for hostile shots.
+        glm::vec3 patrolCenter{0};
+        float patrolRadius = 30.0f;
+        float patrolPhase = 0.0f;
+        float patrolOmega = 0.25f; // rad/s
+        float patrolAltitude = 12.0f;
+        float fireCooldown = 0.0f;
+        int hardpoint = 0;
         PhysicsWorld::BodyHandle body = PhysicsWorld::kInvalidBody;
     };
 
@@ -222,9 +232,11 @@ private:
     void spawnDungeonNpcs();
     void spawnDemoShip(); // H4: one+ ships near the spawn pad
     void spawnSpaceDecor(); // station + junkyard landmarks (Space template)
+    void spawnAiTraffic();  // H4: patrol ships (Space template)
     void ensureShipBody(Ship& ship);   // create/update kinematic hull when empty
     void clearShipBody(Ship& ship);    // drop hull while piloted
-    void updateShips();
+    void updateShips(Transport& transport);
+    void damageShip(Transport& transport, Ship& ship, float damage, PeerId source);
     bool tryBoardOrLeaveShip(Player& player); // true if handled (Use consumed)
     // Aim origin for combat: eye on foot, twin hardpoints when piloting.
     glm::vec3 combatMuzzle(const Player& player) const;

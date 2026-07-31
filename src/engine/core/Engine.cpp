@@ -968,6 +968,7 @@ void Engine::render(float alpha) {
             const float pitch = unpackShipPitch(e.data);
             const int variant = shipVariantFromAnim(e.anim);
             const bool occupied = shipOccupiedFromAnim(e.anim);
+            const bool ai = shipAiFromAnim(e.anim);
             const glm::mat4 xform = shipTransform(e.pos, e.yaw, pitch);
             const ShipHullGpu& hull = shipHullGpu(variant);
             if (hull.mesh != 0)
@@ -980,9 +981,11 @@ void Engine::render(float alpha) {
             const float aft = hull.mesh != 0 ? hull.halfExtents.z * 0.85f : 1.6f;
             const glm::vec3 enginePos =
                 e.pos + shipOrientation(e.yaw, pitch) * glm::vec3(0.0f, 0.0f, aft);
-            const glm::vec3 glow =
-                occupied ? glm::vec3(0.25f, 0.9f, 1.0f) : glm::vec3(0.12f, 0.35f, 0.55f);
-            m_renderer.submitPointLight(enginePos, glow, occupied ? 14.0f : 6.0f);
+            // Pilot cyan, AI traffic amber, parked cool blue.
+            const glm::vec3 glow = occupied ? glm::vec3(0.25f, 0.9f, 1.0f)
+                                  : ai       ? glm::vec3(1.0f, 0.45f, 0.12f)
+                                             : glm::vec3(0.12f, 0.35f, 0.55f);
+            m_renderer.submitPointLight(enginePos, glow, (occupied || ai) ? 14.0f : 6.0f);
             break;
         }
         default:
@@ -1176,8 +1179,9 @@ void Engine::render(float alpha) {
         if (m_client.vehicleId() != 0) {
             ImGui::Text("SHIP %u  cannon (auto hardpoints)", m_client.vehicleId());
             ImGui::TextDisabled("E leave | V cam | LMB fire | WASD+Space/Ctrl thrust");
+            ImGui::TextDisabled("amber traffic ships are hostile AI — shoot to salvage");
         } else {
-            ImGui::TextDisabled("near ship: E board");
+            ImGui::TextDisabled("near ship: E board  |  amber = AI traffic");
         }
         // CC-BY requires naming authors when their art is shown (see assets/ATTRIBUTION.md).
         ImGui::TextDisabled("ships: JamyzGenius / JazOone3D / ABJVNK  (CC-BY 4.0)");

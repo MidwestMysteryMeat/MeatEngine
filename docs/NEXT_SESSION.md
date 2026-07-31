@@ -36,10 +36,9 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
   volumes + radial orbital bodies; CharacterController samples full gravity vector each tick;
   Space env seeds habitat box + planetoid; editor-authored volumes / net sync of custom fields later.
 - **Racer template** (vehicle controller + chase cam) — the second template after TPS.
-- ~~**H4 — Space ship template**~~ ✅ (slice 5) — Fab hulls + station/junkyard; **ship cannon**
-  (auto hardpoints while piloting); New Map genre (FPS/TPS/Space); void/space skip dungeon
-  NPCs/loot; `new_project.py --template space`; lighter Space loadout. Still open: multi-seat,
-  AI traffic.
+- ~~**H4 — Space ship template**~~ ✅ (slice 6) — Fab hulls + station/junkyard; ship cannon;
+  New Map genre; **AI patrol traffic** (amber thrusters, hostile fire, destroy for loot);
+  void/space skip dungeon content. Still open: multi-seat, local-up reorient.
 - **A2 — directional sun shadow map** (McNopper MIT; +LiSPSM later).
 - ~~**E1 foot-slide**~~ ✅ — walk clip phase rate = worldSpeed / clipSpeed × walkWeight.
 
