@@ -103,12 +103,9 @@ light → ship) without the bloat/missing pieces that don't fit a PSX voxel FPS.
 - [ ] **C7. Packaging / export** — bundle exe + cooked assets + a zip/pk3 archive into a shippable
   build (ties to D2 resource archives + `tools/package.ps1`).
 - [ ] **C8. Profiler panels** — frame/mesh/netcode telemetry. OSS: ImPlot + Tracy (BSD-3).
-- [ ] **C9. Output Log browser (UE5-style)** ⭐ — in-editor **Output Log** panel (like UE5 Window →
-  Developer Tools → Output Log): ring buffer of `meat::log` Info/Warn/Error + ScriptHost/Lua
-  failures + node-graph compile messages; filter by severity; search; clear; auto-scroll; copy.
-  Required so creators catch node-graph compile/runtime errors without digging console windows.
-  Implementation sketch: thread-safe ring in `Log.h` (`log::addSink` / fixed-size deque), ImGui
-  panel in Room Designer, optional hotkey. Pairs tightly with C6.
+- [x] **C9. Output Log browser (UE5-style)** ⭐ — ring buffer in `Log.cpp` + Room Designer
+  **Output Log** (All/Messages/Warnings/Errors, search, clear, auto-scroll, double-click copy).
+  Captures `meat::log`, ScriptHost failures, node-graph compile.
 
 ## Pillar D — Engine OSS grabs (from the survey)
 - [ ] **D1. Binary greedy meshing** — swap the mesher hot path; graft the v1-branch per-vertex AO

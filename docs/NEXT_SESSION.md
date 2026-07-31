@@ -33,14 +33,9 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
 - ~~**C6 — node scripting / Node graphs + live coding**~~ ✅ (slice 2) — UE5-Slate editor theme;
   imnodes graph with RMB place menu, double-click/F open Node Details, object highlight from
   Outliner↔Get World Object; compiles to sandboxed Lua + live reload. Open: more API, subgraphs.
-- **C9 — Output Log browser (UE5-style)** ⭐ *planned* — in-editor panel that mirrors UE's
-  **Output Log**: ring buffer of engine/script messages with **verbosity filters** (All /
-  Messages / **Warnings** / **Errors**), search/filter text, clear, auto-scroll, click-to-copy.
-  Must capture `meat::log` (info/warn/error), ScriptHost Lua failures (`script: … failed`),
-  node-graph compile/reload status, and optional `[lua]` `game.log` lines. Hook: ring sink in
-  `engine/core/Log.h` → ImGui "Output Log" window in Room Designer (and optionally always-on
-  with `~` / Window menu). Without this, graph authors cannot catch graph/Lua errors the
-  way UE5 does. **Do next after C6 API nodes** (or in parallel with ScriptFx polish).
+- ~~**C9 — Output Log browser (UE5-style)**~~ ✅ — ring buffer in `Log.cpp`; Room Designer
+  **Output Log** (All/Messages/Warnings/Errors, search, clear, auto-scroll, double-click copy).
+  Captures engine log, ScriptHost failures, node-graph compile.
 - **B2 — non-voxel MeshLevel** (Level interface: VoxelWorld vs static-mesh + Jolt MeshShape).
 - ~~**B3b — gravity volumes / zoned gravity**~~ ✅ (first slice) — `GravityField` with base + AABB
   volumes + radial orbital bodies; CharacterController samples full gravity vector each tick;
@@ -65,12 +60,12 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
 **Full research ranking:** [ENGINE_PRIORITY_PLAN.md](ENGINE_PRIORITY_PLAN.md) (highest → lowest need).
 
 ### Working list (creation suite track — adjusted)
-1. ⭐ **C9 Output Log** — UE5 Output Log panel (errors/warnings/messages). **Promote above more C6 features.**
-2. **C6-a reliability** — compile/reload errors → log; ScriptFx + many API nodes already shipped (`3c9920d`).
+1. ~~**C9 Output Log**~~ ✅
+2. **C6-a reliability** — compile already logs; keep improving Lua error surfacing.
 3. **C6-b high-value nodes only** — finish hooks creators need, not infinite catalog.
 4. **C5 lite / C4** — prop-env inspectors + import dialog (suite ergonomics).
 5. ⭐ **A2 sun shadows** — biggest remaining visual lift.
-6. **C6-c subgraphs / multi-graph / watches** — *after* log + reliability (demoted).
+6. **C6-c subgraphs / multi-graph / watches** — after reliability.
 7. **B2 MeshLevel / B3b editor volumes / B5 game.json** — as capacity allows.
 8. H4/H1 polish, C7 packaging, F/D pillars — later (see full plan).
 

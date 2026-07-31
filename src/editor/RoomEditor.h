@@ -55,6 +55,9 @@ private:
     void drawCodeEditor(EditorContext& ctx);
     void openLuaFile(EditorContext& ctx, const std::string& path);
 
+    // C9 Output Log — UE-style severity-filtered message browser.
+    void drawOutputLog();
+
     // C6 Node Graph (visual scripting) — imnodes graph that compiles to sandboxed Lua.
     void drawNodeGraph(EditorContext& ctx);
     void ensureNodeGraphContext();
@@ -187,6 +190,13 @@ private:
     // World object highlight driven by selected GetWorldObject / Highlight nodes.
     std::uint32_t m_graphHighlightPropId = 0;
     float m_graphHighlightPulse = 0.0f;
+
+    // --- Output Log (C9) ---------------------------------------------------
+    bool m_outputLogOpen = true;
+    int m_logFilter = 0; // 0 All, 1 Messages, 2 Warnings, 3 Errors
+    char m_logSearch[128] = {};
+    bool m_logAutoScroll = true;
+    int m_logLastCount = 0; // for auto-scroll when new lines arrive
 };
 
 } // namespace meat

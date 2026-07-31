@@ -64,8 +64,5 @@ The editor chrome uses a **dark Slate-inspired** theme (charcoal panels, blue se
 
 - More `game.*` API nodes, multi-graph tabs, debug "watch" pins, subgraphs,
   ImGuiColorTextEdit for the text Lua path.
-- **Output Log browser (C9)** — in-editor log: Info / Warning / Error filters,
-  search, clear, auto-scroll. Must surface ScriptHost errors (`script: … failed`),
-  node-graph compile/reload status, and `game.log` lines so graph authors can catch
-  mistakes without an external console. Tracked in [NEXT_SESSION.md](NEXT_SESSION.md)
-  and [ROLLOUT.md](ROLLOUT.md) as **C9**.
+- ~~**Output Log browser (C9)**~~ ✅ — open **Output Log** in Room Designer (severity filters,
+  search, clear). Node Graph compile posts success/fail there.

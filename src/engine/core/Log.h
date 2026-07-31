@@ -1,19 +1,41 @@
 #pragma once
-#include <cstdio>
+#include <cstddef>
+#include <cstdint>
 #include <format>
+#include <string>
 #include <string_view>
+#include <vector>
 
-// Minimal logger: std::format to stdout/stderr with a level tag. The one
-// permitted piece of global state in the engine.
+// Logger: std::format to stdout/stderr + fixed-size ring for the C9 Output Log.
+// The one permitted piece of global state in the engine.
 namespace meat::log {
 
-enum class Level { Info, Warn, Error };
+enum class Level : std::uint8_t { Info = 0, Warn = 1, Error = 2 };
 
-inline void write(Level level, std::string_view msg) {
-    const char* tag = level == Level::Info ? "INFO" : level == Level::Warn ? "WARN" : "ERR ";
-    std::FILE* out = level == Level::Error ? stderr : stdout;
-    std::fprintf(out, "[%s] %.*s\n", tag, static_cast<int>(msg.size()), msg.data());
-    std::fflush(out); // survive being killed mid-run; game logs are low-volume
+struct Entry {
+    Level level = Level::Info;
+    // Seconds since process start (monotonic), for ordering / relative display.
+    double timeSec = 0.0;
+    // Wall clock "HH:MM:SS" for UE-style Output Log lines.
+    char timeWall[16] = {};
+    std::string message;
+};
+
+// Writes to console and appends to the history ring (max ~2000 lines).
+void write(Level level, std::string_view msg);
+
+void clearHistory();
+// Thread-safe snapshot for UI (copy).
+std::vector<Entry> snapshotHistory();
+std::size_t historySize();
+
+inline const char* levelTag(Level level) {
+    switch (level) {
+    case Level::Info: return "Log";
+    case Level::Warn: return "Warning";
+    case Level::Error: return "Error";
+    }
+    return "Log";
 }
 
 template <typename... Args>

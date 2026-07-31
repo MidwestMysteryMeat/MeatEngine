@@ -1,5 +1,6 @@
 #include "editor/RoomEditor.h"
 
+#include "engine/core/Log.h"
 #include "engine/core/ViewMath.h"
 
 #include <GLFW/glfw3.h>
@@ -141,6 +142,7 @@ void RoomEditor::update(EditorContext& ctx, float dt) {
     drawCodeEditor(ctx);
     drawNodeGraph(ctx);
     drawNodeGraphDetails(ctx);
+    drawOutputLog();
     updateObjectHighlight(ctx);
     if (!m_flying) drawGizmo(ctx, view, proj);
 
@@ -379,6 +381,11 @@ void RoomEditor::drawTopBar(EditorContext& ctx) {
         m_nodeGraphOpen = !m_nodeGraphOpen;
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("C6 visual scripting — node graph compiles to Lua (not UE Blueprints)");
+    ImGui::SameLine();
+    if (ImGui::Button(m_outputLogOpen ? "Output Log##hide" : "Output Log##show"))
+        m_outputLogOpen = !m_outputLogOpen;
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("C9 — engine / script / graph messages (warnings & errors)");
     if (ctx.setHemisphereAmbient) {
         bool hemi = ctx.hemisphereAmbient;
         if (ImGui::Checkbox("hemisphere ambient", &hemi)) ctx.setHemisphereAmbient(hemi);
@@ -1348,6 +1355,7 @@ bool RoomEditor::saveAndCompileNodeGraph(EditorContext& ctx) {
     if (!ctx.writeFile) {
         m_graphStatus = "writeFile unavailable";
         m_graphStatusTtl = 4.0f;
+        log::error("node graph: writeFile unavailable (cannot compile)");
         return false;
     }
     // Sync node positions from imnodes before save.
@@ -1360,12 +1368,14 @@ bool RoomEditor::saveAndCompileNodeGraph(EditorContext& ctx) {
     if (!ctx.writeFile(kGraphPath, json)) {
         m_graphStatus = "failed to write graph JSON";
         m_graphStatusTtl = 4.0f;
+        log::error("node graph: failed to write {}", kGraphPath);
         return false;
     }
     const std::string lua = emitGraphLua(m_nodeGraph);
     if (!ctx.writeFile(kEmitLuaPath, lua)) {
         m_graphStatus = "failed to write generated Lua";
         m_graphStatusTtl = 4.0f;
+        log::error("node graph: failed to write {}", kEmitLuaPath);
         return false;
     }
     m_nodeGraphDirty = false;
@@ -1374,6 +1384,12 @@ bool RoomEditor::saveAndCompileNodeGraph(EditorContext& ctx) {
     m_graphStatus = reloaded ? "saved + compiled + scripts reloaded"
                           : "saved + compiled (reload skipped / host only)";
     m_graphStatusTtl = 5.0f;
+    if (reloaded)
+        log::info("node graph: compiled {} ({} nodes) + scripts reloaded", kEmitLuaPath,
+                  m_nodeGraph.nodes.size());
+    else
+        log::warn("node graph: compiled {} but script reload skipped (host/SP only)",
+                  kEmitLuaPath);
     return true;
 }
 
@@ -1831,6 +1847,94 @@ void RoomEditor::drawNodeGraph(EditorContext& ctx) {
         m_nodeGraphDirty = true;
     }
 
+    ImGui::End();
+}
+
+// ===== Output Log (C9) =====================================================
+
+void RoomEditor::drawOutputLog() {
+    if (!m_outputLogOpen) return;
+
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos({vp->Pos.x + 12.0f, vp->Pos.y + vp->Size.y - 280.0f},
+                            ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({720.0f, 240.0f}, ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Output Log", &m_outputLogOpen)) {
+        ImGui::End();
+        return;
+    }
+
+    // Toolbar — mirrors UE Output Log filters.
+    ImGui::RadioButton("All", &m_logFilter, 0);
+    ImGui::SameLine();
+    ImGui::RadioButton("Messages", &m_logFilter, 1);
+    ImGui::SameLine();
+    ImGui::RadioButton("Warnings", &m_logFilter, 2);
+    ImGui::SameLine();
+    ImGui::RadioButton("Errors", &m_logFilter, 3);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(180.0f);
+    ImGui::InputTextWithHint("##logsearch", "Filter...", m_logSearch, sizeof(m_logSearch));
+    ImGui::SameLine();
+    ImGui::Checkbox("Auto-scroll", &m_logAutoScroll);
+    ImGui::SameLine();
+    if (ImGui::Button("Clear")) log::clearHistory();
+    ImGui::SameLine();
+    ImGui::TextDisabled("%zu lines", log::historySize());
+
+    ImGui::Separator();
+    ImGui::BeginChild("##logscroll", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+
+    const std::vector<log::Entry> lines = log::snapshotHistory();
+    const std::string search = m_logSearch;
+    auto searchLower = [](std::string s) {
+        for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return s;
+    };
+    const std::string q = searchLower(search);
+
+    int shown = 0;
+    for (const log::Entry& e : lines) {
+        if (m_logFilter == 1 && e.level != log::Level::Info) continue;
+        if (m_logFilter == 2 && e.level != log::Level::Warn) continue;
+        if (m_logFilter == 3 && e.level != log::Level::Error) continue;
+        if (!q.empty()) {
+            if (searchLower(e.message).find(q) == std::string::npos) continue;
+        }
+
+        ImVec4 col(0.80f, 0.80f, 0.80f, 1.0f);
+        if (e.level == log::Level::Warn) col = ImVec4(1.0f, 0.78f, 0.20f, 1.0f);
+        if (e.level == log::Level::Error) col = ImVec4(1.0f, 0.35f, 0.30f, 1.0f);
+
+        ImGui::PushStyleColor(ImGuiCol_Text, col);
+        ImGui::TextUnformatted(e.timeWall);
+        ImGui::SameLine();
+        ImGui::Text("[%s]", log::levelTag(e.level));
+        ImGui::SameLine();
+        // Selectable so Ctrl+C can copy (UE-like pick lines).
+        ImGui::PushID(shown);
+        if (ImGui::Selectable(e.message.c_str(), false,
+                              ImGuiSelectableFlags_AllowDoubleClick)) {
+            if (ImGui::IsMouseDoubleClicked(0)) {
+                ImGui::SetClipboardText(e.message.c_str());
+            }
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Double-click to copy line");
+        ImGui::PopID();
+        ImGui::PopStyleColor();
+        ++shown;
+    }
+
+    if (shown == 0)
+        ImGui::TextDisabled("(no messages match filter)");
+
+    const int count = static_cast<int>(lines.size());
+    if (m_logAutoScroll && count != m_logLastCount)
+        ImGui::SetScrollHereY(1.0f);
+    m_logLastCount = count;
+
+    ImGui::EndChild();
     ImGui::End();
 }
 
