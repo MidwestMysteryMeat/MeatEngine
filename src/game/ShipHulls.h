@@ -4,6 +4,7 @@
 #include "game/ShipControl.h"
 
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <array>
 #include <filesystem>
@@ -103,8 +104,33 @@ inline constexpr const char* kJunkyardStaged = "assets/models/ships/junkyard/set
 inline constexpr const char* kJunkyardVault =
     "G:/VaultCache/FabLibrary/SpaceShips_Junk_Yard_ASSET__part2_-81e5d377/fbx/"
     "spaceships-junk-yard-ass_extracted/source/JunkYard2_SetTwo.fbx";
+inline constexpr const char* kStationStaged = "assets/models/ships/station/scene.gltf";
 inline constexpr const char* kStationVault =
     "G:/VaultCache/FabLibrary/Spacestation_7_-_Procedural-bf84b4bd/gltf/converted/"
     "spacestation_7_procedura_extracted/scene.gltf";
+
+// Resolve first existing path among candidates.
+inline std::string resolveDecorPath(const char* staged, const char* vault) {
+    if (staged && std::filesystem::exists(staged)) return staged;
+    if (vault && std::filesystem::exists(vault)) return vault;
+    return {};
+}
+
+// World TRS that sizes a raw mesh to `targetLongest` metres and parks it at `pos`.
+// Uses a probe import so vault packs of unknown unit scale still look right.
+inline std::optional<glm::mat4> decorTransform(const std::string& path, glm::vec3 pos,
+                                               float targetLongest, float yaw = 0.0f) {
+    if (path.empty() || !std::filesystem::exists(path)) return std::nullopt;
+    const auto probe = loadStaticModel(path, {.scale = 1.0f, .center = false});
+    if (!probe) return std::nullopt;
+    const glm::vec3 raw = probe->boundsMax - probe->boundsMin;
+    const float longest = std::max({raw.x, raw.y, raw.z, 0.01f});
+    const float s = targetLongest / longest;
+    // center=true mesh sits base on y=0 after load in addProp; lift by half height * s.
+    const float lift = (raw.y * 0.5f) * s;
+    return glm::translate(glm::mat4(1.0f), pos + glm::vec3(0.0f, lift, 0.0f)) *
+           glm::rotate(glm::mat4(1.0f), yaw, glm::vec3(0, 1, 0)) *
+           glm::scale(glm::mat4(1.0f), glm::vec3(s));
+}
 
 } // namespace meat

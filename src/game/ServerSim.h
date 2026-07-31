@@ -76,6 +76,8 @@ private:
         // H4: ship entity id while piloting (0 = on foot). Character controller is
         // frozen; thrusters drive the ship instead.
         std::uint32_t pilotingShip = 0;
+        // H4: alternate twin hardpoints while piloting (0 = left, 1 = right).
+        int shipHardpoint = 0;
         // Fire-mode trigger discipline (H2): the previous tick's button states let
         // the combat step detect a PRESS EDGE, so SemiAuto/Burst fire once per pull
         // and can't auto-repeat on hold.
@@ -218,10 +220,15 @@ private:
     void spawnDungeonLoot();
     void spawnDungeonNpcs();
     void spawnDemoShip(); // H4: one+ ships near the spawn pad
+    void spawnSpaceDecor(); // station + junkyard landmarks (Space template)
     void ensureShipBody(Ship& ship);   // create/update kinematic hull when empty
     void clearShipBody(Ship& ship);    // drop hull while piloted
     void updateShips();
     bool tryBoardOrLeaveShip(Player& player); // true if handled (Use consumed)
+    // Aim origin for combat: eye on foot, twin hardpoints when piloting.
+    glm::vec3 combatMuzzle(const Player& player) const;
+    const Ship* findShip(std::uint32_t id) const;
+    Ship* findShip(std::uint32_t id);
     void updateNpcs(Transport& transport);
     void updateTurrets(Transport& transport);
     void updateCompanions(Transport& transport);

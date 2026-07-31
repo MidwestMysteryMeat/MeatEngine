@@ -332,6 +332,28 @@ void ServerSim::clearShipBody(Ship& ship) {
     ship.body = PhysicsWorld::kInvalidBody;
 }
 
+void ServerSim::spawnSpaceDecor() {
+    const glm::vec3 pad = defaultSpawnPos();
+    // Junkyard wreckage — small landmark near the pad.
+    if (const std::string junk = resolveDecorPath(kJunkyardStaged, kJunkyardVault); !junk.empty()) {
+        if (const auto t = decorTransform(junk, pad + glm::vec3(-16.0f, 0.0f, 12.0f), 14.0f, 0.6f)) {
+            if (addProp(nullptr, junk, *t, 0))
+                log::info("server: space decor — junkyard wreck at pad offset");
+        }
+    }
+    // Spacestation — large distant landmark (vault ~31 MB; load once if present).
+    if (const std::string station = resolveDecorPath(kStationStaged, kStationVault);
+        !station.empty()) {
+        if (const auto t =
+                decorTransform(station, pad + glm::vec3(0.0f, 8.0f, -70.0f), 55.0f, 0.2f)) {
+            if (addProp(nullptr, station, *t, 0))
+                log::info("server: space decor — station landmark (~55 m)");
+        } else {
+            log::warn("server: station mesh at '{}' failed to load", station);
+        }
+    }
+}
+
 void ServerSim::spawnDemoShip() {
     // H4: empty ships near the pad. Space template gets one of each CC-BY hull.
     const bool space = m_rules.gameTemplate == GameRules::Template::Space;
@@ -359,17 +381,28 @@ void ServerSim::spawnDemoShip() {
                   ship.id, shipHullDefs()[static_cast<std::size_t>(ship.hullVariant)].id,
                   ship.halfExtents.x, ship.halfExtents.y, ship.halfExtents.z);
     }
-    // Space template: drop junkyard wreckage as a static prop landmark (optional asset).
-    if (space) {
-        std::string junk = kJunkyardStaged;
-        if (!std::filesystem::exists(junk)) junk = kJunkyardVault;
-        if (std::filesystem::exists(junk)) {
-            const glm::mat4 t =
-                glm::translate(glm::mat4(1.0f), defaultSpawnPos() + glm::vec3(-14.0f, 0.0f, 10.0f)) *
-                glm::scale(glm::mat4(1.0f), glm::vec3(0.01f));
-            addProp(nullptr, junk, t, 0);
+    if (space) spawnSpaceDecor();
+}
+
+const ServerSim::Ship* ServerSim::findShip(std::uint32_t id) const {
+    for (const Ship& s : m_ships)
+        if (s.id == id) return &s;
+    return nullptr;
+}
+ServerSim::Ship* ServerSim::findShip(std::uint32_t id) {
+    for (Ship& s : m_ships)
+        if (s.id == id) return &s;
+    return nullptr;
+}
+
+glm::vec3 ServerSim::combatMuzzle(const Player& player) const {
+    if (player.pilotingShip != 0) {
+        if (const Ship* ship = findShip(player.pilotingShip)) {
+            const float side = (player.shipHardpoint & 1) == 0 ? -1.0f : 1.0f;
+            return shipHardpointWorld(ship->pos, ship->yaw, ship->pitch, ship->halfExtents, side);
         }
     }
+    return player.controller.position() + glm::vec3(0.0f, player.controller.eyeHeight(), 0.0f);
 }
 
 void ServerSim::updateShips() {
@@ -818,10 +851,8 @@ void ServerSim::fireHitscan(Transport& transport, PeerId peer, Player& player,
 
 void ServerSim::marchBullet(Transport& transport, PeerId peer, Player& player,
                             const ItemDef& weapon, glm::vec3 dir) {
-    const glm::vec3 eye =
-        player.controller.position() + glm::vec3(0, player.controller.eyeHeight(), 0);
-
-    glm::vec3 origin = eye;
+    // Shared with processCombat so hardpoints and eye aim stay consistent.
+    glm::vec3 origin = combatMuzzle(player);
     float remaining = kHitscanRange;
     // AP/HP ammo: bake the round's multipliers into the shot up front so every
     // flesh/block hit below inherits its character. HP's 0 penetrationMult zeroes
@@ -1386,9 +1417,10 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
     player.reloadCooldown -= kFixedDtServer;
     tickModifiers(player, kFixedDtServer); // decay active ApplyModifier buffs
 
-    const glm::vec3 eye =
-        player.controller.position() + glm::vec3(0, player.controller.eyeHeight(), 0);
+    // H4: pilots shoot from twin hardpoints (alternating); on foot uses eye.
+    const glm::vec3 eye = combatMuzzle(player);
     const glm::vec3 dir = viewForward(player.lastCmd.yaw, player.lastCmd.pitch);
+    const bool piloting = player.pilotingShip != 0;
     const int slotIndex = player.lastCmd.selectedSlot % Inventory::kSlots;
     const ItemStack& held = player.inventory.slot(slotIndex);
     const ItemDef& heldDef = m_items.get(held.id);
@@ -1453,14 +1485,17 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
                     player.inventoryDirty = true;
                 }
 
-                const glm::vec3 muzzle = eye + dir * 0.6f;
+                // On foot: muzzle slightly ahead of the eye. Piloting: hardpoint itself.
+                const glm::vec3 muzzle = piloting ? eye : (eye + dir * 0.6f);
                 if (heldDef.delivery == DeliveryKind::Hitscan) {
                     fireHitscan(transport, peer, player, heldDef);
+                    if (piloting) player.shipHardpoint ^= 1; // twin guns alternate
                 } else if (heldDef.delivery == DeliveryKind::Projectile) {
                     const glm::vec3 vel = dir * heldDef.projectileSpeed;
                     spawnProjectile(peer, muzzle, vel, heldDef);
-                } else if (heldDef.delivery == DeliveryKind::Deployable) {
-                    // Stick it on the surface the player is looking at (short reach).
+                    if (piloting) player.shipHardpoint ^= 1;
+                } else if (heldDef.delivery == DeliveryKind::Deployable && !piloting) {
+                    // Deployables stay EVA/on-foot only (no dropping mines from the cockpit).
                     glm::vec3 at = eye + dir * 2.5f;
                     if (const auto hit = m_voxels.raycast(eye, dir, 3.0f))
                         at = eye + dir * std::max(0.5f, hit->t - 0.2f);
@@ -1485,18 +1520,16 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
                         dep.pos = at;
                         dep.radius = heldDef.blastRadius;
                         dep.damage = heldDef.blastDamage;
-                        // Composed trigger effects (derive an AreaDamage if the
-                        // def has no authored list) — routed through runEffects.
                         dep.onTrigger =
                             heldDef.effects.empty()
                                 ? EffectList{areaDamageEffect(dep.damage, dep.radius)}
                                 : heldDef.effects;
-                        m_deployables.push_back(std::move(dep)); // armTime/triggerRange default
+                        m_deployables.push_back(std::move(dep));
                     }
                 }
             }
         }
-    } else if (heldDef.type == ItemType::Block && player.lastCmd.fire &&
+    } else if (!piloting && heldDef.type == ItemType::Block && player.lastCmd.fire &&
                player.fireCooldown <= 0.0f) {
         // Holding a block: LMB is the mining tool (held-repeat, no fire-mode discipline).
         player.fireCooldown = kPlaceInterval;
@@ -1512,7 +1545,7 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
     player.prevFire = player.lastCmd.fire;
     player.prevReload = player.lastCmd.reload;
 
-    if (player.lastCmd.place && player.placeCooldown <= 0.0f &&
+    if (!piloting && player.lastCmd.place && player.placeCooldown <= 0.0f &&
         heldDef.type == ItemType::Block) {
         const bool hasBlocks = !m_rules.minedBlockDrops || held.count > 0;
         if (hasBlocks) {

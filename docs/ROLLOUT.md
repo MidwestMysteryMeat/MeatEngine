@@ -144,10 +144,10 @@ underwater explorer needn't ship guns. Composes with world templates (B) + envir
   `perspective` / over-shoulder cam). Racer + **Space ship (H4)** + module opt-in still open.
 - [x] **H2. Weapon fire modes** ⭐ — Semi / Auto / Burst with trigger-edge discipline + shotgun pellets.
 - [x] **H3. Ammo + magazines** — mag/reserve/reload + HUD; gated by `finiteAmmo`.
-- [~] **H4. Space ship template** ⭐ — slice 2: oriented hull mesh, kinematic Jolt box (parked),
-  **E** board/leave, **V** cockpit↔chase while piloting, thrusters + client prediction,
-  `--template space` / `game.json "template":"space"` (Void+Space env, 3 ships). Still open:
-  authored FBX hull, hardpoints, multi-seat, AI ships, local-up reorient.
+- [~] **H4. Space ship template** ⭐ — Fab hulls (cyber/star/lowpoly), kinematic park colliders,
+  **E**/**V**/thrusters, Space template (Void+Space, 3 hulls, junkyard + station landmarks),
+  **twin hardpoints** while piloting. Still open: multi-seat, AI ships, dedicated ship weapons,
+  local-up reorient.
 
 ## Not automatable
 Human feel-playtests (mouse feel, combat cadence, editor ergonomics), and real Linux-hardware CI.

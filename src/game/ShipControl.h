@@ -31,6 +31,10 @@ inline constexpr float kShipLeaveOffset = 3.2f;  // metres to the right on EVA
 inline constexpr glm::vec3 kShipHalfExtents{1.15f, 0.42f, 2.4f};
 // Seat offset from hull center (cockpit slightly forward/up).
 inline constexpr glm::vec3 kShipSeatOffset{0.0f, 0.15f, -0.35f};
+// Twin hardpoints (local space, fractions of half-extents applied by the server).
+// X = wing, Y = up, Z = aft (nose is -Z).
+inline constexpr glm::vec3 kShipHardpointL{-0.75f, 0.05f, -0.95f};
+inline constexpr glm::vec3 kShipHardpointR{0.75f, 0.05f, -0.95f};
 
 // Yaw/pitch → world orientation for the hull (pitch about local right, then yaw).
 inline glm::quat shipOrientation(float yaw, float pitch) {
@@ -41,6 +45,15 @@ inline glm::quat shipOrientation(float yaw, float pitch) {
 
 inline glm::mat4 shipTransform(glm::vec3 pos, float yaw, float pitch) {
     return glm::translate(glm::mat4(1.0f), pos) * glm::mat4_cast(shipOrientation(yaw, pitch));
+}
+
+// World-space hardpoint from hull pose. `side` -1 left / +1 right.
+inline glm::vec3 shipHardpointWorld(glm::vec3 pos, float yaw, float pitch, glm::vec3 halfExtents,
+                                    float side) {
+    const glm::vec3 local(side * std::abs(kShipHardpointL.x) * halfExtents.x,
+                          kShipHardpointL.y * halfExtents.y,
+                          kShipHardpointL.z * halfExtents.z);
+    return pos + shipOrientation(yaw, pitch) * local;
 }
 
 // Look-relative thrust: W/S along view forward (including pitch), A/D strafe on

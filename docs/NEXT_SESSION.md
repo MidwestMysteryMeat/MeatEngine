@@ -36,10 +36,10 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
   volumes + radial orbital bodies; CharacterController samples full gravity vector each tick;
   Space env seeds habitat box + planetoid; editor-authored volumes / net sync of custom fields later.
 - **Racer template** (vehicle controller + chase cam) — the second template after TPS.
-- ~~**H4 — Space ship template**~~ ✅ (slice 3) — CC-BY Fab hulls (cyber / star / lowpoly)
-  via `ShipHulls` + `tools/stage_ships.ps1`; auto-fit length; kinematic colliders from mesh
-  AABB; Space template spawns one of each + junkyard wreck prop; **E**/**V**/thrusters as
-  before. Still open: hardpoints, multi-seat, station decor, AI traffic.
+- ~~**H4 — Space ship template**~~ ✅ (slice 4) — Fab hulls; Space template spawns hulls +
+  **junkyard** + **spacestation** landmarks (vault/runtime); **twin hardpoints** while
+  piloting (LMB alternates wing guns); mining/place disabled in cockpit. Still open:
+  multi-seat, AI traffic, dedicated ship weapons.
 - **A2 — directional sun shadow map** (McNopper MIT; +LiSPSM later).
 - ~~**E1 foot-slide**~~ ✅ — walk clip phase rate = worldSpeed / clipSpeed × walkWeight.
 

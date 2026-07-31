@@ -10,6 +10,9 @@ Ensure-Dir "$dst\cyber_ship"
 Ensure-Dir "$dst\star_ship"
 Ensure-Dir "$dst\lowpoly\textures"
 Ensure-Dir "$dst\junkyard"
+Ensure-Dir "$dst\station\textures"
+
+$stageStation = $env:MEAT_STAGE_STATION -eq "1" # opt-in: station bin is ~31 MB
 
 $cyber = "G:\VaultCache\FabLibrary\Floating_Cyber_Ship_JFG_-_Roblox_Showcase_Prop-64a45a1d\fbx\floating-cyber-ship-jfg-_extracted"
 $star = "G:\VaultCache\FabLibrary\SpaceShip-14265e80\fbx\spaceship_extracted"
@@ -31,6 +34,19 @@ Copy-Item "$low\textures\freeble_emissive.jpeg" "$dst\lowpoly\textures\" -Force
 
 Copy-Item "$junk\source\JunkYard2_SetTwo.fbx" "$dst\junkyard\set.fbx" -Force
 Copy-Item "$junk\textures\Material__0_Base_Color.jpg" "$dst\junkyard\albedo.jpg" -Force
+
+if ($stageStation) {
+  $st = "G:\VaultCache\FabLibrary\Spacestation_7_-_Procedural-bf84b4bd\gltf\converted\spacestation_7_procedura_extracted"
+  if (Test-Path $st) {
+    Copy-Item "$st\scene.gltf" "$dst\station\scene.gltf" -Force
+    Copy-Item "$st\scene.bin" "$dst\station\scene.bin" -Force
+    Copy-Item "$st\textures\*" "$dst\station\textures\" -Force
+    Write-Host "Staged station (large) under assets/models/ships/station"
+  }
+} else {
+  Write-Host "Skip station staging (set MEAT_STAGE_STATION=1 to copy ~50MB+ vault pack)."
+  Write-Host "Engine still loads station from VaultCache at runtime if present."
+}
 
 Write-Host "Staged ships under $dst"
 Get-ChildItem $dst -Recurse -File | ForEach-Object {

@@ -1157,7 +1157,7 @@ void Engine::render(float alpha) {
         ImGui::Text("pos %.1f %.1f %.1f", m_currPlayerPos.x, m_currPlayerPos.y,
                     m_currPlayerPos.z);
         if (m_client.vehicleId() != 0)
-            ImGui::Text("SHIP %u  (E leave | V cockpit/chase | WASD+Space/Ctrl thrust)",
+            ImGui::Text("SHIP %u  (E leave | V cam | LMB hardpoints | WASD thrust)",
                         m_client.vehicleId());
         else
             ImGui::TextDisabled("near ship: E board");
