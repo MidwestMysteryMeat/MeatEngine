@@ -78,8 +78,9 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
 17. **Scheduled open queue** — see [OPEN_SCHEDULE.md](OPEN_SCHEDULE.md) (30m durable).
 18. ~~**A2-s skinned shadow casters**~~ ✅ — `shadow_skinned` depth pass uses bone palette.
 19. ~~**C5+ Details material/block fields**~~ ✅ — prop material edit + block registry panel.
-20. Next fires: gravity net sync (B3b-net), ARCH reconcile.
-21. Deferred: F netcode / D1 mesher / D4 EnTT / human playtests.
+20. ~~**B3b-net gravity volumes**~~ ✅ — join overlay + live broadcast (`GravityVolumesMsg`).
+21. Next fires: ARCH reconcile (mark shipped “planned” items).
+22. Deferred: F netcode / D1 mesher / D4 EnTT / human playtests.
 
 ## Cleanup / debt from last sprint
 - ~~**ARCHITECTURE.md is stale**~~ ✅ (partial) — top status + layout + lighting + nodegraph/AI notes.

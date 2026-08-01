@@ -6,8 +6,10 @@
 
 #include <deque>
 #include <map>
+#include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace meat {
 
@@ -46,6 +48,8 @@ public:
     // PropAdded with an already-known id means "transform updated" (move).
     std::vector<PropAddedMsg> takeNewProps();
     std::vector<std::uint32_t> takeRemovedProps();
+    // B3b-net: full-replace gravity volume list from server (nullopt = no update this frame).
+    std::optional<std::vector<GravityVolumeEntry>> takeGravityVolumes();
 
     // Drain net events: Welcome, VoxelOps into the mirror, Snapshots into
     // rewind-and-replay reconciliation of the local character.
@@ -111,6 +115,8 @@ private:
     // Props reported by the server this frame, drained by the Engine each loop.
     std::vector<PropAddedMsg> m_newProps;
     std::vector<std::uint32_t> m_removedProps;
+    // B3b-net: last GravityVolumesMsg payload; Engine applies then clears.
+    std::optional<std::vector<GravityVolumeEntry>> m_gravityVolumes;
     std::vector<ScriptFx> m_scriptFx;
     // Newest snapshot tick we hold; piggybacked to the server as the delta-baseline
     // ack on every CommandMsg. 0 until the first snapshot lands (server keyframes).

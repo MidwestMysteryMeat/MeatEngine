@@ -253,6 +253,8 @@ void Engine::applyEditorGravityVolumes() {
             boxes.push_back(box);
         }
         m_server->setExtraGravityBoxes(std::move(boxes));
+        // B3b-net: pure join clients need the same extras for prediction.
+        if (m_serverTransport) m_server->broadcastGravityVolumes(*m_serverTransport);
     }
     log::info("gravity: applied {} editor volume(s)", m_gravityVolumes.size());
 }
@@ -431,6 +433,23 @@ void Engine::syncWorldProps() {
             m_physics.removeStaticBox(it->second);
             m_propBodies.erase(it);
         }
+    }
+    // B3b-net: server full-replace of editor gravity boxes (join replay + live edit).
+    if (auto vols = m_client.takeGravityVolumes()) {
+        m_gravityVolumes.clear();
+        m_gravityVolumes.reserve(vols->size());
+        for (const GravityVolumeEntry& e : *vols) {
+            EditorGravityVolume v;
+            v.min = e.min;
+            v.max = e.max;
+            v.gravity = e.gravity;
+            v.priority = e.priority;
+            m_gravityVolumes.push_back(v);
+        }
+        const GameRules rules = m_server ? m_server->rules() : m_client.rules();
+        rebuildClientGravityField(rules);
+        m_player.setGravity(m_gravity.sample(m_player.position()));
+        log::info("client: gravity volumes synced ({} box(es))", m_gravityVolumes.size());
     }
 }
 

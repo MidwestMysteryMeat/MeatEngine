@@ -76,7 +76,8 @@ blank / …), but spanning voxel AND non-voxel AND themed worlds. Physics is alr
 - [x] **B3b. Gravity volumes / zoned gravity** ⭐ — `GravityField` + CharacterController sampling;
   Space habitat/station/planetoid defaults; **B3b-e** editor **Gravity** tool places AABB volumes
   (priority + vector), saved in `saves/editor_extras.json`, applied to client + host server field.
-  Still open: net sync of custom fields to pure clients, capsule reorient to local "up".
+  **B3b-net** `GravityVolumesMsg` full-replace on join + host apply broadcast. Still open:
+  capsule reorient to local "up".
 - [x] **B4. "New Map" dialog** (editor) — template (Landscape / Superflat / Void) + environment +
   seed → `reseedWorld` (host/SP). Mesh template still open (B2).
 - [x] **B5. `game.json` `world: {template, environment}`** — nested `world` object (overrides

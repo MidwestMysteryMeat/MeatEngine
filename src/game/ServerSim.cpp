@@ -71,6 +71,29 @@ void ServerSim::setExtraGravityBoxes(std::vector<GravityBoxVolume> boxes) {
     rebuildGravityField();
 }
 
+GravityVolumesMsg ServerSim::makeGravityVolumesMsg() const {
+    GravityVolumesMsg msg;
+    msg.volumes.reserve(m_extraGravityBoxes.size());
+    for (const GravityBoxVolume& b : m_extraGravityBoxes) {
+        GravityVolumeEntry e;
+        e.min = b.min;
+        e.max = b.max;
+        e.gravity = b.gravity;
+        e.priority = b.priority;
+        msg.volumes.push_back(e);
+    }
+    return msg;
+}
+
+void ServerSim::broadcastGravityVolumes(Transport& transport) const {
+    const GravityVolumesMsg msg = makeGravityVolumesMsg();
+    const auto packet = pack(msg);
+    for (const auto& [peer, player] : m_players) {
+        if (!player || !player->helloDone) continue;
+        transport.send(peer, packet, true);
+    }
+}
+
 void ServerSim::reseedWorld(std::uint32_t seed, GameRules::Terrain terrain,
                             GameRules::Environment environment,
                             GameRules::Template gameTemplate) {
@@ -1858,6 +1881,8 @@ void ServerSim::sendOverlayTo(Transport& transport, PeerId peer) const {
     // so a joiner must be told about every one (same reason as the voxel replay).
     for (const WorldProp& prop : m_props)
         transport.send(peer, pack(PropAddedMsg{prop.id, prop.asset, prop.transform}), true);
+    // B3b-net: custom gravity boxes (env defaults are rebuilt from Welcome env).
+    transport.send(peer, pack(makeGravityVolumesMsg()), true);
 }
 
 void ServerSim::sendInventory(Transport& transport, PeerId peer, const Player& player) const {

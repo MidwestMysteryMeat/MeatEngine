@@ -252,15 +252,41 @@ bool decode(ScriptFxMsg& msg, ByteReader& r) {
     return r.read(msg.text);
 }
 
+void encode(const GravityVolumesMsg& msg, ByteWriter& w) {
+    const std::size_t n = std::min(msg.volumes.size(), kMaxGravityVolumes);
+    w.write(static_cast<std::uint16_t>(n));
+    for (std::size_t i = 0; i < n; ++i) {
+        const GravityVolumeEntry& v = msg.volumes[i];
+        w.write(v.min);
+        w.write(v.max);
+        w.write(v.gravity);
+        w.write(v.priority);
+    }
+}
+
+bool decode(GravityVolumesMsg& msg, ByteReader& r) {
+    std::uint16_t count = 0;
+    if (!r.read(count) || count > kMaxGravityVolumes) return false;
+    msg.volumes.clear();
+    msg.volumes.reserve(count);
+    for (std::uint16_t i = 0; i < count; ++i) {
+        GravityVolumeEntry v;
+        if (!r.read(v.min) || !r.read(v.max) || !r.read(v.gravity) || !r.read(v.priority))
+            return false;
+        msg.volumes.push_back(v);
+    }
+    return true;
+}
+
 std::optional<MsgType> peekType(std::span<const std::byte> packet) {
     if (packet.empty()) {
         return std::nullopt;
     }
     const auto raw = static_cast<std::uint8_t>(packet.front());
-    // ScriptFx is the last enumerator — new message types must extend this bound
+    // GravityVolumes is the last enumerator — new message types must extend this bound
     // or unpack()/peekType reject them as unknown.
     if (raw < static_cast<std::uint8_t>(MsgType::Hello) ||
-        raw > static_cast<std::uint8_t>(MsgType::ScriptFx)) {
+        raw > static_cast<std::uint8_t>(MsgType::GravityVolumes)) {
         return std::nullopt;
     }
     return static_cast<MsgType>(raw);

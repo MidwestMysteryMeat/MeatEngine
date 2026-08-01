@@ -22,7 +22,9 @@ namespace meat {
 enum class MsgType : std::uint8_t {
     Hello = 1, Welcome, Command, Snapshot, VoxelOp, Inventory, BatchVoxelOp, DeltaSnapshot,
     PlaceProp, PropAdded, RemoveProp, MoveProp,
-    ScriptFx // C6: server→client script visual FX (highlight prop, etc.)
+    ScriptFx, // C6: server→client script visual FX (highlight prop, etc.)
+    // B3b-net: server→client full replace of editor gravity AABBs (join + live edit).
+    GravityVolumes
 };
 
 struct HelloMsg {
@@ -133,6 +135,19 @@ struct ScriptFxMsg {
     std::string text; // kind 1: announce message (u16-prefixed on the wire)
 };
 
+// Server→client: full replace of custom gravity box volumes (B3b-e editor habitats).
+// Empty list clears client extras (env defaults remain). Count capped on decode.
+struct GravityVolumeEntry {
+    glm::vec3 min{0.0f};
+    glm::vec3 max{0.0f};
+    glm::vec3 gravity{0.0f, -12.0f, 0.0f};
+    std::int32_t priority = 20;
+};
+struct GravityVolumesMsg {
+    std::vector<GravityVolumeEntry> volumes;
+};
+inline constexpr std::size_t kMaxGravityVolumes = 64;
+
 // Snapshots larger than this are rejected on decode (and clamped on encode) so
 // a hostile packet can never make us allocate an absurd player list.
 inline constexpr std::size_t kMaxSnapshotPlayers = 64;
@@ -167,6 +182,8 @@ void encode(const MovePropMsg& msg, ByteWriter& w);
 bool decode(MovePropMsg& msg, ByteReader& r);
 void encode(const ScriptFxMsg& msg, ByteWriter& w);
 bool decode(ScriptFxMsg& msg, ByteReader& r);
+void encode(const GravityVolumesMsg& msg, ByteWriter& w);
+bool decode(GravityVolumesMsg& msg, ByteReader& r);
 
 constexpr MsgType msgTypeOf(const HelloMsg&) { return MsgType::Hello; }
 constexpr MsgType msgTypeOf(const WelcomeMsg&) { return MsgType::Welcome; }
@@ -178,6 +195,7 @@ constexpr MsgType msgTypeOf(const PropAddedMsg&) { return MsgType::PropAdded; }
 constexpr MsgType msgTypeOf(const RemovePropMsg&) { return MsgType::RemoveProp; }
 constexpr MsgType msgTypeOf(const MovePropMsg&) { return MsgType::MoveProp; }
 constexpr MsgType msgTypeOf(const ScriptFxMsg&) { return MsgType::ScriptFx; }
+constexpr MsgType msgTypeOf(const GravityVolumesMsg&) { return MsgType::GravityVolumes; }
 
 // nullopt if the packet is empty or the type byte is not a known MsgType.
 std::optional<MsgType> peekType(std::span<const std::byte> packet);

@@ -51,6 +51,10 @@ void Client::sendRemoveProp(std::uint32_t id) {
 
 std::vector<PropAddedMsg> Client::takeNewProps() { return std::exchange(m_newProps, {}); }
 
+std::optional<std::vector<GravityVolumeEntry>> Client::takeGravityVolumes() {
+    return std::exchange(m_gravityVolumes, std::nullopt);
+}
+
 std::vector<std::uint32_t> Client::takeRemovedProps() { return std::exchange(m_removedProps, {}); }
 
 void Client::pump(VoxelWorld& voxels, PhysicsWorld& physics, CharacterController& player) {
@@ -152,6 +156,11 @@ void Client::pump(VoxelWorld& voxels, PhysicsWorld& physics, CharacterController
                 if (!reader.read(v)) break;
                 voxels.setBlock(v, 0);
             }
+            break;
+        }
+        case MsgType::GravityVolumes: {
+            GravityVolumesMsg msg;
+            if (decode(msg, reader)) m_gravityVolumes = std::move(msg.volumes);
             break;
         }
         case MsgType::ScriptFx: {

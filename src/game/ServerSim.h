@@ -57,6 +57,9 @@ public:
     const GravityField& gravityField() const { return m_gravity; }
     // B3b-e: replace editor-authored gravity boxes and rebuild the field (host/SP).
     void setExtraGravityBoxes(std::vector<GravityBoxVolume> boxes);
+    // B3b-net: push current extras to all peers (join replay also sends via sendOverlayTo).
+    void broadcastGravityVolumes(Transport& transport) const;
+    const std::vector<GravityBoxVolume>& extraGravityBoxes() const { return m_extraGravityBoxes; }
 
     // B4 New Map: clear voxels/props/entities, switch terrain+environment+seed, and
     // regenerate dungeon content. Connected players are respawned at the default pad.
@@ -225,6 +228,7 @@ private:
     bool removeProp(Transport* transport, std::uint32_t id);
     void broadcastPropAdded(Transport& transport, const WorldProp& prop) const;
     void broadcastPropRemoved(Transport& transport, std::uint32_t id) const;
+    GravityVolumesMsg makeGravityVolumesMsg() const;
     // Model bounds (post-center), cached by asset path. False if the model fails.
     bool propBounds(const std::string& asset, glm::vec3& outMin, glm::vec3& outMax) const;
     void processCombat(Transport& transport, PeerId peer, Player& player);
