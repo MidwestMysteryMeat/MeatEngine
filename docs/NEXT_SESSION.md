@@ -75,12 +75,13 @@ PSX/netcode/worldgen work. README + THIRD_PARTY + repo description are current.
 14. ~~**B3 water plane**~~ ✅ — Underwater: camera-centred alpha-tinted surface (`water.*` shaders).
 15. ~~**A6 blob shadows**~~ ✅ — thin dark discs under local/remote/NPC feet.
 16. ~~**C8 lite profiler**~~ ✅ — F3 panel (FPS, frameDt, chunk/entity/prop counts).
-17. **Scheduled open queue** — see [OPEN_SCHEDULE.md](OPEN_SCHEDULE.md) (30m durable).
+17. **Scheduled open queue** — ✅ complete; **scheduler: stop — backlog done**.
 18. ~~**A2-s skinned shadow casters**~~ ✅ — `shadow_skinned` depth pass uses bone palette.
 19. ~~**C5+ Details material/block fields**~~ ✅ — prop material edit + block registry panel.
 20. ~~**B3b-net gravity volumes**~~ ✅ — join overlay + live broadcast (`GravityVolumesMsg`).
-21. Next fires: ARCH reconcile (mark shipped “planned” items).
-22. Deferred: F netcode / D1 mesher / D4 EnTT / human playtests.
+21. ~~**ARCHITECTURE reconcile**~~ ✅ — status + net/physics/editor/anim sections.
+22. **Agent backlog complete** — see [BACKLOG_COMPLETE.md](BACKLOG_COMPLETE.md).
+23. Deferred only: F netcode / D1 mesher / D4 EnTT / human playtests / thumbnails.
 
 ## Cleanup / debt from last sprint
 - ~~**ARCHITECTURE.md is stale**~~ ✅ (partial) — top status + layout + lighting + nodegraph/AI notes.

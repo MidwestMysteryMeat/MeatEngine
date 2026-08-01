@@ -11,12 +11,17 @@ C++20, OpenGL 4.5 core, CMake + FetchContent.
 This file is the **contract**. Code that doesn't match the signatures, ownership rules,
 or threading rules here is wrong even if it works.
 
-> **Status note (2026-07):** Many sections below still say "planned" for systems that have
-> shipped. Prefer [docs/ROLLOUT.md](docs/ROLLOUT.md) and [docs/NEXT_SESSION.md](docs/NEXT_SESSION.md)
-> for what is done vs open. Shipped since early draft includes: delta snapshots, navmesh (Recast),
-> ozz skeletal anim, torch/block light on chunks, A1 AO + A2 sun shadows + A3 hemi, B3 envs +
-> GravityField, B2 MeshLevel, C5 Details / C6 Node Graph / C7 package / C9 Output Log, H4 ships,
-> Racer template, ScriptFx. UPnP/Steam/full GAS/in-engine modeler remain planned.
+> **Status note (2026-07-31):** Prefer [docs/ROLLOUT.md](docs/ROLLOUT.md) and
+> [docs/NEXT_SESSION.md](docs/NEXT_SESSION.md) for done vs open. Long-form sections below may still
+> describe *design intent* for unshipped systems (modes, modeler, full GAS) — treat those as roadmap,
+> not current API. **Shipped (high level):** delta snapshots; Recast navmesh + A* fallback; ozz
+> skeletal anim + foot IK; torch/block light + A1 AO; A2 sun shadows (incl. A2-s skinned casters);
+> A3 hemi ambient; A6 blob shadows; B3 envs + sky + water plane; B3b GravityField + editor volumes +
+> net sync (`GravityVolumesMsg`); B2 MeshLevel multi-mesh; C1–C3 content browser + props; C5 Details
+> (world/selection/material/blocks); C6 node graphs (multi/subgraph/watches); C7 package.ps1; C8 F3
+> lite profiler; C9 Output Log; H1 FPS/TPS/Racer + H4 Space ships; weapon modes + mags; ScriptFx.
+> **Still planned / deferred:** UPnP/Steam, F1 interest + F2 lag-comp, D1 binary mesher, D4 EnTT,
+> full GAS/modes, in-engine modeler, real asset thumbnails, ImGuiColorTextEdit.
 
 ## Units & coordinates
 
@@ -97,8 +102,8 @@ Server-authoritative, client-predicted — the Quake/Source lineage:
   `ServerSim`. Single-player runs `ServerSim` in-process behind a `LoopbackTransport`
   (zero-copy queue) — there is no separate single-player code path, ever.
 - **Client sends `PlayerCommand`s** (stamped with tick), server applies them, and
-  broadcasts **snapshots at 20 Hz** (full state per relevant entity for MVP; delta
-  compression is a later optimization slot).
+  broadcasts **snapshots at 20 Hz** with **delta compression** (baseline ack + ring;
+  keyframe fallback). Full entity lists still — interest management (F1) is deferred.
 - **Client predicts its own movement**: it runs the same `CharacterController` locally,
   keeps a ring buffer of unacked commands, and on each snapshot rewinds to the server
   state and replays — divergence corrections smooth over 100 ms.
@@ -283,7 +288,10 @@ class CharacterController {                // Jolt CharacterVirtual
   glm::vec3 position() const; glm::vec3 velocity() const; bool onGround() const;
   // Tuning (constants, all in one struct): walk 4.5 m/s, sprint 7.0, crouch 2.2,
   // jump 4.6 m/s up, air control 0.3, step-up 0.35 m, max slope 46°, gravity -18.
+  // B3b: samples GravityField at feet each tick (setGravity from field.sample).
 };
+// GravityField: base accel + box volumes (priority) + optional orbital bodies.
+// Editor extras → server m_extraGravityBoxes; join/live via GravityVolumesMsg.
 ```
 
 ### net/
@@ -621,48 +629,34 @@ framework weight. Design commitments (implementation is a roadmap phase):
 - Nothing here invents new net machinery: effects emit existing ops/events, spawns ride
   the entity snapshot path. That is the reason this stays small.
 
-### editor/ — IDE panels (planned: no alt-tabbing out of the engine)
-The Room Designer grows into a small IDE so devs stay in-engine:
-- **Code editor panel**: ImGuiColorTextEdit (MIT, ImGui-native) docked in editor mode —
-  Lua syntax highlighting, open/edit/save any script in the project, and **save =
-  hot-reload** through ScriptHost so gameplay changes apply live in the running world
-  (host-authoritative: script reload is a server op, replicated like everything else).
-  Companion **Lua console/REPL panel** for poking the live sim (server-side eval,
-  gated to the host).
-- **Asset browser panel**: dockable tree of `assets/` (and the game project dir once
-  the SDK lands) — textures with thumbnail previews (they're already TextureHandles),
-  models, Lua scripts, sounds, room prefabs. Double-click routes by type: script →
-  code editor, texture → preview, prefab → placement ghost in the world. File-watcher
-  refresh so external edits appear without restart; drag-to-world placement later.
-- **Import pipeline in the browser** (drop files in, use them immediately):
-  - **Import** button / OS drag-drop (GLFW drop callback) accepts FBX/OBJ/GLB, PNG/JPG,
-    WAV/OGG. Files are copied into the project's `assets/` tree, validated on import
-    (Assimp parse + scale/skeleton probe for models — the OneLife "probe scale first"
-    law; stb decode for textures; header sanity for audio), and rejected loudly with
-    the reason, never half-imported.
-  - **Previews per type**: model → orbitable viewport thumbnail (tiny SceneCapture-style
-    render into an ImGui image via a MaterialHandle), texture → image widget, audio →
-    play/stop button through miniaudio.
-  - **Registration**: imports append to an asset manifest (path, type, content hash,
-    import settings) that the AssetCache loads by; the attribution gate hooks here —
-    an import can be tagged with source/license and `tools/audit_assets` fails assets
-    missing a row (the CC-BY workflow from assets/ATTRIBUTION.md, enforced at the door).
-  - Mixamo-skeleton conformance check on skeletal imports (canonical-skeleton mapping
-    report: which bones matched, what won't animate) so rig problems surface at import
-    time, not at runtime.
-Both are ImGui panels inside the existing IEditor update path — no new architecture,
-just panels — and they make the packaging story real: build, script, and tune a game
-without leaving the engine.
+### editor/ — IDE panels (partial: Room Designer is the hub)
+The Room Designer (F1) is the live creation suite. **Shipped panels / tools:**
+- **Content browser** (C1/C2): assets tree + tile grid, dark Slate theme, drag model →
+  viewport place (C3). Real baked thumbnails still open.
+- **Outliner + ImGuizmo** on props/lights/volumes; server-authoritative props.
+- **Details** (C5): world snapshot, selection (prop/light/seed/gravity), prop **material**
+  tint/shininess/emissive, **block registry** + build brush + look-at voxel, import path.
+- **Node Graph** (C6): imnodes → sandboxed Lua, multi-graph, subgraphs, watches.
+- **Output Log** (C9): severity filter + search on the log ring buffer.
+- **Profiler lite** (C8): F3 — FPS, frameDt, tick, chunk/entity/prop counts (no Tracy).
+- **New Map** (B4): terrain × environment × genre × seed; gravity volume tool (B3b-e).
+- **Code panel**: basic text edit + script reload exists; **ImGuiColorTextEdit** polish open.
+- **Import**: paste-path / copy into project with reject reasons; full file dialog + orbit
+  model thumbnails still open.
+
+Still planned (not blocking creation suite): Design panel (weapon/ability authoring UI),
+in-engine voxel modeler, password/kick, reachability diagnostics.
 
 ### Save format (save/)
 `saves/<slot>/meta.json`: player transform, health, inventory, equipped, dungeon seed,
 tick. `saves/<slot>/chunks.bin`: `[ChunkPos][u32 rleCount][(BlockId,u16 run)...]` for every
 player-modified chunk only. F5 save, F9 load, `--load <slot>` on startup.
 
-### Anim (anim/) — after the slice
+### Anim (anim/) — ✓ first slices shipped
 Canonical skeleton = **Mixamo bone names**. Loaders map source skeletons (Mixamo direct,
-UE mannequin via name table) onto it at import. One shared clip set plays on every
-conforming character. Viewmodel = separate simple 2-clip player (idle/fire).
+UE mannequin via name table) onto it at import. ozz-animation playback + retarget,
+idle↔walk blend, server walk weight, foot-curve grounding, **two-bone foot IK**, gait
+rate (E1). Still open: pelvis-lower, aim IK, additive layers, facial morphs.
 
 ## Developer UX — first-class, not an afterthought
 The engine is judged on how fast a newcomer goes from launch to a testable idea. The
