@@ -13,11 +13,13 @@
 #include "game/GameRules.h"
 #include "game/Inventory.h"
 #include "game/NavMesh.h"
+#include "game/PeerPermissions.h"
 #include "game/ShipControl.h"
 #include "game/WorldGen.h"
 
 #include <nlohmann/json_fwd.hpp>
 
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <optional>
@@ -42,6 +44,15 @@ public:
     void setMeshLevel(std::string assetPath, float scale = 1.0f);
     void setMeshLevelDesc(MeshLevelDesc desc);
 
+    // Networking policy: who may author the world. Set before players connect.
+    // Left at its default, no peer can edit anything — which is what a packaged
+    // game and a dedicated server both want.
+    void setNetPolicy(NetPolicy policy) { m_netPolicy = std::move(policy); }
+    const NetPolicy& netPolicy() const { return m_netPolicy; }
+    // The owner's own client is handed this in-process and echoes it in Hello.
+    // Generated per boot in init(); never written to disk or logs.
+    const std::string& editorToken() const { return m_netPolicy.editorToken; }
+
     bool init(std::uint32_t worldSeed);
     bool initFromSave(const std::string& path); // reads seed, then init + replay
     bool saveTo(const std::string& path) const;
@@ -51,6 +62,11 @@ public:
     bool reloadScripts() { return m_scripts.reload(); } // live editing (host/SP)
     std::uint32_t seed() const { return m_seed; }
     std::uint64_t currentTick() const { return m_tick; }
+    // Read-only view of the authoritative world, for headless tests and
+    // tooling. A test that asserts on the world itself cannot be fooled by a
+    // permission check that reports "denied" while the block changed anyway.
+    // (propCount() lives further down, where WorldProp is in scope.)
+    const VoxelWorld& voxels() const { return m_voxels; }
     const GameRules& rules() const { return m_rules; }
     int playerCount() const { return static_cast<int>(m_players.size()); }
     // B3b: authoritative gravity field (env base + volumes + orbital bodies).
@@ -69,7 +85,39 @@ public:
                      GameRules::Template gameTemplate = GameRules::Template::Fps);
 
 private:
+    // Token bucket. Refilled from wall-clock ticks rather than frames so a peer
+    // cannot buy edits by making the server run slowly.
+    struct RateLimiter {
+        float tokens = 0.0f;
+        float refillPerSecond = 20.0f;
+        float capacity = 40.0f;
+
+        void configure(float perSecond, float burst) {
+            refillPerSecond = perSecond;
+            capacity = burst;
+            tokens = burst;
+        }
+        void refill(float dt) {
+            tokens = std::min(capacity, tokens + refillPerSecond * dt);
+        }
+        // Returns false when the peer has spent its allowance; the caller drops
+        // the message rather than queuing it, because a queue is the thing a
+        // flood is trying to build.
+        bool consume(float amount = 1.0f) {
+            if (tokens < amount) return false;
+            tokens -= amount;
+            return true;
+        }
+    };
+
     struct Player {
+        // How this peer authenticated, and therefore what it may do to the
+        // world. Default Player: arriving without proof grants nothing.
+        PeerPermissions permissions;
+        // Separate buckets so a burst of voxel edits cannot starve prop edits
+        // and vice versa; each is refilled in tick().
+        RateLimiter voxelEdits;
+        RateLimiter propEdits;
         CharacterController controller;
         PlayerCommand lastCmd{};
         std::uint64_t lastCmdTick = 0;
@@ -157,6 +205,13 @@ private:
         glm::mat4 transform{1.0f};
         PhysicsWorld::BodyHandle body = PhysicsWorld::kInvalidBody;
     };
+
+public:
+    // Count of authored props. Public so headless tests can assert that a
+    // refused PlaceProp created nothing; the props themselves stay private.
+    std::size_t propCount() const { return m_props.size(); }
+
+private:
     struct Npc {
         std::uint32_t id = 0;
         EntityArchetype type = EntityArchetype::NpcChaser;
@@ -339,6 +394,15 @@ private:
     ItemRegistry m_items;
     DefaultItems m_defaultItems;
     std::optional<SavedPlayer> m_pendingRestore; // applied to the next Hello
+    NetPolicy m_netPolicy;
+    // Rejected packets are logged, but a flood must not become a disk-fill or a
+    // log-spam amplifier: one line per peer per second, with a count.
+    struct RejectLog {
+        std::uint64_t lastTick = 0;
+        std::uint32_t suppressed = 0;
+    };
+    std::unordered_map<PeerId, RejectLog> m_rejectLog;
+    void noteRejected(PeerId peer, const char* what);
     std::uint32_t m_seed = 0;
     std::uint64_t m_tick = 0;
 };

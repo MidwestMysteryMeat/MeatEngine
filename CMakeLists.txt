@@ -13,13 +13,9 @@ include(cmake/Dependencies.cmake)
 file(GLOB_RECURSE MEAT_SOURCES CONFIGURE_DEPENDS src/*.cpp src/*.h)
 add_executable(MeatEngine ${MEAT_SOURCES})
 
-target_include_directories(MeatEngine PRIVATE src)
-target_compile_definitions(MeatEngine PRIVATE GLFW_INCLUDE_NONE)
-if(WIN32)
-    # Win32-only header hygiene; harmless-but-meaningless elsewhere.
-    target_compile_definitions(MeatEngine PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-endif()
-target_link_libraries(MeatEngine PRIVATE
+# Shared by the app and the test binary, so a link change cannot apply to one
+# and not the other.
+set(MEAT_LIBS
     glfw
     glad_gl_core_45
     glm::glm
@@ -29,8 +25,6 @@ target_link_libraries(MeatEngine PRIVATE
     sol2::sol2
     imgui
     enet
-    lua_static
-    sol2::sol2
     stb
     miniaudio
     nlohmann_json::nlohmann_json
@@ -46,6 +40,14 @@ target_link_libraries(MeatEngine PRIVATE
     fastnoiselite
 )
 
+target_include_directories(MeatEngine PRIVATE src)
+target_compile_definitions(MeatEngine PRIVATE GLFW_INCLUDE_NONE)
+if(WIN32)
+    # Win32-only header hygiene; harmless-but-meaningless elsewhere.
+    target_compile_definitions(MeatEngine PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+endif()
+target_link_libraries(MeatEngine PRIVATE ${MEAT_LIBS})
+
 if(MSVC)
     target_compile_options(MeatEngine PRIVATE /W4 /permissive- /MP /utf-8)
 else()
@@ -58,4 +60,38 @@ endif()
 if(UNIX AND NOT APPLE)
     find_package(Threads REQUIRED)
     target_link_libraries(MeatEngine PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
+endif()
+
+# ---------------------------------------------------------------------------
+# Headless tests
+#
+# Same translation units as the app minus its main(), so the tests exercise the
+# shipping code rather than a copy of it. Nothing here opens a window or a
+# socket: ServerSim is driven over LoopbackPair, which is why these can run on a
+# CI box with no GPU.
+# ---------------------------------------------------------------------------
+file(GLOB_RECURSE MEAT_TEST_SOURCES CONFIGURE_DEPENDS tests/*.cpp)
+if(MEAT_TEST_SOURCES)
+    set(MEAT_ENGINE_SOURCES ${MEAT_SOURCES})
+    list(REMOVE_ITEM MEAT_ENGINE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
+
+    add_executable(MeatTests ${MEAT_ENGINE_SOURCES} ${MEAT_TEST_SOURCES})
+    target_include_directories(MeatTests PRIVATE src)
+    target_compile_definitions(MeatTests PRIVATE GLFW_INCLUDE_NONE)
+    if(WIN32)
+        target_compile_definitions(MeatTests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    endif()
+    target_link_libraries(MeatTests PRIVATE ${MEAT_LIBS})
+    if(MSVC)
+        target_compile_options(MeatTests PRIVATE /W4 /permissive- /MP /utf-8)
+    else()
+        target_compile_options(MeatTests PRIVATE -Wall -Wextra)
+    endif()
+    if(UNIX AND NOT APPLE)
+        target_link_libraries(MeatTests PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
+    endif()
+
+    enable_testing()
+    # Run from the repository root: the server loads assets by relative path.
+    add_test(NAME headless COMMAND MeatTests WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 endif()

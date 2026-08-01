@@ -194,6 +194,12 @@ bool Engine::initNetwork(const EngineConfig& config) {
             server->setMeshLevelDesc(config.meshLevelDesc);
         else if (!config.meshLevelAsset.empty())
             server->setMeshLevel(config.meshLevelAsset, config.meshLevelScale);
+        // This process is the session owner, so its own client may author the
+        // world. A dedicated server built elsewhere leaves the policy at its
+        // default and refuses every edit, token or not.
+        NetPolicy policy;
+        policy.allowRemoteEditing = true;
+        server->setNetPolicy(policy);
         return config.loadPath.empty() ? server->init(config.seed)
                                        : server->initFromSave(config.loadPath);
     };
@@ -217,7 +223,14 @@ bool Engine::initNetwork(const EngineConfig& config) {
         if (!m_enetJoin->connect(config.address, config.port)) return false;
         m_clientTransport = m_enetJoin.get();
     }
-    m_client.attach(*m_clientTransport, "player");
+    // Only a session we host ourselves grants editing, and only to our own
+    // client: the token goes straight from the server object to the client
+    // object without ever crossing the network. Joining someone else's server
+    // attaches with no token, so we arrive there as an ordinary player.
+    std::string editorToken;
+    if (m_server && (config.mode == Mode::Game || config.mode == Mode::Host))
+        editorToken = m_server->editorToken();
+    m_client.attach(*m_clientTransport, "player", editorToken);
     return true;
 }
 
@@ -1924,6 +1937,9 @@ int Engine::runDedicated(const EngineConfig& config) {
     m_enetHost = std::make_unique<EnetServerTransport>();
     if (!m_enetHost->listen(config.port)) return 1;
     m_server = std::make_unique<ServerSim>();
+    // No setNetPolicy call, deliberately: a dedicated server keeps the default
+    // policy, under which no connected peer may author the world regardless of
+    // what token it presents. Remote editing here would need an explicit opt-in.
     const bool booted = config.loadPath.empty() ? m_server->init(config.seed)
                                                 : m_server->initFromSave(config.loadPath);
     if (!booted) return 1;

@@ -68,11 +68,21 @@ bool decode(PlayerCommand& cmd, ByteReader& r) {
 }
 
 void encode(const HelloMsg& msg, ByteWriter& w) {
+    w.write(msg.protocol);
     w.write(std::string_view{msg.name});
+    w.write(std::string_view{msg.editorToken});
 }
 
+// Length caps are enforced here rather than at the call site so that every
+// consumer of a decoded Hello gets bounded strings, and an over-long field is a
+// decode failure — the packet is dropped whole rather than silently truncated
+// into something that might still match a comparison.
 bool decode(HelloMsg& msg, ByteReader& r) {
-    return r.read(msg.name);
+    if (!r.read(msg.protocol)) return false;
+    if (!r.read(msg.name) || msg.name.size() > kMaxNameBytes) return false;
+    if (!r.read(msg.editorToken) || msg.editorToken.size() > kMaxTokenBytes)
+        return false;
+    return true;
 }
 
 void encode(const WelcomeMsg& msg, ByteWriter& w) {
@@ -198,7 +208,8 @@ void encode(const PlacePropMsg& msg, ByteWriter& w) {
 }
 
 bool decode(PlacePropMsg& msg, ByteReader& r) {
-    return r.read(msg.asset) && readMat4(r, msg.transform);
+    if (!r.read(msg.asset) || msg.asset.size() > kMaxAssetPathBytes) return false;
+    return readMat4(r, msg.transform);
 }
 
 void encode(const PropAddedMsg& msg, ByteWriter& w) {

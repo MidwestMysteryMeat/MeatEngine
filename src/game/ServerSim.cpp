@@ -15,8 +15,10 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <random>
 #include <fstream>
 #include <system_error>
 #include <thread>
@@ -31,6 +33,55 @@ constexpr int kSnapshotEvery = 3; // 60 Hz sim → 20 Hz snapshots
 // surface (voxel y ≈ 6–12) when the host picks a larger block size.
 inline glm::vec3 defaultSpawnPos() {
     return glm::vec3(16.0f, 16.0f, 16.0f) * kVoxelSize;
+}
+
+// World-authoring limits. These bound what a peer may ask for even when it is
+// allowed to author at all: permission answers "may you edit", these answer
+// "is what you sent a thing a real editor would send".
+constexpr int kMaxEditCoord = 100000;    // voxel cells from origin
+constexpr std::size_t kMaxProps = 20000; // props in the world, total
+constexpr float kMaxPropCoord = 1.0e6f;  // metres from origin
+constexpr float kMinPropScale = 1.0e-3f;
+constexpr float kMaxPropScale = 1.0e3f;
+
+// A transform arrives as 16 floats from the network. Any of them may be NaN or
+// infinity, which propagate into physics and rendering and are not recoverable
+// once they are in a broadphase — so they are refused at the edge rather than
+// clamped. Scale and position are then bounded to values a real editor emits.
+bool isSaneTransform(const glm::mat4& m) {
+    const float* f = glm::value_ptr(m);
+    for (int i = 0; i < 16; ++i) {
+        if (!std::isfinite(f[i])) return false;
+    }
+    if (std::abs(m[3][0]) > kMaxPropCoord || std::abs(m[3][1]) > kMaxPropCoord ||
+        std::abs(m[3][2]) > kMaxPropCoord)
+        return false;
+    // Column lengths are the axis scales. A zero scale collapses a collider to a
+    // degenerate shape; a huge one is a physics bomb.
+    for (int c = 0; c < 3; ++c) {
+        const float len = glm::length(glm::vec3(m[c]));
+        if (!std::isfinite(len) || len < kMinPropScale || len > kMaxPropScale)
+            return false;
+    }
+    return true;
+}
+
+// 128 bits of hex from the platform entropy source. std::random_device is the
+// only OS-backed generator the standard gives us; it is seeded from the system
+// CSPRNG on the platforms this engine targets. Deliberately not seeded from a
+// clock — a token derived from the start time is guessable by anyone who knows
+// roughly when the server came up.
+std::string makeEditorToken() {
+    std::random_device rd;
+    std::string out;
+    out.reserve(32);
+    static constexpr char kHex[] = "0123456789abcdef";
+    for (int i = 0; i < 8; ++i) {
+        const std::uint32_t word = rd();
+        for (int nibble = 7; nibble >= 0; --nibble)
+            out.push_back(kHex[(word >> (nibble * 4)) & 0xFu]);
+    }
+    return out;
 }
 
 constexpr float kPlaceInterval = 0.20f;
@@ -165,6 +216,10 @@ void ServerSim::reseedWorld(std::uint32_t seed, GameRules::Terrain terrain,
 
 bool ServerSim::init(std::uint32_t worldSeed) {
     m_seed = worldSeed;
+    // One editor token per boot. Restarting the server invalidates the previous
+    // one, so a token that leaks is worthless by the next session. It is handed
+    // to the owner's own client in-process and never logged.
+    if (m_netPolicy.editorToken.empty()) m_netPolicy.editorToken = makeEditorToken();
     if (!m_physics.init()) return false;
     // World Environment preset drives gravity field base + fog/ambient (client). Characters
     // sample m_gravity each tick (B3b volumes / orbital bodies).
@@ -1669,10 +1724,19 @@ void ServerSim::pump(Transport& transport) {
     transport.poll(events);
     for (NetEvent& e : events) {
         switch (e.type) {
-        case NetEvent::Type::Connected:
+        case NetEvent::Type::Connected: {
             log::info("server: peer {} connected", e.peer);
-            m_players.emplace(e.peer, std::make_unique<Player>());
+            auto player = std::make_unique<Player>();
+            // Ordinary player until a Hello proves otherwise, and metered from
+            // the moment it connects rather than from its first accepted edit.
+            player->permissions.role = PeerRole::Player;
+            player->voxelEdits.configure(m_netPolicy.voxelEditsPerSecond,
+                                         m_netPolicy.voxelEditsPerSecond * 2.0f);
+            player->propEdits.configure(m_netPolicy.propEditsPerSecond,
+                                        m_netPolicy.propEditsPerSecond * 2.0f);
+            m_players.emplace(e.peer, std::move(player));
             break;
+        }
         case NetEvent::Type::Disconnected: {
             log::info("server: peer {} disconnected", e.peer);
             // Free any ship seat this peer held so it doesn't stay locked.
@@ -1684,6 +1748,7 @@ void ServerSim::pump(Transport& transport) {
                 }
             }
             m_players.erase(e.peer);
+            m_rejectLog.erase(e.peer); // no state kept for a peer that is gone
             break;
         }
         case NetEvent::Type::Packet:
@@ -1707,7 +1772,30 @@ void ServerSim::handlePacket(Transport& transport, PeerId peer,
         HelloMsg hello;
         if (!decode(hello, reader)) return;
         if (player.helloDone) return; // replayed Hello must not re-grant loadout
+        // A client built against a different wire format is refused rather than
+        // half-understood: fields it does not know about would decode as garbage.
+        if (hello.protocol != kProtocolVersion) {
+            log::info("server: peer {} refused, protocol {} != {}", peer,
+                      hello.protocol, kProtocolVersion);
+            transport.disconnect(peer);
+            return;
+        }
         player.helloDone = true;
+        // The only place a peer's rights are decided. Everything downstream just
+        // reads permissions. Comparison is against a per-boot token that reached
+        // the owner's client in-process, so possessing it is the proof; an empty
+        // configured token can never match because the check requires non-empty.
+        if (m_netPolicy.allowRemoteEditing && !m_netPolicy.editorToken.empty() &&
+            hello.editorToken == m_netPolicy.editorToken) {
+            player.permissions.role = PeerRole::Host;
+            log::info("server: peer {} authenticated as {}", peer,
+                      toString(player.permissions.role));
+        } else if (!hello.editorToken.empty()) {
+            // Said out loud: a wrong token is far more interesting than no token.
+            log::info("server: peer {} presented an editor token that was not "
+                      "accepted; staying {}", peer,
+                      toString(player.permissions.role));
+        }
         WelcomeMsg welcome{peer, m_seed, m_tick,
                            static_cast<std::uint8_t>(m_rules.inventoryModel),
                            m_rules.flagsByte(),
@@ -1743,41 +1831,96 @@ void ServerSim::handlePacket(Transport& transport, PeerId peer,
         player.hasCmd = true;
         break;
     }
+    // The four world-authoring messages. Each one asks the same three questions
+    // in the same order: may this peer edit at all, is the payload sane, and is
+    // it inside its allowance. Permission is checked first so that an
+    // unauthorised peer cannot even spend a validation cycle.
     case MsgType::VoxelOp: {
         VoxelOpMsg op;
         if (!decode(op, reader)) return;
-        // Client intent (editor brushes). Validate: a hostile block id would hit
-        // the registry assert server-side. No range gate — the editor legitimately
-        // builds far from the player body; per-peer edit permissions are the TODO.
-        if (!m_voxels.blockRegistry().isValid(op.block)) return;
-        if (glm::abs(op.voxel.x) > 100000 || glm::abs(op.voxel.y) > 100000 ||
-            glm::abs(op.voxel.z) > 100000)
+        if (!player.permissions.canEditVoxels()) {
+            noteRejected(peer, "voxel edit without permission");
             return;
+        }
+        // A hostile block id would hit the registry assert server-side.
+        if (!m_voxels.blockRegistry().isValid(op.block)) {
+            noteRejected(peer, "voxel edit with invalid block id");
+            return;
+        }
+        if (glm::abs(op.voxel.x) > kMaxEditCoord ||
+            glm::abs(op.voxel.y) > kMaxEditCoord ||
+            glm::abs(op.voxel.z) > kMaxEditCoord) {
+            noteRejected(peer, "voxel edit out of range");
+            return;
+        }
+        if (!player.voxelEdits.consume()) {
+            noteRejected(peer, "voxel edit rate limit");
+            return;
+        }
         applyVoxelOp(transport, op);
         break;
     }
     case MsgType::PlaceProp: {
         PlacePropMsg msg;
         if (!decode(msg, reader)) return;
-        // Editor intent. Minimal validation, mirroring the voxel-op path: require a
-        // project-relative assets/ path (no path traversal); per-peer edit
-        // permissions are the same TODO the voxel path carries. addProp rejects a
-        // model that won't load, so a bad asset never creates a phantom prop.
-        if (msg.asset.rfind("assets/", 0) != 0) return;
+        if (!player.permissions.canEditProps()) {
+            noteRejected(peer, "prop place without permission");
+            return;
+        }
+        // Project-relative assets/ path only, and no traversal out of it.
+        if (msg.asset.rfind("assets/", 0) != 0 ||
+            msg.asset.find("..") != std::string::npos) {
+            noteRejected(peer, "prop place with bad asset path");
+            return;
+        }
+        if (!isSaneTransform(msg.transform)) {
+            noteRejected(peer, "prop place with invalid transform");
+            return;
+        }
+        if (m_props.size() >= kMaxProps) {
+            noteRejected(peer, "prop place over the world prop cap");
+            return;
+        }
+        if (!player.propEdits.consume()) {
+            noteRejected(peer, "prop place rate limit");
+            return;
+        }
+        // addProp rejects a model that won't load, so a bad asset never creates
+        // a phantom prop.
         addProp(&transport, msg.asset, msg.transform, 0);
         break;
     }
     case MsgType::MoveProp: {
         MovePropMsg msg;
         if (!decode(msg, reader)) return;
+        if (!player.permissions.canEditProps()) {
+            noteRejected(peer, "prop move without permission");
+            return;
+        }
         if (msg.id == 0) return;
+        if (!isSaneTransform(msg.transform)) {
+            noteRejected(peer, "prop move with invalid transform");
+            return;
+        }
+        if (!player.propEdits.consume()) {
+            noteRejected(peer, "prop move rate limit");
+            return;
+        }
         moveProp(&transport, msg.id, msg.transform);
         break;
     }
     case MsgType::RemoveProp: {
         RemovePropMsg msg;
         if (!decode(msg, reader)) return;
+        if (!player.permissions.canEditProps()) {
+            noteRejected(peer, "prop remove without permission");
+            return;
+        }
         if (msg.id == 0) return;
+        if (!player.propEdits.consume()) {
+            noteRejected(peer, "prop remove rate limit");
+            return;
+        }
         removeProp(&transport, msg.id);
         break;
     }
@@ -1793,6 +1936,10 @@ void ServerSim::tick(Transport& transport) {
     glm::vec3 streamCenter = defaultSpawnPos();
     bool first = true;
     for (auto& [peer, player] : m_players) {
+        // Edit allowances refill on the fixed tick, so they track simulated
+        // seconds and not how fast packets happen to arrive.
+        player->voxelEdits.refill(kFixedDtServer);
+        player->propEdits.refill(kFixedDtServer);
         if (!player->spawned) {
             if (!player->controller.init(m_physics, player->spawnOverride.value_or(defaultSpawnPos())))
                 continue;
@@ -1830,6 +1977,26 @@ void ServerSim::tick(Transport& transport) {
     ++m_tick;
     if (m_scripts.loaded() && m_tick % 20 == 0) m_scripts.onTick(m_tick); // ~3 Hz gameplay hook
     if (m_tick % kSnapshotEvery == 0 && !m_players.empty()) broadcastSnapshot(transport);
+}
+
+// Rejections are worth seeing, but a peer that floods must not be able to turn
+// the log into the denial of service. One line per peer per simulated second;
+// everything in between is counted and reported with the next line.
+void ServerSim::noteRejected(PeerId peer, const char* what) {
+    constexpr std::uint64_t kLogEvery = 60; // ticks == 1 s at the fixed rate
+    RejectLog& entry = m_rejectLog[peer];
+    if (m_tick - entry.lastTick < kLogEvery && entry.lastTick != 0) {
+        ++entry.suppressed;
+        return;
+    }
+    if (entry.suppressed > 0) {
+        log::info("server: peer {} rejected: {} (+{} more since the last line)",
+                  peer, what, entry.suppressed);
+    } else {
+        log::info("server: peer {} rejected: {}", peer, what);
+    }
+    entry.lastTick = m_tick;
+    entry.suppressed = 0;
 }
 
 void ServerSim::applyVoxelOp(Transport& transport, const VoxelOpMsg& op) {

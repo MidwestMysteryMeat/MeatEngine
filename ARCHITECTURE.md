@@ -117,6 +117,45 @@ Server-authoritative, client-predicted — the Quake/Source lineage:
 - Shooting is lag-compensated later (PvP phase); co-op MVP uses server-side hit tests
   against interpolated positions.
 
+### The trust boundary
+
+Server-authoritative means the server decides *what happens*. It does not, by
+itself, mean the server decides *who may ask*. Those are separate, and until the
+permission model landed only the first was true: any connected peer that could
+construct a `VoxelOp` or `PlaceProp` packet mutated the authoritative world,
+because the edit handlers had no notion of who was allowed to send one.
+
+Every world-authoring message now asks three questions, in this order:
+
+1. **May this peer author at all?** `PeerPermissions` (`game/PeerPermissions.h`)
+   carries a `PeerRole`, default `Player`. A peer that arrives without proving
+   anything gets the fewest rights, not the most. Permission is checked before
+   validation so an unauthorised peer cannot even spend a validation cycle.
+2. **Is the payload sane?** Coordinates in range, block ids registered, asset
+   paths confined to `assets/` with no traversal, and every float of a prop
+   transform finite with bounded position and scale. Non-finite values are
+   refused at the edge rather than clamped — once a NaN is in a broadphase it is
+   not recoverable.
+3. **Is it within the peer's allowance?** Per-peer token buckets, refilled on the
+   fixed tick so they track simulated seconds rather than packet arrival rate.
+
+Rights come from a **per-boot editor token**. The server generates it in
+`init()`; the `Engine` hands it to its own client in-process, so it never
+crosses the network from anyone but its rightful holder, and restarting the
+server invalidates the last one. `NetPolicy::allowRemoteEditing` gates whether
+the token is honoured at all — a session you host sets it, and a dedicated
+server (`Engine::runDedicated`) deliberately does not, so no peer can author its
+world regardless of what token it presents.
+
+Rejections are logged at most once per peer per second, with a suppressed count,
+so a flood cannot turn the log into the denial of service.
+
+`tests/test_net_permissions.cpp` holds this down: an ordinary player's edit
+leaves the world byte-identical, the token holder's edit changes it, a wrong
+token and a disabled policy both refuse, and malformed transforms, traversing
+asset paths, wrong protocol versions and truncated packets are all survivable.
+It runs headless over `LoopbackPair` — no GPU, no window, no socket.
+
 Shape rules this rests on (were true from day one):
 1. Identity is `EntityId` (u64, generation in high 16 bits). Never a pointer.
 2. All input funnels through `PlayerCommand` — nothing reads GLFW state in gameplay.

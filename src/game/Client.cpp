@@ -19,9 +19,11 @@ namespace {
 constexpr std::size_t kMaxUnacked = 120; // 2 s of input; beyond this we're desynced anyway
 } // namespace
 
-void Client::attach(Transport& transport, const std::string& playerName) {
+void Client::attach(Transport& transport, const std::string& playerName,
+                    const std::string& editorToken) {
     m_transport = &transport;
     m_playerName = playerName;
+    m_editorToken = editorToken;
     // Hello is sent on the Connected event in pump() — sending here would race
     // the UDP handshake and vanish (loopback is born connected and masks that).
 }
@@ -63,7 +65,9 @@ void Client::pump(VoxelWorld& voxels, PhysicsWorld& physics, CharacterController
     m_transport->poll(events);
     for (NetEvent& e : events) {
         if (e.type == NetEvent::Type::Connected) {
-            m_transport->send(1, pack(HelloMsg{m_playerName}), true); // server = peer 1
+            m_transport->send( // server = peer 1
+                1, pack(HelloMsg{kProtocolVersion, m_playerName, m_editorToken}),
+                true);
             continue;
         }
         if (e.type != NetEvent::Type::Packet) continue;

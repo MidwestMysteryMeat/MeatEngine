@@ -22,7 +22,11 @@ class CharacterController;
 // only protocol state, so it works identically over loopback and UDP.
 class Client {
 public:
-    void attach(Transport& transport, const std::string& playerName); // sends Hello
+    // editorToken proves this client is the session owner's own. The Engine
+    // passes the server's per-boot token in-process when it hosts; a client
+    // joining someone else's server leaves it empty and connects as a player.
+    void attach(Transport& transport, const std::string& playerName,
+                const std::string& editorToken = {}); // sends Hello
     bool welcomed() const { return m_welcomed; }
     PeerId playerId() const { return m_playerId; }
     std::uint32_t worldSeed() const { return m_seed; }
@@ -97,6 +101,7 @@ private:
 
     Transport* m_transport = nullptr;
     std::string m_playerName;
+    std::string m_editorToken;
     PeerId m_playerId = 0;
     std::uint32_t m_seed = 0;
     bool m_welcomed = false;
