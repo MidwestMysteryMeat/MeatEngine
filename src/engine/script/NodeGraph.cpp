@@ -956,7 +956,9 @@ std::string emitGraphLua(const NodeGraph& g) {
 std::string emitGraphLua(const NodeGraph& g,
                          const std::function<bool(const std::string&, NodeGraph&)>& loadSubgraph) {
     std::ostringstream out;
-    out << "-- AUTO-GENERATED from node graph '" << g.name
+    // The name is free text; a newline in it would end this comment and turn
+    // the rest into live code, so it goes through the identifier sanitizer.
+    out << "-- AUTO-GENERATED from node graph '" << sanitizeStem(g.name)
         << "' — edit the graph in the Node Graph panel, not this file.\n";
     out << "-- C6 visual scripting (node graph) → sandboxed Lua (ScriptHost game.* API).\n\n";
 

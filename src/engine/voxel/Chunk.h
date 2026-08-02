@@ -27,13 +27,18 @@ struct ChunkPos {
 
 class Chunk {
 public:
+    // Bounds are enforced with a real branch, not just assert: these are the
+    // last line of defense between a network-supplied coordinate and a fixed
+    // array, and assert vanishes in Release builds.
     BlockId at(int x, int y, int z) const {
         assert(inBounds(x, y, z));
+        if (!inBounds(x, y, z)) return BlockId{0};
         return m_blocks[index(x, y, z)];
     }
 
     void set(int x, int y, int z, BlockId id) {
         assert(inBounds(x, y, z));
+        if (!inBounds(x, y, z)) return;
         m_blocks[index(x, y, z)] = id;
         m_dirty = true;
     }
@@ -43,11 +48,13 @@ public:
     // snapshot), keeping meshing pure and worker-safe.
     std::uint8_t lightAt(int x, int y, int z) const {
         assert(inBounds(x, y, z));
+        if (!inBounds(x, y, z)) return 0;
         return m_light[index(x, y, z)];
     }
 
     void setLight(int x, int y, int z, std::uint8_t level) {
         assert(inBounds(x, y, z));
+        if (!inBounds(x, y, z)) return;
         m_light[index(x, y, z)] = level;
     }
 

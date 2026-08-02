@@ -256,6 +256,106 @@ void testMalformedPacketsDoNotCrash() {
     check(true, "server survived every malformed packet");
 }
 
+// A hostile client is not bound by int overflow etiquette. abs(INT_MIN) is
+// still negative, so a naive |v| > max range check lets it through and the
+// coordinate reaches chunk indexing as garbage — this is the regression test
+// for exactly that bypass.
+void testExtremeVoxelCoordinatesAreRefused() {
+    std::printf("integer-limit voxel coordinates cannot reach the world\n");
+    Fixture f;
+    if (!f.boot()) { check(false, "server booted"); return; }
+    f.hello("test-editor-token");
+
+    constexpr int kMin = std::numeric_limits<int>::min();
+    constexpr int kMax = std::numeric_limits<int>::max();
+    const glm::ivec3 hostile[] = {
+        {kMin, 40, 40}, {40, kMin, 40}, {40, 40, kMin},
+        {kMax, 40, 40}, {40, kMax, 40}, {40, 40, kMax},
+        {kMin, kMin, kMin}, {kMax, kMax, kMax},
+    };
+    for (const glm::ivec3& v : hostile) f.sendToServer(meat::VoxelOpMsg{v, 1});
+
+    // The server must both survive and still function: a legitimate edit after
+    // the barrage proves no state was corrupted along the way.
+    const meat::BlockId before = f.blockAt(kTarget);
+    const meat::BlockId placed = (before == 1) ? meat::BlockId{2} : meat::BlockId{1};
+    f.sendToServer(meat::VoxelOpMsg{kTarget, placed});
+    check(f.blockAt(kTarget) == placed,
+          "the server still applies valid edits after integer-limit coordinates");
+}
+
+// LoopbackPair only ever has one peer, but Move/Remove permission checks need a
+// prop that exists while an UNAUTHORISED peer attacks it — so this transport
+// scripts events for two peers and counts what the server sends back.
+struct ScriptedTransport final : meat::Transport {
+    std::vector<meat::NetEvent> pending;
+    int packetsSent = 0;
+
+    void poll(std::vector<meat::NetEvent>& out) override {
+        out.insert(out.end(), pending.begin(), pending.end());
+        pending.clear();
+    }
+    void send(meat::PeerId, std::span<const std::byte>, bool) override { ++packetsSent; }
+    void disconnect(meat::PeerId) override {}
+
+    void connect(meat::PeerId p) {
+        pending.push_back({meat::NetEvent::Type::Connected, p, {}});
+    }
+    template <typename Msg>
+    void packet(meat::PeerId p, const Msg& msg) {
+        pending.push_back({meat::NetEvent::Type::Packet, p, meat::pack(msg)});
+    }
+};
+
+void testMoveAndRemovePropNeedPermission() {
+    std::printf("moving/removing an existing prop needs permission\n");
+    ScriptedTransport wire;
+    meat::ServerSim server;
+    meat::NetPolicy policy;
+    policy.allowRemoteEditing = true;
+    policy.editorToken = "test-editor-token";
+    server.setNetPolicy(policy);
+    if (!server.init(1234u)) { check(false, "server booted"); return; }
+
+    // Peer 1 is the session editor and seeds the prop under attack (id 1 —
+    // the server's first assigned id).
+    wire.connect(1);
+    wire.packet(1, meat::HelloMsg{meat::kProtocolVersion, "editor", "test-editor-token"});
+    wire.packet(1, meat::PlacePropMsg{"assets/models/prop_crate.obj", glm::mat4(1.0f)});
+    server.pump(wire);
+    check(server.propCount() == 1, "the editor seeded one prop");
+
+    // Peer 2 is an ordinary player. A successful move/remove is always
+    // broadcast (PropAdded / PropRemoved), and a rejection sends nothing —
+    // so the packet count is the observable trust boundary for MoveProp.
+    wire.connect(2);
+    wire.packet(2, meat::HelloMsg{meat::kProtocolVersion, "player", ""});
+    server.pump(wire);
+
+    glm::mat4 moved(1.0f);
+    moved[3][0] = 5.0f;
+    const int sendsBefore = wire.packetsSent;
+    wire.packet(2, meat::MovePropMsg{1, moved});
+    server.pump(wire);
+    check(wire.packetsSent == sendsBefore,
+          "an unauthorised MoveProp is not applied or broadcast");
+
+    wire.packet(2, meat::RemovePropMsg{1});
+    server.pump(wire);
+    check(server.propCount() == 1, "an unauthorised RemoveProp deletes nothing");
+
+    // Control: the same messages from the token holder do go through, proving
+    // the denials above failed for the right reason.
+    const int sendsBeforeEditor = wire.packetsSent;
+    wire.packet(1, meat::MovePropMsg{1, moved});
+    server.pump(wire);
+    check(wire.packetsSent > sendsBeforeEditor, "an authorised MoveProp is broadcast");
+
+    wire.packet(1, meat::RemovePropMsg{1});
+    server.pump(wire);
+    check(server.propCount() == 0, "an authorised RemoveProp deletes the prop");
+}
+
 } // namespace
 
 int main() {
@@ -272,6 +372,8 @@ int main() {
     testVoxelEditsAreRateLimited();
     testProtocolMismatchIsRefused();
     testMalformedPacketsDoNotCrash();
+    testExtremeVoxelCoordinatesAreRefused();
+    testMoveAndRemovePropNeedPermission();
 
     std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

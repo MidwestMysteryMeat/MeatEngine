@@ -1847,9 +1847,11 @@ void ServerSim::handlePacket(Transport& transport, PeerId peer,
             noteRejected(peer, "voxel edit with invalid block id");
             return;
         }
-        if (glm::abs(op.voxel.x) > kMaxEditCoord ||
-            glm::abs(op.voxel.y) > kMaxEditCoord ||
-            glm::abs(op.voxel.z) > kMaxEditCoord) {
+        // Compare without negating: abs(INT_MIN) overflows back to INT_MIN
+        // (negative), which would slip a hostile coordinate past the check.
+        if (op.voxel.x < -kMaxEditCoord || op.voxel.x > kMaxEditCoord ||
+            op.voxel.y < -kMaxEditCoord || op.voxel.y > kMaxEditCoord ||
+            op.voxel.z < -kMaxEditCoord || op.voxel.z > kMaxEditCoord) {
             noteRejected(peer, "voxel edit out of range");
             return;
         }
