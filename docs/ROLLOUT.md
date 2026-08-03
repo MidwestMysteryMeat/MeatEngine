@@ -129,9 +129,14 @@ light → ship) without the bloat/missing pieces that don't fit a PSX voxel FPS.
   (ozz is skeletal-only — Ogre `VertexAnimationTrack` reference for facial morphs, later).
 
 ## Pillar F — Netcode hardening (PvP)
-- [ ] **F1. Interest management** (Torque3D scope→priority→delta, MIT); **F2. lag-compensated
-  hitscan** (O3DE NetworkTime pattern). **F3. Full bit-packed codec** with bitsery (vendored) when
-  the delta grows past the surgical 16-bit quantization.
+- [ ] **F1. Interest management** (Torque3D scope→priority→delta, MIT). **F3. Full bit-packed
+  codec** with bitsery (vendored) when the delta grows past the surgical 16-bit quantization.
+- [x] **F2. Lag-compensated hitscan** (O3DE NetworkTime pattern) — per-player 32-tick pose
+  history recorded where snapshots stamp; `marchBullet` rewinds other players' capsules to the
+  shooter's acked snapshot tick (piggybacked on every CommandMsg, so no wire change), clamped to
+  250 ms so a high-ping or lying peer cannot fire into the deep past. NPCs/ships stay live
+  (server-driven — there is no client view of them to honor). Headless test drives two peers
+  through the real delta codec: a shot at the old position hits with the old ack, misses live.
 
 ## Pillar G — Systems depth (from the original roll, still open)
 - [ ] **G1. Destruction depth** — reinforced blocks, radial voxel damage, structural collapse.

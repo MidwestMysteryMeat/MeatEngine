@@ -20,7 +20,8 @@ or threading rules here is wrong even if it works.
 > net sync (`GravityVolumesMsg`); B2 MeshLevel multi-mesh; C1–C3 content browser + props; C5 Details
 > (world/selection/material/blocks); C6 node graphs (multi/subgraph/watches); C7 package.ps1; C8 F3
 > lite profiler; C9 Output Log; H1 FPS/TPS/Racer + H4 Space ships; weapon modes + mags; ScriptFx.
-> **Still planned / deferred:** UPnP/Steam, F1 interest + F2 lag-comp, D1 binary mesher, D4 EnTT,
+> F2 lag-compensated hitscan (pose history + acked-snapshot rewind, 250 ms clamp).
+> **Still planned / deferred:** UPnP/Steam, F1 interest management, D1 binary mesher, D4 EnTT,
 > full GAS/modes, in-engine modeler, real asset thumbnails, ImGuiColorTextEdit.
 
 ## Units & coordinates

@@ -214,6 +214,8 @@ void ServerSim::reseedWorld(std::uint32_t seed, GameRules::Terrain terrain,
               static_cast<int>(gameTemplate));
 }
 
+ServerSim::~ServerSim() { m_jobs.stop(); }
+
 bool ServerSim::init(std::uint32_t worldSeed) {
     m_seed = worldSeed;
     // One editor token per boot. Restarting the server invalidates the previous
@@ -1366,6 +1368,17 @@ void ServerSim::marchBullet(Transport& transport, PeerId peer, Player& player,
     const float shotDamage = weapon.damage * weapon.damageMult * damageMultOf(player);
     float damageScale = 1.0f;
 
+    // F2 lag compensation: other players' capsules are judged where they stood
+    // in the snapshot the SHOOTER last acked, so a hit lands where the shooter
+    // aimed on their own screen. Clamped so a high-ping (or lying) peer cannot
+    // pull targets more than 250 ms into the past. NPCs and ships stay live —
+    // they are server-driven, so there is no client view of them to honor.
+    std::uint64_t rewindTick = player.ackedSnapshotTick;
+    if (rewindTick == 0 || rewindTick >= m_tick)
+        rewindTick = m_tick; // no snapshot seen yet (loopback boot) => live poses
+    else if (m_tick - rewindTick > kMaxRewindTicks)
+        rewindTick = m_tick - kMaxRewindTicks;
+
     for (int hop = 0; hop < 8 && remaining > 0.1f; ++hop) {
         const auto voxelHit = m_voxels.raycast(origin, dir, remaining);
         const float segmentEnd = voxelHit ? voxelHit->t : remaining;
@@ -1376,8 +1389,10 @@ void ServerSim::marchBullet(Transport& transport, PeerId peer, Player& player,
         float bestT = segmentEnd;
         for (auto& [otherPeer, other] : m_players) {
             if (otherPeer == peer || !other->spawned) continue;
-            const glm::vec3 feet = other->controller.position();
-            const float height = other->controller.crouched() ? 0.95f : 1.8f;
+            glm::vec3 feet = other->controller.position();
+            bool crouched = other->controller.crouched();
+            if (rewindTick != m_tick) rewoundPlayerPose(*other, rewindTick, feet, crouched);
+            const float height = crouched ? 0.95f : 1.8f;
             const glm::vec3 a = feet + glm::vec3(0, kCapsuleRadius, 0);
             const glm::vec3 b = feet + glm::vec3(0, height - kCapsuleRadius, 0);
             float tRay = 0;
@@ -1977,8 +1992,30 @@ void ServerSim::tick(Transport& transport) {
     m_voxels.update(streamCenter, m_jobs);
 
     ++m_tick;
+    // After the increment, so history is keyed by the tick snapshots stamp:
+    // rewinding to an acked snapshot tick reproduces what the shooter saw.
+    recordPoseHistory();
     if (m_scripts.loaded() && m_tick % 20 == 0) m_scripts.onTick(m_tick); // ~3 Hz gameplay hook
     if (m_tick % kSnapshotEvery == 0 && !m_players.empty()) broadcastSnapshot(transport);
+}
+
+void ServerSim::recordPoseHistory() {
+    for (auto& [peer, player] : m_players) {
+        Player::PastPose& slot = player->poseHistory[m_tick % Player::kPoseHistorySize];
+        slot.tick = m_tick;
+        slot.feet = player->controller.position();
+        slot.crouched = player->controller.crouched();
+        slot.spawned = player->spawned;
+    }
+}
+
+bool ServerSim::rewoundPlayerPose(const Player& target, std::uint64_t tick, glm::vec3& feet,
+                                  bool& crouched) const {
+    const Player::PastPose& e = target.poseHistory[tick % Player::kPoseHistorySize];
+    if (e.tick != tick || !e.spawned) return false; // never recorded, or pre-spawn
+    feet = e.feet;
+    crouched = e.crouched;
+    return true;
 }
 
 // Rejections are worth seeing, but a peer that floods must not be able to turn

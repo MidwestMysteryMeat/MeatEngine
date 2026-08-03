@@ -20,6 +20,7 @@
 #include <nlohmann/json_fwd.hpp>
 
 #include <algorithm>
+#include <array>
 #include <map>
 #include <memory>
 #include <optional>
@@ -36,6 +37,9 @@ namespace meat {
 class ServerSim {
 public:
     explicit ServerSim(GameRules rules = {}) : m_rules(rules) {}
+    // Workers may still be meshing streamed chunks when the sim dies; stop them
+    // before the members they feed (voxels/physics/navmesh) are torn down.
+    ~ServerSim();
 
     // Where gameplay scripts load from. Default is the engine's built-in assets;
     // a game project points this at its own scripts dir (see --project).
@@ -159,6 +163,17 @@ private:
             float remaining = 0.0f; // seconds left
         };
         std::vector<ActiveModifier> modifiers;
+        // F2 lag compensation: where this capsule stood on recent ticks, recorded
+        // at the same point snapshots read poses — so rewinding to an acked
+        // snapshot tick reproduces exactly what that snapshot showed the shooter.
+        struct PastPose {
+            std::uint64_t tick = 0; // 0 = slot never written
+            glm::vec3 feet{0};
+            bool crouched = false;
+            bool spawned = false;
+        };
+        static constexpr std::size_t kPoseHistorySize = 32; // ~0.53 s at 60 Hz
+        std::array<PastPose, kPoseHistorySize> poseHistory{};
     };
 
     struct SavedPlayer {
@@ -324,6 +339,16 @@ private:
                      const ItemDef& weapon);
     void marchBullet(Transport& transport, PeerId peer, Player& player,
                      const ItemDef& weapon, glm::vec3 dir);
+    // F2 lag compensation. recordPoseHistory runs once per tick, at the same
+    // point broadcastSnapshot reads poses; rewoundPlayerPose fetches a target's
+    // capsule as it stood at `tick`, returning false (caller uses live pose)
+    // when that tick was never recorded or the target wasn't spawned yet.
+    void recordPoseHistory();
+    bool rewoundPlayerPose(const Player& target, std::uint64_t tick, glm::vec3& feet,
+                           bool& crouched) const;
+    // How far into the past a shooter's acked snapshot may pull targets: 250 ms
+    // at the fixed 60 Hz tick. Beyond that a high-ping peer fires at live poses.
+    static constexpr std::uint64_t kMaxRewindTicks = 15;
     void spawnProjectile(PeerId owner, glm::vec3 pos, glm::vec3 vel, const ItemDef& weapon);
     void updateProjectiles(Transport& transport);
     void applyBlast(Transport& transport, PeerId source, glm::vec3 center, float radius,

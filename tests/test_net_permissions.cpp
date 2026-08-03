@@ -9,14 +9,19 @@
 // return value. A permission check that returns "denied" while the block still
 // changed would pass a mock-based test and fail reality.
 
+#include "engine/net/DeltaSnapshot.h"
 #include "engine/net/LoopbackTransport.h"
 #include "engine/net/Messages.h"
 #include "game/ServerSim.h"
 
+#include <cmath>
 #include <cstddef>
 #include <cstdio>
 #include <limits>
+#include <map>
+#include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -290,12 +295,36 @@ void testExtremeVoxelCoordinatesAreRefused() {
 struct ScriptedTransport final : meat::Transport {
     std::vector<meat::NetEvent> pending;
     int packetsSent = 0;
+    // Latest snapshot the server sent to each peer, reconstructed through the
+    // real delta codec exactly the way a client would (per-peer baseline ring).
+    std::unordered_map<meat::PeerId, meat::SnapshotMsg> lastSnapshot;
+    std::unordered_map<meat::PeerId, std::map<std::uint64_t, meat::SnapshotMsg>> ring;
 
     void poll(std::vector<meat::NetEvent>& out) override {
         out.insert(out.end(), pending.begin(), pending.end());
         pending.clear();
     }
-    void send(meat::PeerId, std::span<const std::byte>, bool) override { ++packetsSent; }
+    void send(meat::PeerId peer, std::span<const std::byte> bytes, bool) override {
+        ++packetsSent;
+        const std::optional<meat::MsgType> type = meat::peekType(bytes);
+        if (!type || *type != meat::MsgType::DeltaSnapshot) return;
+        meat::ByteReader r(bytes.subspan(1));
+        const std::optional<std::uint64_t> baseTick = meat::peekDeltaBaseline(r);
+        if (!baseTick) return;
+        static const meat::SnapshotMsg kEmpty{};
+        const meat::SnapshotMsg* base = &kEmpty;
+        if (*baseTick != 0) {
+            const auto it = ring[peer].find(*baseTick);
+            if (it == ring[peer].end()) return; // baseline lost: skip like a client would
+            base = &it->second;
+        }
+        meat::SnapshotMsg snap;
+        if (!meat::decodeDelta(snap, *base, r)) return;
+        auto& peerRing = ring[peer];
+        peerRing[snap.tick] = snap;
+        while (peerRing.size() > 32) peerRing.erase(peerRing.begin());
+        lastSnapshot[peer] = snap;
+    }
     void disconnect(meat::PeerId) override {}
 
     void connect(meat::PeerId p) {
@@ -356,9 +385,112 @@ void testMoveAndRemovePropNeedPermission() {
     check(server.propCount() == 0, "an authorised RemoveProp deletes the prop");
 }
 
+// F2 lag compensation. The victim sprints one way, turns, and keeps sprinting;
+// the shooter fires at where the victim stood in an OLD snapshot. With the ack
+// of that old tick piggybacked on the fire command the shot must land (the
+// server rewinds the capsule); the same aim with a fresh view must miss.
+void testHitscanIsLagCompensated() {
+    std::printf("hitscan rewinds targets to the shooter's acked snapshot\n");
+    ScriptedTransport wire;
+    meat::GameRules rules;
+    rules.terrain = meat::GameRules::Terrain::Superflat; // clean firing lane
+    meat::ServerSim server(rules);
+    if (!server.init(777u)) { check(false, "server booted"); return; }
+
+    wire.connect(1);
+    wire.packet(1, meat::HelloMsg{meat::kProtocolVersion, "shooter", ""});
+    wire.connect(2);
+    wire.packet(2, meat::HelloMsg{meat::kProtocolVersion, "victim", ""});
+    server.pump(wire);
+
+    std::uint64_t cmdTick1 = 0, cmdTick2 = 0;
+    auto step = [&](const meat::PlayerCommand& shooterCmd, const meat::PlayerCommand& victimCmd,
+                    std::uint64_t shooterAck) {
+        meat::PlayerCommand c1 = shooterCmd, c2 = victimCmd;
+        c1.tick = ++cmdTick1;
+        c2.tick = ++cmdTick2;
+        wire.packet(1, meat::CommandMsg{c1, shooterAck});
+        wire.packet(2, meat::CommandMsg{c2, 0});
+        server.pump(wire);
+        server.tick(wire);
+    };
+    const meat::PlayerCommand idle{};
+    meat::PlayerCommand sprintX{}; // victim leg 1: away from spawn along -X
+    sprintX.move = {0.0f, 1.0f};
+    sprintX.sprint = true;
+    sprintX.yaw = 1.5707963f;
+    meat::PlayerCommand sprintZ = sprintX; // victim leg 2: perpendicular, along -Z
+    sprintZ.yaw = 0.0f;
+
+    auto stateOf = [&](meat::PeerId dest, meat::PeerId playerId) -> const meat::PlayerState* {
+        for (const meat::PlayerState& p : wire.lastSnapshot[dest].players)
+            if (p.playerId == playerId) return &p;
+        return nullptr;
+    };
+
+    // Chunk colliders stream in asynchronously; a sprinting player can outrun
+    // them and fall. Ground-state gates keep the test independent of how fast
+    // this machine's worker threads mesh.
+    auto waitVictimGrounded = [&](int maxSteps) {
+        for (int i = 0; i < maxSteps; ++i) {
+            const meat::PlayerState* v = stateOf(1, 2);
+            if (v && v->onGround) return true;
+            step(idle, idle, 0);
+        }
+        return false;
+    };
+
+    for (int i = 0; i < 10; ++i) step(idle, idle, 0); // spawn
+    if (!waitVictimGrounded(600)) { check(false, "victim grounded at spawn"); return; }
+    for (int i = 0; i < 150; ++i) step(idle, sprintX, 0);  // open ~10 m of distance
+    if (!waitVictimGrounded(600)) { check(false, "victim grounded after the run"); return; }
+
+    // The victim now stands still; the next fresh snapshot is the shooter's
+    // "view": T0, with the victim exactly where the pose history has them.
+    const std::uint64_t seen = wire.lastSnapshot[1].tick;
+    for (int i = 0; i < 8 && wire.lastSnapshot[1].tick == seen; ++i) step(idle, idle, 0);
+    if (wire.lastSnapshot[1].tick == seen) { check(false, "a fresh snapshot arrived"); return; }
+    const std::uint64_t viewTick = wire.lastSnapshot[1].tick;
+    const meat::PlayerState* victimThen = stateOf(1, 2);
+    const meat::PlayerState* shooterNow = stateOf(1, 1);
+    if (!victimThen || !shooterNow) { check(false, "snapshot carries both players"); return; }
+    const glm::vec3 aimTarget = victimThen->pos + glm::vec3(0, 0.9f, 0); // capsule middle
+    const glm::vec3 eye = shooterNow->pos + glm::vec3(0, 1.62f, 0);
+
+    // The victim keeps sprinting perpendicular through the lag window (well
+    // inside the 250 ms rewind clamp).
+    for (int i = 0; i < 10; ++i) step(idle, sprintZ, 0);
+
+    // Aim exactly where the acked snapshot showed the victim.
+    const glm::vec3 d = glm::normalize(aimTarget - eye);
+    meat::PlayerCommand shot{};
+    shot.fire = true;
+    shot.yaw = std::atan2(-d.x, -d.z);
+    shot.pitch = std::asin(d.y);
+
+    step(shot, sprintZ, viewTick); // stale view: the server must rewind and hit
+    for (int i = 0; i < 6; ++i) step(idle, sprintZ, 0); // let a snapshot reach the victim
+    const meat::PlayerState* victimAfterHit = stateOf(2, 2);
+    if (!victimAfterHit) { check(false, "victim still snapshotted"); return; }
+    check(victimAfterHit->health < 100.0f,
+          "a shot at the old position HITS when the old snapshot is acked");
+    const float healthAfterHit = victimAfterHit->health;
+
+    // Control: same aim with a live view — the victim has long since left that
+    // spot, so without the rewind this shot must miss.
+    for (int i = 0; i < 12; ++i) step(idle, sprintZ, 0); // cooldown + more distance
+    step(shot, sprintZ, 0); // ack 0 = live poses
+    for (int i = 0; i < 6; ++i) step(idle, sprintZ, 0);
+    const meat::PlayerState* victimAfterMiss = stateOf(2, 2);
+    if (!victimAfterMiss) { check(false, "victim still snapshotted"); return; }
+    check(victimAfterMiss->health == healthAfterHit,
+          "the same aim with a live view MISSES the moved victim");
+}
+
 } // namespace
 
 int main() {
+    std::setvbuf(stdout, nullptr, _IONBF, 0); // a crash must not eat the tail
     std::printf("MeatEngine headless tests\n\n");
 
     testPlayerCannotEditVoxels();
@@ -374,6 +506,7 @@ int main() {
     testMalformedPacketsDoNotCrash();
     testExtremeVoxelCoordinatesAreRefused();
     testMoveAndRemovePropNeedPermission();
+    testHitscanIsLagCompensated();
 
     std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
