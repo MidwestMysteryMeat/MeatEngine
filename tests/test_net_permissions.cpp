@@ -482,6 +482,88 @@ void testHitscanIsLagCompensated() {
           "the same aim with a live view MISSES the moved victim");
 }
 
+// Effect execution end-to-end: a damaged player using a medkit heals. This
+// exercises the use→consumable→runEffects→Heal path (currently the only test of
+// the effect system beyond hitscan Damage), observed the way a client sees it —
+// through snapshots.
+void testMedkitHealsThroughEffectSystem() {
+    std::printf("a damaged player heals by using a medkit (effect system)\n");
+    ScriptedTransport wire;
+    meat::GameRules rules;
+    rules.terrain = meat::GameRules::Terrain::Superflat; // clean firing lane
+    meat::ServerSim server(rules);
+    if (!server.init(778u)) { check(false, "server booted"); return; }
+
+    wire.connect(1);
+    wire.packet(1, meat::HelloMsg{meat::kProtocolVersion, "shooter", ""});
+    wire.connect(2);
+    wire.packet(2, meat::HelloMsg{meat::kProtocolVersion, "victim", ""});
+    server.pump(wire);
+
+    std::uint64_t t1 = 0, t2 = 0;
+    auto step = [&](const meat::PlayerCommand& a, const meat::PlayerCommand& b) {
+        meat::PlayerCommand c1 = a, c2 = b;
+        c1.tick = ++t1;
+        c2.tick = ++t2;
+        wire.packet(1, meat::CommandMsg{c1, 0});
+        wire.packet(2, meat::CommandMsg{c2, 0});
+        server.pump(wire);
+        server.tick(wire);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1)); // let mesh workers ground players
+    };
+    auto stateOf = [&](meat::PeerId who) -> const meat::PlayerState* {
+        for (const meat::PlayerState& p : wire.lastSnapshot[1].players)
+            if (p.playerId == who) return &p;
+        return nullptr;
+    };
+    const meat::PlayerCommand idle{};
+    meat::PlayerCommand away{}; // walk the victim clear of the shooter
+    away.move = {0.0f, 1.0f};
+    away.sprint = true;
+    away.yaw = 1.5707963f;
+
+    for (int i = 0; i < 30; ++i) step(idle, idle);   // spawn + settle
+    for (int i = 0; i < 120; ++i) step(idle, away);  // ~8 m of separation
+    for (int i = 0; i < 30; ++i) step(idle, idle);   // stand still, land a fresh snapshot
+
+    const meat::PlayerState* s0 = stateOf(1);
+    const meat::PlayerState* v0 = stateOf(2);
+    if (!s0 || !v0) { check(false, "both players snapshotted"); return; }
+
+    // Aim at the victim's torso. Pistol is semi-auto (one shot per press edge),
+    // so two spaced trigger pulls deal ~50 damage — hurt but not killed (a kill
+    // would respawn them at full health and hide the heal).
+    const glm::vec3 eye = s0->pos + glm::vec3(0, 1.62f, 0);
+    const glm::vec3 target = v0->pos + glm::vec3(0, 0.9f, 0);
+    const glm::vec3 dir = glm::normalize(target - eye);
+    meat::PlayerCommand shoot{};
+    shoot.fire = true;
+    shoot.yaw = std::atan2(-dir.x, -dir.z);
+    shoot.pitch = std::asin(dir.y);
+    step(shoot, idle);
+    for (int i = 0; i < 14; ++i) step(idle, idle); // release + fire-cooldown
+    step(shoot, idle);
+    for (int i = 0; i < 8; ++i) step(idle, idle);
+
+    const meat::PlayerState* vHurt = stateOf(2);
+    if (!vHurt) { check(false, "victim snapshotted"); return; }
+    check(vHurt->health < 100.0f && vHurt->health > 0.0f, "the victim is hurt but alive");
+    const float hurt = vHurt->health;
+
+    // Victim uses a medkit — slot 16 in the default (non-space) starting loadout
+    // (pistol,ap,hp,smg,shotgun,sniper,claymore,turret,companion,shells,rifle,
+    //  stone,rpg,grenade,9mm,rockets,MEDKIT). One press edge = one use.
+    meat::PlayerCommand heal{};
+    heal.use = true;
+    heal.selectedSlot = 16;
+    step(idle, heal);
+    for (int i = 0; i < 10; ++i) step(idle, idle); // let the heal + a snapshot land
+
+    const meat::PlayerState* vHealed = stateOf(2);
+    if (!vHealed) { check(false, "victim snapshotted"); return; }
+    check(vHealed->health > hurt, "using the medkit restored health via the effect system");
+}
+
 } // namespace
 
 namespace meattest {
@@ -501,6 +583,7 @@ void runNetPermissions() {
     testExtremeVoxelCoordinatesAreRefused();
     testMoveAndRemovePropNeedPermission();
     testHitscanIsLagCompensated();
+    testMedkitHealsThroughEffectSystem();
 }
 
 } // namespace meattest
