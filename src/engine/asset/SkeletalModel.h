@@ -118,4 +118,9 @@ int appendClipsFromFile(SkeletalModel& model, const std::filesystem::path& animF
 int retargetClipsFromFile(SkeletalModel& model, const std::filesystem::path& animFile,
                           const ModelImportOptions& opts = {});
 
+// Reduce a bone name to a convention-agnostic key so the retargeter can match the same joint
+// across Mixamo and the UE4/UE5 mannequin (e.g. "thigh_l", "mixamorig:LeftUpLeg" -> "leftupleg").
+// Exposed for tests; used internally by retargetClipsFromFile.
+std::string canonicalBoneName(const std::string& name);
+
 } // namespace meat

@@ -31,6 +31,7 @@ void runDeltaSnapshot();
 void runEntityRegistry();
 void runWorldgen();
 void runSaveLoad();
+void runBoneRetarget();
 
 } // namespace meattest
 
@@ -44,6 +45,7 @@ int main() {
     meattest::runEntityRegistry();
     meattest::runWorldgen();
     meattest::runSaveLoad();
+    meattest::runBoneRetarget();
 
     std::printf("\n%d checks, %d failures\n", meattest::g_checks, meattest::g_failures);
     return meattest::g_failures == 0 ? 0 : 1;

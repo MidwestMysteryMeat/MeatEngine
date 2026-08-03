@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <format>
 #include <limits>
@@ -341,6 +342,36 @@ std::vector<unsigned char> findEmbeddedAlbedo(const aiScene& scene) {
 
 } // namespace
 
+// Cross-convention bone key: the Mixamo, UE4-mannequin, and UE5-mannequin skeletons name the
+// same joints differently ("LeftUpLeg" vs "thigh_l"), so a UE-authored clip resolves ZERO bones
+// against a Mixamo rig by name alone. Canonicalizing both the source clip's and the target rig's
+// bone names to one key lets the retargeter bridge any of the three onto any of the three with no
+// per-asset config. UE4 and UE5 mannequins share these core body names, so one table serves both.
+// Fingers are omitted deliberately (low animation value, and unmapped joints simply stay at rest
+// — the same graceful degradation the autorig uses for unweighted fingertips).
+std::string canonicalBoneName(const std::string& n) {
+    std::string s = normalizeBoneName(n); // internal-linkage helper, same TU
+    for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    // UE mannequin (l/r) -> Mixamo canonical (already lowercase). Mixamo names fall through to
+    // themselves, so Mixamo<->Mixamo retargeting is unchanged.
+    static const std::unordered_map<std::string, std::string> kAlias = {
+        {"pelvis", "hips"},
+        {"spine_01", "spine"},   {"spine_02", "spine1"},  {"spine_03", "spine2"},
+        {"spine_04", "spine2"},  {"spine_05", "spine2"}, // UE5 extra spine joints
+        {"neck_01", "neck"},     {"neck_02", "neck"},
+        {"clavicle_l", "leftshoulder"},  {"clavicle_r", "rightshoulder"},
+        {"upperarm_l", "leftarm"},       {"upperarm_r", "rightarm"},
+        {"lowerarm_l", "leftforearm"},   {"lowerarm_r", "rightforearm"},
+        {"hand_l", "lefthand"},          {"hand_r", "righthand"},
+        {"thigh_l", "leftupleg"},        {"thigh_r", "rightupleg"},
+        {"calf_l", "leftleg"},           {"calf_r", "rightleg"},
+        {"foot_l", "leftfoot"},          {"foot_r", "rightfoot"},
+        {"ball_l", "lefttoebase"},       {"ball_r", "righttoebase"},
+    };
+    if (const auto it = kAlias.find(s); it != kAlias.end()) return it->second;
+    return s;
+}
+
 std::optional<SkeletalModel> loadSkeletalModel(const std::filesystem::path& path,
                                                const ModelImportOptions& opts) {
     Assimp::Importer importer;
@@ -650,7 +681,7 @@ int retargetClipsFromFile(SkeletalModel& model, const std::filesystem::path& ani
         glm::quat localRestRot{1, 0, 0, 0}; // node bind local; fallback for un-animated nodes
     };
     std::vector<SrcNode> src;
-    std::unordered_map<std::string, int> srcExact, srcNorm;
+    std::unordered_map<std::string, int> srcExact, srcNorm, srcCanon;
     std::vector<std::pair<const aiNode*, int>> stack{{scene->mRootNode, -1}};
     while (!stack.empty()) {
         const auto [node, parent] = stack.back();
@@ -662,7 +693,8 @@ int retargetClipsFromFile(SkeletalModel& model, const std::filesystem::path& ani
         sn.localRestRot = rotationOf(toGlm(node->mTransformation));
         src.push_back(sn);
         srcExact.emplace(sn.name, idx);
-        srcNorm.emplace(normalizeBoneName(sn.name), idx); // first wins
+        srcNorm.emplace(normalizeBoneName(sn.name), idx);  // first wins
+        srcCanon.emplace(canonicalBoneName(sn.name), idx); // cross-convention (UE<->Mixamo)
         for (unsigned c = 0; c < node->mNumChildren; ++c) {
             stack.emplace_back(node->mChildren[c], idx);
         }
@@ -670,6 +702,10 @@ int retargetClipsFromFile(SkeletalModel& model, const std::filesystem::path& ani
     const auto resolveSrc = [&](const std::string& tgt) -> int {
         if (const auto it = srcExact.find(tgt); it != srcExact.end()) return it->second;
         if (const auto it = srcNorm.find(normalizeBoneName(tgt)); it != srcNorm.end()) {
+            return it->second;
+        }
+        // Last: bridge naming conventions (a UE-mannequin clip onto a Mixamo rig, etc.).
+        if (const auto it = srcCanon.find(canonicalBoneName(tgt)); it != srcCanon.end()) {
             return it->second;
         }
         return -1;

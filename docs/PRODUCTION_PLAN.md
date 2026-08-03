@@ -68,6 +68,12 @@ them. Close that first — everything after this is riskier without it.
       AreaDamage / Heal / ApplyModifier exist today — 4 of 9), plus **Lua-defined effects**.
 - [ ] **Dynamic navmesh rebuild on voxel edit** (tiled Detour) — AI silently breaks when
       terrain changes, which is always in a voxel game.
+- [x] **Cross-convention animation retargeting** — Mixamo, UE4-mannequin, and UE5-mannequin
+      clips all bridge onto the canonical (Mixamo) skeleton via `canonicalBoneName`, and the
+      autorig rigs meshes to that same canonical skeleton — so any of the three animation
+      sources drives any autorigged character. Remaining: a UE-mannequin autorig *template*
+      (Epic's asset can't ship in a public repo, but a UE bone-name fallback table can);
+      finger-joint mapping (body/limbs done, fingers stay at rest).
 - [ ] **[doc-only] Animation blend graph + state machine (`AnimGraph`)** — full drop-in code
       in `ANIMATION_BLEND_GRAPH.md §3` (states, 1D blend spaces, transitions, cross-fade);
       no `AnimGraph`/`BlendSpace1D`/`AnimState` in `src/`. The most detailed lost design.
