@@ -21,9 +21,9 @@ enum class EffectKind : std::uint8_t {
     Heal,
     // Timed stat buff/debuff on the target player: params[0] = outgoing-damage
     // multiplier, params[1] = movement-speed multiplier, `duration` = seconds it
-    // lasts. Stored per-player and ticked down each fixed tick. (Speed enforcement
-    // is a follow-up — CharacterController tuning lives in engine/physics; the
-    // damage mult is applied where server-side damage is dealt.)
+    // lasts. Stored per-player and ticked down each fixed tick. Both halves are
+    // enforced: the damage mult scales server-side damage, the speed mult drives
+    // CharacterController::setSpeedScale each tick (so speedMult<1 is a Slow).
     ApplyModifier,
 };
 

@@ -387,6 +387,7 @@ private:
                      glm::vec3 targetPos, Player* targetPlayer, Npc* targetNpc);
     void tickModifiers(Player& player, float dt); // decay active timed modifiers
     static float damageMultOf(const Player& player); // product of active damage mults
+    static float speedMultOf(const Player& player);  // product of active speed mults
 
     struct IVec3Hash {
         std::size_t operator()(const glm::ivec3& v) const {

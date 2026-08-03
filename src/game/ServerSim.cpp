@@ -1613,6 +1613,12 @@ float ServerSim::damageMultOf(const Player& player) {
     return m;
 }
 
+float ServerSim::speedMultOf(const Player& player) {
+    float m = 1.0f;
+    for (const Player::ActiveModifier& mod : player.modifiers) m *= mod.speedMult;
+    return m;
+}
+
 void ServerSim::tickModifiers(Player& player, float dt) {
     if (player.modifiers.empty()) return; // hot path: most players carry none
     for (Player::ActiveModifier& mod : player.modifiers) mod.remaining -= dt;
@@ -2037,6 +2043,7 @@ void ServerSim::tick(Transport& transport) {
                 player->controller.setUp(-g / gLen);
             else
                 player->controller.setUp(glm::vec3(0.0f, 1.0f, 0.0f));
+            player->controller.setSpeedScale(speedMultOf(*player)); // slow/haste effects
             player->controller.update(player->lastCmd, kFixedDtServer, m_physics);
             if (player->controller.position().y < -30.0f) // fell out (colliders pending)
                 player->controller.setState(defaultSpawnPos(), glm::vec3(0));

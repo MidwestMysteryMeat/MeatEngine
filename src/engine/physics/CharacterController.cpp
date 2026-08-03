@@ -45,6 +45,7 @@ struct CharacterController::Impl {
     float eyeHeight = CharacterTuning{}.eyeStand;
     bool warnedUninit = false;
     glm::vec3 up{0.0f, 1.0f, 0.0f}; // B3b local-up (matches CharacterVirtual mUp)
+    float speedScale = 1.0f;        // gameplay speed modifier (slow/haste effects)
 };
 
 CharacterController::CharacterController() : m_impl(std::make_unique<Impl>()) {}
@@ -119,7 +120,8 @@ void CharacterController::update(const PlayerCommand& cmd, float fixedDt, Physic
     glm::vec2 move = cmd.move;
     const float moveLen = glm::length(move);
     if (moveLen > 1.0f) move /= moveLen;
-    const float speed = im.crouched ? t.crouchSpeed : (cmd.sprint ? t.sprintSpeed : t.walkSpeed);
+    const float speed =
+        (im.crouched ? t.crouchSpeed : (cmd.sprint ? t.sprintSpeed : t.walkSpeed)) * im.speedScale;
     const glm::vec3 want = (worldRight * move.x + worldForward * move.y) * speed;
 
     const JPH::Vec3 curVel = im.character->GetLinearVelocity();
@@ -196,6 +198,10 @@ void CharacterController::setGravity(float gravityY) {
 void CharacterController::setGravity(glm::vec3 gravity) {
     m_impl->tuning.gravityVec = gravity;
     m_impl->tuning.gravity = gravity.y; // keep scalar in sync for any Y-only readers
+}
+
+void CharacterController::setSpeedScale(float scale) {
+    m_impl->speedScale = scale > 0.0f ? scale : 0.0f; // clamp; 0 = rooted
 }
 
 void CharacterController::setUp(glm::vec3 up) {
