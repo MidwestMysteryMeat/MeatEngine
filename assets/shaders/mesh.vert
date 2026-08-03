@@ -16,6 +16,7 @@ layout(std140, binding = 0) uniform FrameData {
     vec4 uDirLightDir;
     vec4 uDirLightColor;
     vec4 uAmbientColor;
+    vec4 uHemiGround;   // A3 ground lobe; unused here but part of the shared UBO layout
     ivec4 uLightCounts;
     PointLight uPointLights[32];
     SpotLight uSpotLights[8];

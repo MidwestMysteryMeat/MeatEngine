@@ -18,7 +18,8 @@ layout(std140, binding = 0) uniform FrameData {
     vec4 uFogColor;
     vec4 uDirLightDir; // direction the light travels, normalized
     vec4 uDirLightColor;
-    vec4 uAmbientColor; // rgb premultiplied by intensity; w unused
+    vec4 uAmbientColor; // rgb premultiplied by intensity; w hemi strength
+    vec4 uHemiGround;   // rgb ground lobe (A3); unused here but part of the shared UBO layout
     ivec4 uLightCounts; // x point, y spot
     PointLight uPointLights[32];
     SpotLight uSpotLights[8];
