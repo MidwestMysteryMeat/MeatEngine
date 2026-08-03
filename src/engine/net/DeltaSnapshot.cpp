@@ -22,10 +22,11 @@ constexpr std::int32_t kPosQMax = (1 << 23) - 1; // largest signed 24-bit magnit
 constexpr float kPosMax = static_cast<float>(kPosQMax) / kPosStepsPerMeter; // ±32767.996 m
 
 std::int32_t quantize(float v) {
-    const float scaled = std::lround(v * kPosStepsPerMeter);
+    const long scaled = std::lround(v * kPosStepsPerMeter); // integer domain: no float re-narrowing
     // A position past ±32 km is beyond any reachable voxel world; clamp so the wire stays valid,
     // but assert in dev builds so it surfaces as a bug rather than a silent teleport in release.
-    assert(scaled >= -kPosQMax && scaled <= kPosQMax && "snapshot position exceeds ±32 km wire range");
+    assert(scaled >= -static_cast<long>(kPosQMax) && scaled <= static_cast<long>(kPosQMax) &&
+           "snapshot position exceeds ±32 km wire range");
     return std::clamp(static_cast<std::int32_t>(scaled), -kPosQMax, kPosQMax);
 }
 float dequantize(std::int32_t q) { return static_cast<float>(q) / kPosStepsPerMeter; }

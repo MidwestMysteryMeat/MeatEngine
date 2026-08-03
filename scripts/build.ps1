@@ -17,7 +17,9 @@ Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-ar
 python -m pip install --user --quiet jinja2   # glad generator dependency
 
 if ($Clean -and (Test-Path "$repo\build")) { Remove-Item -Recurse -Force "$repo\build" }
-cmake -S $repo -B "$repo\build" -G Ninja "-DCMAKE_BUILD_TYPE=$Config"
+# -Wno-dev: quiet the vendored deps' CMake developer/deprecation warnings so our
+# own configuration issues aren't lost in third-party noise.
+cmake -S $repo -B "$repo\build" -G Ninja -Wno-dev "-DCMAKE_BUILD_TYPE=$Config"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 cmake --build "$repo\build" --parallel
 exit $LASTEXITCODE

@@ -163,6 +163,14 @@ target_include_directories(enet PUBLIC ${enet_SOURCE_DIR}/include)
 if(WIN32)
     target_link_libraries(enet PUBLIC ws2_32 winmm)
 endif()
+# Silence ENet's own compiler warnings (e.g. MSVC C5287 enum-mismatch) — it is
+# vendored code we don't edit, and its noise buries real warnings from our /W4
+# targets. Our own MeatEngine/MeatTests keep full warnings.
+if(MSVC)
+    target_compile_options(enet PRIVATE /w)
+else()
+    target_compile_options(enet PRIVATE -w)
+endif()
 
 # glad: generate a GL 4.5 core loader target
 add_subdirectory(${glad_SOURCE_DIR}/cmake ${glad_BINARY_DIR}/cmake)
