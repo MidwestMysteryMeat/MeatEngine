@@ -1626,6 +1626,39 @@ void ServerSim::tickModifiers(Player& player, float dt) {
                   [](const Player::ActiveModifier& m) { return m.remaining <= 0.0f; });
 }
 
+void ServerSim::applyDamageOverTime(PeerId target, float dps, float seconds, PeerId source) {
+    if (dps <= 0.0f || seconds <= 0.0f) return;
+    const auto it = m_players.find(target);
+    if (it == m_players.end() || !it->second) return;
+    it->second->burns.push_back({dps, seconds, source});
+}
+
+void ServerSim::tickBurns(Transport& transport, PeerId peer, Player& player, float dt) {
+    if (player.burns.empty()) return; // hot path: most players carry none
+    // Clamp each tick's contribution to the burn's own remaining lifetime so a
+    // near-expired burn doesn't over-deal on its final tick, then age all burns.
+    float total = 0.0f;
+    PeerId killer = 0;
+    for (Player::Burn& b : player.burns) {
+        const float step = std::min(b.remaining, dt);
+        if (step > 0.0f) {
+            total += b.dps * step;
+            killer = b.source; // last source to still deal this tick takes the kill
+        }
+        b.remaining -= dt;
+    }
+    std::erase_if(player.burns, [](const Player::Burn& b) { return b.remaining <= 0.0f; });
+    if (total <= 0.0f || player.health <= 0.0f) return;
+    player.health -= total;
+    if (player.health <= 0.0f) {
+        dropPlayerLoot(player, player.controller.position());
+        player.controller.setState(defaultSpawnPos(), glm::vec3(0));
+        player.health = 100.0f;
+        if (killer != 0 && killer != peer) registerFrag(killer, peer); // DoT kill credit
+    }
+    (void)transport;
+}
+
 void ServerSim::applyEffect(Transport& transport, const Effect& effect, PeerId source,
                             glm::vec3 targetPos, Player* targetPlayer, Npc* targetNpc) {
     // Outgoing damage scales by the acting player's active buffs (stim etc.).
@@ -1659,6 +1692,12 @@ void ServerSim::applyEffect(Transport& transport, const Effect& effect, PeerId s
     case EffectKind::ApplyModifier:
         if (targetPlayer)
             targetPlayer->modifiers.push_back({effect.params[0], effect.params[1], effect.duration});
+        break;
+    case EffectKind::Ignite:
+        // Damage-over-time: params[0] = damage/sec, duration = seconds. Stacks;
+        // ticked in tickBurns each fixed tick, credited to the igniter on kill.
+        if (targetPlayer)
+            targetPlayer->burns.push_back({effect.params[0], effect.duration, source});
         break;
     case EffectKind::Knockback:
         if (targetPlayer) {
@@ -2197,6 +2236,7 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
     player.useCooldown -= kFixedDtServer;
     player.reloadCooldown -= kFixedDtServer;
     tickModifiers(player, kFixedDtServer); // decay active ApplyModifier buffs
+    tickBurns(transport, peer, player, kFixedDtServer); // apply Ignite DoT ticks
 
     // H4: pilot hardpoints use ship cannon; passenger/EVA use inventory.
     const glm::vec3 eye = combatMuzzle(player);

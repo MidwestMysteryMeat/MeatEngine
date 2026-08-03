@@ -30,6 +30,10 @@ enum class EffectKind : std::uint8_t {
     // a small upward pop); decays over a fraction of a second. NPCs are unaffected
     // (they don't use the character controller).
     Knockback,
+    // Damage-over-time on the target player: params[0] = damage/sec, `duration` =
+    // seconds it burns. Stacks; ticked server-side each fixed tick until it expires,
+    // and a burn that kills credits the igniter. NPCs aren't ignitable yet.
+    Ignite,
 };
 
 // POD effect: kind + a small param block + radius/duration. No allocation, no
@@ -59,6 +63,9 @@ inline Effect modifierEffect(float damageMult, float speedMult, float duration) 
 }
 inline Effect knockbackEffect(float speed) {
     return Effect{EffectKind::Knockback, {speed, 0.0f, 0.0f, 0.0f}, 0.0f, 0.0f};
+}
+inline Effect igniteEffect(float dps, float seconds) {
+    return Effect{EffectKind::Ignite, {dps, 0.0f, 0.0f, 0.0f}, 0.0f, seconds};
 }
 
 } // namespace meat

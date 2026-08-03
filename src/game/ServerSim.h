@@ -87,9 +87,17 @@ public:
     // and, once someone reaches fragLimit, ends the match. Public so the kill
     // paths and tests can drive it. Sandbox mode ignores scoring.
     void registerFrag(PeerId killer, PeerId victim);
+    // Apply a damage-over-time (Ignite) to a player: dps for `seconds`, credited
+    // to `source` on kill. Public so abilities/scripts (and tests) can drive it.
+    void applyDamageOverTime(PeerId target, float dps, float seconds, PeerId source);
     int fragsOf(PeerId p) const {
         const auto it = m_frags.find(p);
         return it == m_frags.end() ? 0 : it->second;
+    }
+    // Authoritative health of a player (0 if unknown). For scripts/HUD/tests.
+    float playerHealth(PeerId p) const {
+        const auto it = m_players.find(p);
+        return (it == m_players.end() || !it->second) ? 0.0f : it->second->health;
     }
     bool matchOver() const { return m_matchOver; }
     PeerId matchWinner() const { return m_matchWinner; }
@@ -181,10 +189,18 @@ private:
         // Small (kits stack a handful) — a flat vector, no per-tick allocation.
         struct ActiveModifier {
             float damageMult = 1.0f;
-            float speedMult = 1.0f; // stored; enforcement is a follow-up (engine-owned)
+            float speedMult = 1.0f; // both halves enforced (damage + CharacterController speed)
             float remaining = 0.0f; // seconds left
         };
         std::vector<ActiveModifier> modifiers;
+        // Ignite: damage-over-time ticks. Each deals dps every fixed tick until it
+        // expires; a burn that kills credits its source (registerFrag).
+        struct Burn {
+            float dps = 0.0f;
+            float remaining = 0.0f;
+            PeerId source = 0;
+        };
+        std::vector<Burn> burns;
         // F2 lag compensation: where this capsule stood on recent ticks, recorded
         // at the same point snapshots read poses — so rewinding to an acked
         // snapshot tick reproduces exactly what that snapshot showed the shooter.
@@ -386,6 +402,8 @@ private:
     void applyEffect(Transport& transport, const Effect& effect, PeerId source,
                      glm::vec3 targetPos, Player* targetPlayer, Npc* targetNpc);
     void tickModifiers(Player& player, float dt); // decay active timed modifiers
+    // Apply + age Ignite damage-over-time on a player; handles death/kill-credit.
+    void tickBurns(Transport& transport, PeerId peer, Player& player, float dt);
     static float damageMultOf(const Player& player); // product of active damage mults
     static float speedMultOf(const Player& player);  // product of active speed mults
 

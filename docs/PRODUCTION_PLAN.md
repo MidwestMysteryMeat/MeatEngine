@@ -84,8 +84,9 @@ entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
       (Breach/Horde), mode in Welcome, and a client-facing match-over announce.
 - [ ] **Unified entity-snapshot path** — turrets/companions/pickups replicate via the player
       path; enables generic `SpawnEntity`.
-- [~] **Effect kinds** — Damage / AreaDamage / Heal / ApplyModifier (now with enforced
-      speed = **Slow/haste**) / **Knockback** done. Remaining: **Ignite** (DoT), **Chain**
+- [~] **Effect kinds** — Damage / AreaDamage / Heal / ApplyModifier (enforced
+      speed = **Slow/haste**) / **Knockback** / **Ignite** (DoT, stacks + kill-credit,
+      public `applyDamageOverTime` for abilities/scripts) done. Remaining: **Chain**
       (multi-target), **SpawnEntity**, plus **Lua-defined effects**.
 - [ ] **Dynamic navmesh rebuild on voxel edit** (tiled Detour) — AI silently breaks when
       terrain changes, which is always in a voxel game.

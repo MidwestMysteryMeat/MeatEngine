@@ -5,6 +5,8 @@
 
 #include "Harness.h"
 
+#include "engine/net/LoopbackTransport.h"
+#include "engine/net/Messages.h"
 #include "game/ServerSim.h"
 
 #include <cstdio>
@@ -64,6 +66,40 @@ void testSandboxIgnoresScoring() {
           "sandbox ignores frags and has no win condition");
 }
 
+// Ignite is a damage-over-time effect: it burns a player for dps × duration and
+// then stops. Driven here through the public applyDamageOverTime entry (the same
+// state the Ignite effect kind pushes to) on a Void world, so no ambient AI
+// muddies the health signal. server.tick() advances one 1/60 s fixed step, so 60
+// ticks is exactly one second.
+void testIgniteDamageOverTime() {
+    std::printf("ignite burns a player over time, then stops when it expires\n");
+    meat::GameRules rules;
+    rules.terrain = meat::GameRules::Terrain::Void; // empty world: no ambient damage
+    meat::ServerSim server(rules);
+    meat::LoopbackPair wire;
+    if (!server.init(7u)) { check(false, "server booted"); return; }
+    const meat::PeerId peer = 1;
+
+    server.pump(wire.serverEnd()); // register the Connected peer
+    wire.clientEnd().send(
+        peer, meat::pack(meat::HelloMsg{meat::kProtocolVersion, "burnee", ""}), true);
+    server.pump(wire.serverEnd());
+    for (int i = 0; i < 10; ++i) server.tick(wire.serverEnd()); // spawn + settle
+
+    const float h0 = server.playerHealth(peer);
+    check(h0 > 99.0f, "the player starts at full health");
+
+    server.applyDamageOverTime(peer, 20.0f, 1.0f, 0); // 20 dmg over 1 s (environment)
+    for (int i = 0; i < 60; ++i) server.tick(wire.serverEnd()); // one second of burning
+    const float burned = h0 - server.playerHealth(peer);
+    check(burned > 15.0f && burned < 25.0f,
+          "ignite removed about dps*duration (~20) health");
+
+    const float h1 = server.playerHealth(peer);
+    for (int i = 0; i < 60; ++i) server.tick(wire.serverEnd()); // burn has now expired
+    check(h1 - server.playerHealth(peer) < 1.0f, "damage stops once the burn expires");
+}
+
 } // namespace
 
 namespace meattest {
@@ -72,6 +108,7 @@ void runGameMode() {
     testDeathmatchWinCondition();
     testSuicideAndEnvironmentDoNotScore();
     testSandboxIgnoresScoring();
+    testIgniteDamageOverTime();
 }
 
 } // namespace meattest
