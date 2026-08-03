@@ -1633,6 +1633,24 @@ void ServerSim::applyDamageOverTime(PeerId target, float dps, float seconds, Pee
     it->second->burns.push_back({dps, seconds, source});
 }
 
+std::uint32_t ServerSim::spawnTurret(PeerId owner, glm::vec3 pos) {
+    Turret t;
+    t.id = m_nextEntityId++;
+    t.owner = owner;
+    t.pos = pos;
+    m_turrets.push_back(t);
+    return t.id;
+}
+
+std::uint32_t ServerSim::spawnCompanion(PeerId owner, glm::vec3 pos) {
+    Companion c;
+    c.id = m_nextEntityId++;
+    c.owner = owner;
+    c.pos = pos;
+    m_companions.push_back(c);
+    return c.id;
+}
+
 void ServerSim::applyChainDamage(PeerId source, glm::vec3 origin, float damage,
                                  int maxTargets, float range) {
     if (damage <= 0.0f || maxTargets <= 0) return;
@@ -1739,6 +1757,13 @@ void ServerSim::applyEffect(Transport& transport, const Effect& effect, PeerId s
                          targetPlayer ? targetPlayer->controller.position() : targetPos,
                          effect.params[0], std::max(1, static_cast<int>(effect.params[1])),
                          effect.radius);
+        break;
+    case EffectKind::SpawnEntity:
+        // Summon an owned AI helper at the effect's target point (params[0]:
+        // 0 = turret, >=1 = companion). Owner is the acting player; it replicates
+        // through the entity-snapshot path like any deployed helper.
+        if (effect.params[0] >= 0.5f) spawnCompanion(source, targetPos);
+        else spawnTurret(source, targetPos);
         break;
     case EffectKind::Knockback:
         if (targetPlayer) {
@@ -2365,18 +2390,10 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
                     if (const auto hit = m_voxels.raycast(eye, dir, 3.0f))
                         at = eye + dir * std::max(0.5f, hit->t - 0.2f);
                     if (heldDef.deploysTurret) {
-                        Turret t;
-                        t.id = m_nextEntityId++;
-                        t.owner = peer;
-                        t.pos = at;
-                        m_turrets.push_back(t);
+                        spawnTurret(peer, at);
                         log::info("server: player {} placed a turret", peer);
                     } else if (heldDef.deploysCompanion) {
-                        Companion c;
-                        c.id = m_nextEntityId++;
-                        c.owner = peer;
-                        c.pos = at;
-                        m_companions.push_back(c);
+                        spawnCompanion(peer, at);
                         log::info("server: player {} summoned a companion", peer);
                     } else {
                         Deployable dep;

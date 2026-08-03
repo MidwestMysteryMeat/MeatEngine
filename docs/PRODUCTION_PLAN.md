@@ -82,14 +82,17 @@ entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
       per-player frag scoring + fragLimit win condition (`registerFrag`/`matchOver`), wired to
       `--mode` and `game.json`. Remaining: teams + friendly fire, respawn policy, more modes
       (Breach/Horde), mode in Welcome, and a client-facing match-over announce.
-- [ ] **Unified entity-snapshot path** — turrets/companions/pickups replicate via the player
-      path; enables generic `SpawnEntity`.
+- [x] **Unified entity-snapshot path** — ships, NPCs, turrets, companions, projectiles,
+      deployables, and pickups all replicate through `SnapshotMsg.entities` tagged by
+      `EntityArchetype` (per-client interest scoping applies to the whole set). This was
+      already in place; `SpawnEntity` rides it with no new wire work.
 - [~] **Effect kinds** — Damage / AreaDamage / Heal / ApplyModifier (enforced
       speed = **Slow/haste**) / **Knockback** / **Ignite** (DoT, stacks + kill-credit) /
-      **Chain** (arc to N nearest targets within range, kill-credit) done, with public
-      `applyDamageOverTime` + `applyChainDamage` entries for abilities/scripts.
-      Remaining: **SpawnEntity** (needs the unified entity-snapshot path below), plus
-      **Lua-defined effects**.
+      **Chain** (arc to N nearest targets, kill-credit) / **SpawnEntity** (summons an
+      owned turret/companion at the target point, replicated via the entity path) done,
+      with public `applyDamageOverTime` / `applyChainDamage` / `spawnTurret` /
+      `spawnCompanion` entries for abilities/scripts. Remaining: **Lua-defined effects**
+      (a scripting-layer bridge that registers a Lua table into the `EffectKind` dispatch).
 - [ ] **Dynamic navmesh rebuild on voxel edit** (tiled Detour) — AI silently breaks when
       terrain changes, which is always in a voxel game.
 - [x] **Cross-convention animation retargeting** — Mixamo, UE4-mannequin, and UE5-mannequin

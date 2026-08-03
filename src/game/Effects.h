@@ -39,6 +39,10 @@ enum class EffectKind : std::uint8_t {
     // nearest unhit player within range of the last, up to max targets. Kills
     // credit the source. Players only for now (NPC arc targets are a follow-up).
     Chain,
+    // Summon an owned AI helper at the effect's target point: params[0] selects the
+    // archetype (0 = auto-turret, >=1 = mobile companion). Owned by the acting
+    // player; replicates through the normal entity-snapshot path.
+    SpawnEntity,
 };
 
 // POD effect: kind + a small param block + radius/duration. No allocation, no
@@ -75,6 +79,11 @@ inline Effect igniteEffect(float dps, float seconds) {
 inline Effect chainEffect(float damage, int maxTargets, float range) {
     return Effect{EffectKind::Chain,
                   {damage, static_cast<float>(maxTargets), 0.0f, 0.0f}, range, 0.0f};
+}
+// archetype: 0 = turret, 1 = companion.
+inline Effect spawnEntityEffect(int archetype) {
+    return Effect{EffectKind::SpawnEntity,
+                  {static_cast<float>(archetype), 0.0f, 0.0f, 0.0f}, 0.0f, 0.0f};
 }
 
 } // namespace meat

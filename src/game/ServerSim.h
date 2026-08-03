@@ -95,6 +95,11 @@ public:
     // `source`. Public so abilities/scripts (and tests) can drive it.
     void applyChainDamage(PeerId source, glm::vec3 origin, float damage, int maxTargets,
                           float range);
+    // Spawn an owned AI helper at a world position; returns its entity id (it then
+    // replicates through the normal entity-snapshot path). Public so the SpawnEntity
+    // effect, abilities/scripts, and tests share one construction site.
+    std::uint32_t spawnTurret(PeerId owner, glm::vec3 pos);
+    std::uint32_t spawnCompanion(PeerId owner, glm::vec3 pos);
     int fragsOf(PeerId p) const {
         const auto it = m_frags.find(p);
         return it == m_frags.end() ? 0 : it->second;

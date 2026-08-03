@@ -14,6 +14,7 @@
 #include "engine/net/DeltaSnapshot.h"
 #include "engine/net/LoopbackTransport.h"
 #include "engine/net/Messages.h"
+#include "game/EntityTypes.h"
 #include "game/ServerSim.h"
 
 #include <chrono>
@@ -790,6 +791,36 @@ void testChainDamageArcsAndCaps() {
           "each struck player took the chain's 25 damage, the third none");
 }
 
+// SpawnEntity (via the public spawnTurret entry the effect kind uses) must place
+// a turret that reaches clients through the ordinary entity-snapshot path — the
+// point of the unified path. Assert the turret shows up in the peer's snapshot
+// as a Turret-archetype entity, so a client can actually see and render it.
+void testSpawnEntityReplicates() {
+    std::printf("a spawned turret reaches clients through the entity snapshot\n");
+    ScriptedTransport wire;
+    meat::GameRules rules;
+    rules.terrain = meat::GameRules::Terrain::Void; // no ambient entities to count around
+    meat::ServerSim server(rules);
+    if (!server.init(13u)) { check(false, "server booted"); return; }
+    wire.connect(1);
+    wire.packet(1, meat::HelloMsg{meat::kProtocolVersion, "p", "", ""});
+    server.pump(wire);
+    for (int i = 0; i < 5; ++i) server.tick(wire);
+
+    auto turretCount = [&]() {
+        int n = 0;
+        for (const meat::EntityState& e : wire.lastSnapshot[1].entities)
+            if (e.archetype == static_cast<std::uint8_t>(meat::EntityArchetype::Turret)) ++n;
+        return n;
+    };
+    const int before = turretCount();
+    const std::uint32_t id = server.spawnTurret(1, glm::vec3(3.0f, 0.0f, 0.0f));
+    check(id != 0, "spawnTurret returned a valid entity id");
+    for (int i = 0; i < 3; ++i) server.tick(wire); // let a snapshot carry it
+    check(turretCount() == before + 1,
+          "the turret replicates to the client as a Turret entity");
+}
+
 } // namespace
 
 namespace meattest {
@@ -816,6 +847,7 @@ void runNetPermissions() {
     testReconnectIsClean();
     testRandomPacketsSurvive();
     testChainDamageArcsAndCaps();
+    testSpawnEntityReplicates();
 }
 
 } // namespace meattest
