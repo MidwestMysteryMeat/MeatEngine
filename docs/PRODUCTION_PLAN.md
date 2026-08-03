@@ -144,6 +144,44 @@ entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
       asset/authoring hot-reload, actionable errors, a new-project template that already runs.
 - [ ] Music/audio pass; ImGuiColorTextEdit syntax highlighting + Lua REPL + asset previews.
 
+## Phase 7 — AI-native systems
+Turn the deterministic, server-authoritative sim into a first-class home for AI: many
+agents, learned behaviour, and an agent-facing control surface. **Determinism law:**
+the netcode is lockstep delta-snapshot, so *anything on the authoritative tick must be
+bit-for-bit reproducible across platforms* (fixed tick, seeded RNG, ordered containers,
+integer/quantised math — never vendor-BLAS float or wall-clock). Non-deterministic ML
+(ONNX/GGML on the GPU) is allowed **only** in tooling/editor/offline bakes, never the tick.
+
+- [~] **AI crowds** — many lightweight agents that flow as a group instead of each paying
+      full A*. First slice (in progress): a deterministic **boids** core (separation /
+      alignment / cohesion + goal seek) for open-field crowds — seeded, fixed-step, order-stable.
+      Next: promote to **DetourCrowd** (`dtCrowd`) on the Recast navmesh the engine already
+      bakes (`m_navmesh`), for shared RVO avoidance through doorways/corridors; replicate via a
+      new `EntityArchetype::Crowd` on the existing entity-snapshot path; crowd **flow fields**
+      feed spawner waves. Target: hundreds of civilians/zombies at server budget.
+- [ ] **Neural policies (embedded inference)** — the *runtime* side: drive NPC behaviour (and
+      later animation) with a trained model as a drop-in `NpcBrain` beside the scripted one.
+      A **tiny quantised MLP** evaluated in integer/fixed-point so it stays deterministic on
+      the tick (perception vector → action logits). Models ship as data. Heavy runtimes (ONNX
+      Runtime / GGML) are tooling-only (dataset gen, eval), never authoritative.
+- [ ] **ML / learning agents** — the *training* side (distinct from running a net): agents that
+      **learn** a policy rather than execute a hand-authored one. Reinforcement learning
+      (self-play deathmatch, navigation, crowd flow) and imitation/behaviour-cloning from the
+      existing A* NPCs and from recorded human play. The engine is the environment — stepped
+      headless and in parallel through the **MCP bridge** below (observation = snapshot vector,
+      action = the gated `ScriptApi` tools, reward = frags/objective/shaping). Output feeds the
+      neural-policy runtime above. Deterministic tick = reproducible episodes = stable training.
+- [ ] **MCP bridge (agent I/O)** — an out-of-process **Model Context Protocol** server exposing
+      the engine's *existing* capability surface as MCP tools + resources: read-only resources
+      (snapshot, entity list, match/team state, `playerHealth`) and gated tools (the same
+      `ScriptApi` primitives — `spawn_turret`/`ignite`/`chain_damage`/… — that Lua scripts call,
+      so agents act through the identical server-authoritative, permission-checked path, no new
+      trust boundary). Talks to the server over a local socket. Turns the engine into an **agent
+      environment**: RL training loops, LLM-driven NPCs/directors, and automated playtest agents.
+- [ ] **AI director** — encounter pacing + spawn flow over the crowd flow fields, authored in the
+      already-shipped node-graph (`NodeGraph.cpp`) extended with perception/steering/spawn nodes;
+      composes with Phase-5 living-world AI (schedules/factions/world clock).
+
 ---
 
 ## Doc hygiene (fix stale checkboxes found during the survey)

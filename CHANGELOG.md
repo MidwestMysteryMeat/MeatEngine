@@ -18,6 +18,11 @@ All notable changes to MeatEngine are documented here. The format follows
   auto-balanced teams, per-team scoring, team frag-limit win), plus a
   **friendly-fire** toggle (`--friendly-fire`) that gates teammate damage across
   hitscan, blasts, and effects. Selectable via `--mode` / `game.json`.
+- **AI crowds (Phase 7 first slice)**: a deterministic boids `CrowdSim`
+  (separation / alignment / cohesion + goal-seek) — seeded, fixed-step, and
+  order-stable to the authoritative-tick contract. Groundwork for DetourCrowd on
+  the Recast navmesh, neural NPC policies, ML/learning agents, and an MCP agent
+  bridge — see `docs/PRODUCTION_PLAN.md` Phase 7.
 - **Effect system**: eight composable effect kinds — Damage, AreaDamage, Heal,
   ApplyModifier (enforced damage + move-speed, i.e. slow/haste), Knockback,
   Ignite (stacking damage-over-time with kill credit), Chain (arc to the nearest
@@ -28,10 +33,10 @@ All notable changes to MeatEngine are documented here. The format follows
   mannequin clips all drive the canonical (Mixamo) skeleton.
 - **Persistence**: save-file schema versioning (refuses newer-engine saves).
 - **Packaging**: `cmake --install` + CPack produce a versioned game archive.
-- **Tests**: 55 → 158 headless checks across worldgen/dungeon determinism,
+- **Tests**: 55 → 163 headless checks across worldgen/dungeon determinism,
   save/load, inventory, the effect system (knockback/ignite/chain/spawn), the Lua
-  effect-primitive bridge, team deathmatch + friendly fire, reconnection, and
-  packet fuzzing.
+  effect-primitive bridge, team deathmatch + friendly fire, crowd determinism +
+  flocking, reconnection, and packet fuzzing.
 - `docs/PRODUCTION_PLAN.md` — the phased path to production parity.
 
 ### Fixed
