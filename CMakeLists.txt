@@ -109,7 +109,11 @@ endif()
 # caught the abs(INT_MIN) out-of-bounds write immediately. Clang/GCC only.
 option(MEAT_SANITIZE "Build engine + tests with ASan+UBSan" OFF)
 if(MEAT_SANITIZE AND NOT MSVC)
-    set(_meat_san -fsanitize=address,undefined -fno-omit-frame-pointer)
+    # -fno-sanitize=vptr: UBSan's vtable-pointer check needs RTTI/typeinfo for
+    # polymorphic types, but Jolt is built without RTTI, so instrumenting our
+    # code that touches JPH::Shape/CharacterVirtual emits undefined references to
+    # their typeinfo. Drop just that check; ASan + the rest of UBSan stay on.
+    set(_meat_san -fsanitize=address,undefined -fno-sanitize=vptr -fno-omit-frame-pointer)
     foreach(_t MeatEngine MeatTests)
         if(TARGET ${_t})
             target_compile_options(${_t} PRIVATE ${_meat_san})
