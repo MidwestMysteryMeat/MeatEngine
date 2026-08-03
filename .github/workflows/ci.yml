@@ -51,8 +51,10 @@ jobs:
 
       - uses: ilammy/msvc-dev-cmd@v1
 
+      # No --user: glad's loader codegen runs python at BUILD time, and a --user
+      # install isn't on that interpreter's import path on the hosted runner.
       - name: Install glad generator dependency
-        run: python -m pip install --user jinja2
+        run: python -m pip install jinja2
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -Wno-dev -DCMAKE_BUILD_TYPE=Release

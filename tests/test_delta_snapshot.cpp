@@ -43,6 +43,12 @@ meat::PlayerState player(meat::PeerId id, glm::vec3 pos) {
     return p;
 }
 
+const meat::PlayerState* findPlayer(const meat::SnapshotMsg& s, meat::PeerId id) {
+    for (const meat::PlayerState& p : s.players)
+        if (p.playerId == id) return &p;
+    return nullptr;
+}
+
 bool approxEq(float a, float b, float tol) { return std::fabs(a - b) <= tol; }
 bool nearPos(const glm::vec3& a, const glm::vec3& b) {
     return approxEq(a.x, b.x, kPosTol) && approxEq(a.y, b.y, kPosTol) &&
@@ -66,10 +72,13 @@ void testKeyframeRoundTrip() {
     check(out.tick == 42, "tick preserved");
     check(out.players.size() == 2, "both players present");
     check(out.entities.size() == 1, "entity present");
-    if (out.players.size() == 2) {
-        check(nearPos(out.players[0].pos, {1.5f, 2.25f, -3.75f}), "player 1 position");
-        check(nearPos(out.players[1].pos, {10.0f, 0.0f, 10.0f}), "player 2 position");
-    }
+    // Match by playerId, not by index: the codec reconstructs from an
+    // unordered_map, so slot order is not portable across STL implementations
+    // (the client matches by id too, so functional correctness doesn't depend on it).
+    const meat::PlayerState* p1 = findPlayer(out, 1);
+    const meat::PlayerState* p2 = findPlayer(out, 2);
+    check(p1 && nearPos(p1->pos, {1.5f, 2.25f, -3.75f}), "player 1 position");
+    check(p2 && nearPos(p2->pos, {10.0f, 0.0f, 10.0f}), "player 2 position");
 }
 
 void testDistantPositionSurvives() {
