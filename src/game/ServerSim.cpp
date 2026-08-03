@@ -1039,6 +1039,19 @@ void ServerSim::registerFrag(PeerId killer, PeerId victim) {
         m_matchOver = true;
         m_matchWinner = killer;
         log::info("server: DEATHMATCH over — player {} wins ({} frags)", killer, score);
+        // HUD banner to everyone (reuses the ScriptFx announce path). m_activeTransport
+        // is set during a tick's combat step, and null in a direct unit-test call.
+        if (m_activeTransport) {
+            ScriptFxMsg fx;
+            fx.kind = 1; // HUD announce
+            fx.duration = 8.0f;
+            fx.r = 1.0f;
+            fx.g = 0.85f;
+            fx.b = 0.2f;
+            fx.text = "Deathmatch — player " + std::to_string(killer) + " wins!";
+            for (const auto& [peer, pl] : m_players)
+                if (pl) m_activeTransport->send(peer, pack(fx), true);
+        }
     }
 }
 
