@@ -25,6 +25,7 @@ none are vendored into this repository except where noted.
 | [FastNoiseLite](https://github.com/Auburn/FastNoiseLite) 1.1.1 | Worldgen noise (single header) | MIT |
 | [EnTT](https://github.com/skypjack/entt) 3.13.2 | ECS — vendored, staged for incremental adoption | MIT |
 | [bitsery](https://github.com/fraillt/bitsery) 5.2.4 | Bit-packing/serialization — vendored, staged | MIT |
+| [Monocypher](https://github.com/LoupVaillant/Monocypher) 4.0.2 | Wire crypto (XChaCha20-Poly1305, BLAKE2b) | CC0 / BSD-2 |
 
 `tools/autorig/autorig.py` is a headless **Blender** script (Blender is GPL and is NOT bundled —
 it is invoked externally on the dev's machine and only its FBX output is used, so no GPL code

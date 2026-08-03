@@ -7,6 +7,7 @@
 #include "engine/asset/SkeletalModel.h"
 #include "engine/audio/AudioEngine.h"
 #include "engine/net/EnetTransport.h"
+#include "engine/net/EncryptedTransport.h"
 #include "engine/net/LanDiscovery.h"
 #include "engine/net/LoopbackTransport.h"
 #include "engine/level/MeshLevel.h"
@@ -111,6 +112,9 @@ private:
     std::unique_ptr<LoopbackPair> m_loopback;        // Game
     std::unique_ptr<EnetServerTransport> m_enetHost; // Host/Dedicated
     std::unique_ptr<EnetClientTransport> m_enetJoin; // Host/Join
+    // Encryption decorators over the raw transports, alive while password set.
+    std::unique_ptr<EncryptedTransport> m_encServer;
+    std::unique_ptr<EncryptedTransport> m_encClient;
     Transport* m_serverTransport = nullptr;
     Transport* m_clientTransport = nullptr;
     Client m_client;

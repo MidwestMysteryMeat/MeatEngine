@@ -230,6 +230,23 @@ bool Engine::initNetwork(const EngineConfig& config) {
     // client: the token goes straight from the server object to the client
     // object without ever crossing the network. Joining someone else's server
     // attaches with no token, so we arrive there as an ordinary player.
+    // When a password is set, encrypt the wire: wrap each real transport in an
+    // EncryptedTransport keyed off the password. Traffic (including the Hello
+    // password itself) is then confidential + authenticated, and a peer without
+    // the password can't produce packets the server will even decrypt.
+    if (!config.serverPassword.empty()) {
+        if (m_serverTransport) {
+            m_encServer = std::make_unique<EncryptedTransport>(*m_serverTransport,
+                                                               config.serverPassword);
+            m_serverTransport = m_encServer.get();
+        }
+        if (m_clientTransport) {
+            m_encClient = std::make_unique<EncryptedTransport>(*m_clientTransport,
+                                                               config.serverPassword);
+            m_clientTransport = m_encClient.get();
+        }
+    }
+
     std::string editorToken;
     if (m_server && (config.mode == Mode::Game || config.mode == Mode::Host))
         editorToken = m_server->editorToken();

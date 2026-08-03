@@ -57,12 +57,14 @@ entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
 - [ ] **Entity/projectile interpolation** for smooth remote motion under latency.
 
 ## Phase 3 — Security & data durability
-- [~] **Transport connection auth** — join-password gate done (`NetPolicy.serverPassword`,
-      HelloMsg v4, `--password`): a wrong password is disconnected before any player state
-      is created. Remaining: cryptographic challenge/response connect tokens + wire encryption
-      (that needs an encrypted transport / GNS — see below). This is access control, not secrecy.
-- [ ] **Optional encrypted transport** — GameNetworkingSockets provider behind the
-      `Transport` interface (Steam Datagram Relay path).
+- [x] **Transport connection auth + encryption** — join-password gate
+      (`NetPolicy.serverPassword`, HelloMsg v4, `--password`) PLUS wire encryption:
+      `EncryptedTransport` seals every payload with XChaCha20-Poly1305 (Monocypher) under
+      `BLAKE2b(password)`, so traffic (incl. the Hello password) is confidential + authenticated
+      and a peer without the password can't read or forge packets. Auto-enabled when a password
+      is set. Remaining: X25519 connect tokens for **forward secrecy** + a salted KDF.
+- [ ] **GameNetworkingSockets provider** — Steam Datagram Relay / NAT-punch transport (a
+      deployment option, orthogonal to the crypto now in place).
 - [x] **Save schema versioning** — saves carry `kSaveVersion`; the loader refuses a
       newer-engine save and accepts a legacy versionless one as v0. Migration hooks land
       with the first real schema bump.

@@ -45,6 +45,7 @@ set(MEAT_LIBS
     EnTT::EnTT
     Bitsery::bitsery
     fastnoiselite
+    monocypher
 )
 
 target_include_directories(MeatEngine PRIVATE src)

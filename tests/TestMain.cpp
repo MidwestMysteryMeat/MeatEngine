@@ -35,6 +35,7 @@ void runBoneRetarget();
 void runInventory();
 void runDungeon();
 void runGameMode();
+void runCrypto();
 
 } // namespace meattest
 
@@ -52,6 +53,7 @@ int main() {
     meattest::runInventory();
     meattest::runDungeon();
     meattest::runGameMode();
+    meattest::runCrypto();
 
     std::printf("\n%d checks, %d failures\n", meattest::g_checks, meattest::g_failures);
     return meattest::g_failures == 0 ? 0 : 1;

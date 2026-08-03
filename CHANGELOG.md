@@ -11,7 +11,9 @@ All notable changes to MeatEngine are documented here. The format follows
   sanitizer job, a layering guard (engine/ must not depend on game/), a headless
   render smoke gate (xvfb + mesa llvmpipe), and build-tree caching for fast runs.
 - **Netcode**: F1 interest management (per-client entity scoping); lag-compensated
-  hitscan; connection auth via a server join password (`--password`).
+  hitscan; connection auth via a server join password (`--password`); **wire
+  encryption** (XChaCha20-Poly1305 via Monocypher, auto-enabled with a password);
+  a concurrent-player cap; and periodic autosave for crash-safety.
 - **GameMode framework**: Sandbox and Deathmatch (frag-limit win condition, HUD
   banner), selectable via `--mode` / `game.json`.
 - **Animation**: cross-convention retargeting bridge so Mixamo, UE4, and UE5

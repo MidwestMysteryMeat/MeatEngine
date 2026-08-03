@@ -146,6 +146,12 @@ FetchContent_Declare(nlohmann_json
     GIT_REPOSITORY https://github.com/nlohmann/json
     GIT_TAG v3.11.3 GIT_SHALLOW ON)
 
+# ---- Monocypher (public-domain crypto: XChaCha20-Poly1305 AEAD + BLAKE2b) ----
+# Built from its one source file below (its root CMake also builds tests/tools).
+FetchContent_Declare(monocypher
+    GIT_REPOSITORY https://github.com/LoupVaillant/Monocypher
+    GIT_TAG 4.0.2 GIT_SHALLOW ON)
+
 FetchContent_MakeAvailable(glfw glad glm assimp joltphysics lua_src sol2
                            imgui_src imguizmo_src imnodes_src enet stb_src miniaudio_src nlohmann_json
                            recastnavigation ozz enkits entt bitsery)
@@ -157,6 +163,19 @@ if(NOT fastnoiselite_POPULATED)
 endif()
 add_library(fastnoiselite INTERFACE)
 target_include_directories(fastnoiselite INTERFACE ${fastnoiselite_SOURCE_DIR}/Cpp)
+
+# Monocypher: build the single core source (src/monocypher.c) into a static lib.
+FetchContent_GetProperties(monocypher)
+if(NOT monocypher_POPULATED)
+    FetchContent_Populate(monocypher)
+endif()
+add_library(monocypher STATIC ${monocypher_SOURCE_DIR}/src/monocypher.c)
+target_include_directories(monocypher PUBLIC ${monocypher_SOURCE_DIR}/src)
+if(MSVC)
+    target_compile_options(monocypher PRIVATE /w)
+else()
+    target_compile_options(monocypher PRIVATE -w)
+endif()
 
 # ENet's CMakeLists predates usage-requirement style; export its include dir.
 target_include_directories(enet PUBLIC ${enet_SOURCE_DIR}/include)
