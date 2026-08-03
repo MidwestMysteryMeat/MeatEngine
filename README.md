@@ -1,5 +1,9 @@
 # MeatEngine
 
+![C++20](https://img.shields.io/badge/C%2B%2B-20-blue)
+![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows-informational)
+[![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
+
 A **PSX-styled, host-authoritative voxel FPS engine** in modern C++20 — chunked voxel
 worlds with a deliberately retro renderer (low internal resolution, ordered dither,
 vertex jitter, affine texture mapping), a Quake/Source-lineage networking model, and an
@@ -110,10 +114,12 @@ license summary in [THIRD_PARTY.md](THIRD_PARTY.md)):
 
 ## Building
 
-Both platforms configure and build on every push via CI (Ubuntu/Clang + Windows/MSVC).
-The **first** configure fetches and compiles every dependency — Assimp and Jolt dominate;
-expect roughly 10–20 minutes once. Requires CMake 3.28+ and Python 3 (for the glad loader
-generation, which needs `jinja2`).
+**Prerequisites are only the toolchain** — CMake 3.28+, a C++20 compiler, Ninja, and
+Python 3 + `jinja2` (for glad's loader generation), plus GL/X11 dev headers on Linux.
+**Every library above is fetched and built automatically** by the first CMake configure
+via `FetchContent` (pinned commits); nothing is installed by hand. That first configure
+compiles every dependency — Assimp and Jolt dominate — so expect roughly 10–20 minutes
+once, then incremental builds are fast.
 
 ### Windows
 
