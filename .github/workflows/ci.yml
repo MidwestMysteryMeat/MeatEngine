@@ -30,6 +30,7 @@ jobs:
   linux:
     name: Linux (Ubuntu, GCC, Release)
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
@@ -71,6 +72,7 @@ jobs:
   sanitizers:
     name: Sanitizers (ASan+UBSan, Linux)
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
@@ -115,6 +117,7 @@ jobs:
   windows:
     name: Windows (MSVC, Release)
     runs-on: windows-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
