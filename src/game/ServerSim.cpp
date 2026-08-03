@@ -2062,6 +2062,12 @@ void ServerSim::tick(Transport& transport) {
     recordPoseHistory();
     if (m_scripts.loaded() && m_tick % 20 == 0) m_scripts.onTick(m_tick); // ~3 Hz gameplay hook
     if (m_tick % kSnapshotEvery == 0 && !m_players.empty()) broadcastSnapshot(transport);
+    // Periodic autosave: a crash (not a graceful quit) otherwise loses everything
+    // since the last manual save. Disabled by default (interval 0).
+    if (m_autosaveIntervalTicks > 0 && m_tick - m_lastAutosaveTick >= m_autosaveIntervalTicks) {
+        m_lastAutosaveTick = m_tick;
+        saveTo(m_autosavePath);
+    }
 }
 
 void ServerSim::recordPoseHistory() {

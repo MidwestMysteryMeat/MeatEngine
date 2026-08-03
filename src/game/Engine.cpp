@@ -202,6 +202,7 @@ bool Engine::initNetwork(const EngineConfig& config) {
         policy.serverPassword = config.serverPassword; // gate joiners when set
         policy.maxPlayers = config.maxPlayers;          // concurrent-player cap
         server->setNetPolicy(policy);
+        server->setAutosave("saves/autosave.json", 120.0f); // crash-safety every 2 min
         return config.loadPath.empty() ? server->init(config.seed)
                                        : server->initFromSave(config.loadPath);
     };

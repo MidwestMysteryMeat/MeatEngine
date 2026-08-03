@@ -60,6 +60,13 @@ public:
     bool init(std::uint32_t worldSeed);
     bool initFromSave(const std::string& path); // reads seed, then init + replay
     bool saveTo(const std::string& path) const;
+    // Periodic autosave so a crash doesn't lose everything since the last manual
+    // save. seconds <= 0 disables it (the default).
+    void setAutosave(std::string path, float seconds) {
+        m_autosavePath = std::move(path);
+        m_autosaveIntervalTicks =
+            seconds > 0.0f ? static_cast<std::uint64_t>(seconds * 60.0f) : 0; // 60 Hz tick
+    }
     void pump(Transport& transport);  // drain net events, queue commands
     void tick(Transport& transport);  // one 60 Hz step; snapshots every 3rd tick
 
@@ -434,6 +441,10 @@ private:
     std::unordered_map<PeerId, int> m_frags;
     bool m_matchOver = false;
     PeerId m_matchWinner = 0;
+    // Periodic autosave (0 interval = disabled).
+    std::string m_autosavePath;
+    std::uint64_t m_autosaveIntervalTicks = 0;
+    std::uint64_t m_lastAutosaveTick = 0;
     BlockPalette m_palette;
     GameRules m_rules;
     ItemRegistry m_items;

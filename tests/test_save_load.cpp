@@ -142,6 +142,31 @@ void testSaveIsVersionedAndRejectsFuture() {
     std::filesystem::remove(path, ec);
 }
 
+void testAutosaveWritesOnInterval() {
+    std::printf("periodic autosave writes the world after its interval\n");
+    const std::string path =
+        (std::filesystem::temp_directory_path() / "meatengine_autosave.json").string();
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+
+    meat::GameRules rules;
+    rules.terrain = meat::GameRules::Terrain::Void; // fast, empty world
+    meat::ServerSim server(rules);
+    if (!server.init(1u)) { check(false, "server booted"); return; }
+    meat::LoopbackPair wire;
+    server.setAutosave(path, 0.25f); // ~15 ticks at 60 Hz
+
+    for (int i = 0; i < 10; ++i) server.tick(wire.serverEnd());
+    check(!std::filesystem::exists(path), "no autosave before the interval elapses");
+    for (int i = 0; i < 20; ++i) server.tick(wire.serverEnd());
+    check(std::filesystem::exists(path), "the world is autosaved once the interval passes");
+
+    // And it's a valid, loadable save.
+    meat::ServerSim loaded;
+    check(loaded.initFromSave(path), "the autosave loads back");
+    std::filesystem::remove(path, ec);
+}
+
 } // namespace
 
 namespace meattest {
@@ -150,6 +175,7 @@ void runSaveLoad() {
     testEditsSurviveRoundTrip();
     testCorruptSaveIsRejected();
     testSaveIsVersionedAndRejectsFuture();
+    testAutosaveWritesOnInterval();
 }
 
 } // namespace meattest
