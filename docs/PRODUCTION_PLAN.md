@@ -45,9 +45,9 @@ them. Close that first — everything after this is riskier without it.
 entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
 
 ## Phase 2 — Scale & performance
-- [ ] **F1 interest management** — per-client scope → priority → budget before delta-encode.
-      Design fully specced in `NETCODE_DELTA_COMPRESSION.md §8` (Torque3D ghosting model).
-      The bandwidth wall: today every client receives every entity.
+- [~] **F1 interest management** — first slice done: per-client entity scoping by radius
+      (`GameRules.interestRadius`, default 0 = disabled) with per-client delta baselines.
+      Remaining: distance/importance PRIORITY + per-snapshot budget when scoped sets are large.
 - [ ] **[doc-only] `AckSystem`/`SequenceBuffer`** rolling ack-bitfield (reliable.io) —
       ~180 lines of finished C++ live only in `ENGINE_REUSE_SURVEY.md`. Adopt or delete;
       the current `ackSnapshotTick` piggyback is simpler but the extracted class is orphaned.
@@ -60,8 +60,9 @@ entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
       pattern, `BORROWING.md #1`); ENet is currently unauthenticated.
 - [ ] **Optional encrypted transport** — GameNetworkingSockets provider behind the
       `Transport` interface (Steam Datagram Relay path).
-- [ ] **Save schema versioning + migration** — saves have no version field today; the first
-      content change bricks old saves. Mirror the wire's `kProtocolVersion` discipline.
+- [x] **Save schema versioning** — saves carry `kSaveVersion`; the loader refuses a
+      newer-engine save and accepts a legacy versionless one as v0. Migration hooks land
+      with the first real schema bump.
 - [ ] **Access control** — server password, kick/ban, `onAuthenticate` hook (ROADMAP 11.7).
 - [ ] **[consider] Luau sandbox** — swap sol2/vanilla Lua for Luau (read-only tables, per-VM
       budgets) for a public, scriptable engine (`ENGINE_REUSE_SURVEY` honorable mention).
