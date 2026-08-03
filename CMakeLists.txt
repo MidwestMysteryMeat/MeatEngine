@@ -121,3 +121,26 @@ if(MEAT_SANITIZE AND NOT MSVC)
         endif()
     endforeach()
 endif()
+
+# ---------------------------------------------------------------------------
+# Install + package. Everything ships under a single `runtime` COMPONENT so the
+# ~20 FetchContent deps' own install rules (headers/libs) never leak into the
+# game package. `cmake --install build --component runtime --prefix <dir>` lays
+# out a runnable tree (exe + the assets it loads by relative path + the Apache
+# LICENSE/NOTICE); `cpack` zips exactly that.
+# ---------------------------------------------------------------------------
+install(TARGETS MeatEngine RUNTIME DESTINATION . COMPONENT runtime)
+install(DIRECTORY assets DESTINATION . COMPONENT runtime)
+install(FILES LICENSE NOTICE README.md DESTINATION . COMPONENT runtime)
+
+set(CPACK_PACKAGE_NAME MeatEngine)
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_FILE_NAME "MeatEngine-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "PSX-styled multiplayer voxel FPS engine")
+set(CPACK_GENERATOR "ZIP")               # cross-platform; one artifact shape everywhere
+set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)  # package by component...
+set(CPACK_COMPONENTS_ALL runtime)        # ...and only the game runtime, not deps
+set(CPACK_COMPONENT_INCLUDE_TOPLEVEL_DIRECTORY OFF)
+set(CPACK_ARCHIVE_RUNTIME_FILE_NAME "MeatEngine-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}")
+set(CPACK_VERBATIM_VARIABLES ON)
+include(CPack)

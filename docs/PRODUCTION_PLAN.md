@@ -109,7 +109,11 @@ entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
 - [ ] Destruction depth: structural-integrity collapse, reinforced blocks, radial voxel damage.
 
 ## Phase 6 — Distribution & DX
-- [ ] **CMake `install()` + CPack**; **macOS build/CI** (currently Linux+Windows only).
+- [~] **Distribution**: `cmake --install` + **CPack** → a versioned game ZIP (runtime
+      component only, no dep pollution); **CHANGELOG.md**; **release workflow** builds +
+      uploads per-platform archives on a `v*` tag. **macOS** needs a Metal/MoltenVK backend
+      (the engine targets GL 4.5; macOS caps at GL 4.1), so no macOS job yet. Observability:
+      structured logging exists; crash telemetry intentionally omitted for privacy.
 - [ ] **Tagged semver releases + CHANGELOG**; artifact upload from CI.
 - [ ] **D2 resource archives** (zip/pk3 mounts) → feeds packaging.
 - [ ] **D3 cooked mesh serializer** (bake FBX→binary; drop runtime Assimp on the hot path).
