@@ -87,7 +87,6 @@ private:
 
     Window m_window;
     Input m_input;
-    JobQueue m_jobs;
     Renderer m_renderer;
     AudioEngine m_audio;
     PhysicsWorld m_physics;   // client mirror
@@ -95,6 +94,10 @@ private:
     MeshLevelRuntime m_meshLevel; // B2 client render + prediction colliders
     MeshLevelDesc m_meshLevelDesc;
     VoxelWorld m_voxels;      // client mirror
+    // Declared AFTER everything its jobs capture (VoxelWorld above especially):
+    // members destroy in reverse order, so the queue joins its workers before
+    // the data they hold references to is freed.
+    JobQueue m_jobs;
     EntityRegistry m_entities;
     EventBus m_events;
     CharacterController m_player; // client prediction body

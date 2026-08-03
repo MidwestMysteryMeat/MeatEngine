@@ -27,6 +27,7 @@ JPH_SUPPRESS_WARNINGS
 #include <algorithm>
 #include <cstddef>
 #include <map>
+#include <mutex>
 #include <utility>
 #include <vector>
 
@@ -89,6 +90,38 @@ struct PhysicsWorld::Impl {
     std::vector<JPH::BodyID> boxBodies; // standalone static boxes (props)
 };
 
+namespace {
+
+// Jolt's Factory and type registry are PROCESS-global, but they were being
+// created and destroyed per PhysicsWorld. Two instances coexist in normal
+// play (the client mirror and ServerSim), so the second init() replaced the
+// first's Factory and the first destructor tore down the shared registry and
+// deleted the Factory while the second still held live bodies — undefined
+// behaviour on every Game/Host-mode exit. Reference-count them instead so the
+// last instance out does the teardown.
+std::mutex g_joltGlobalsMutex;
+int g_joltGlobalsRefs = 0;
+
+void joltGlobalsAcquire() {
+    const std::lock_guard<std::mutex> lock(g_joltGlobalsMutex);
+    if (g_joltGlobalsRefs++ == 0) {
+        JPH::RegisterDefaultAllocator();
+        JPH::Factory::sInstance = new JPH::Factory();
+        JPH::RegisterTypes();
+    }
+}
+
+void joltGlobalsRelease() {
+    const std::lock_guard<std::mutex> lock(g_joltGlobalsMutex);
+    if (g_joltGlobalsRefs > 0 && --g_joltGlobalsRefs == 0) {
+        JPH::UnregisterTypes();
+        delete JPH::Factory::sInstance;
+        JPH::Factory::sInstance = nullptr;
+    }
+}
+
+} // namespace
+
 PhysicsWorld::PhysicsWorld() : m_impl(std::make_unique<Impl>()) {}
 
 PhysicsWorld::~PhysicsWorld() {
@@ -105,9 +138,7 @@ PhysicsWorld::~PhysicsWorld() {
         bodies.DestroyBody(id);
     }
     m_impl->boxBodies.clear();
-    JPH::UnregisterTypes();
-    delete JPH::Factory::sInstance;
-    JPH::Factory::sInstance = nullptr;
+    joltGlobalsRelease();
 }
 
 bool PhysicsWorld::init() {
@@ -115,9 +146,7 @@ bool PhysicsWorld::init() {
         log::warn("PhysicsWorld: init() called twice");
         return true;
     }
-    JPH::RegisterDefaultAllocator();
-    JPH::Factory::sInstance = new JPH::Factory();
-    JPH::RegisterTypes();
+    joltGlobalsAcquire();
 
     m_impl->tempAllocator = std::make_unique<JPH::TempAllocatorImpl>(10 * 1024 * 1024);
     // Jolt's own pool, capped at 2 threads. The engine JobQueue is meshing/gen

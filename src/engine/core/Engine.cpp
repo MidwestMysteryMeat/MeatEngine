@@ -1930,6 +1930,12 @@ int Engine::run(const EngineConfig& configIn) {
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
     }
+    // Join meshing workers before anything they captured goes away. Mesh jobs
+    // hold `this` and &m_blocks, and JobQueue is declared before VoxelWorld,
+    // so member destruction frees the world while workers may still be
+    // running — quitting (ESC, or the --shot auto-quit) mid-mesh was a
+    // use-after-free.
+    m_jobs.stop();
     return 0;
 }
 
