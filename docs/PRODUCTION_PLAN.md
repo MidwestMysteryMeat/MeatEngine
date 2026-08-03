@@ -23,14 +23,19 @@ The shader-UBO bug broke *all* rendering and shipped undetected; the `abs(INT_MI
 write reached the authoritative server. Both were invisible because nothing tested for
 them. Close that first — everything after this is riskier without it.
 
-- [ ] **ASan + UBSan CI job** running the test suite (catches the exact bug classes above).
-- [ ] **Layering guard** — CI fails if anything under `engine/` includes `game/`.
-- [ ] **clang-format check** in CI (`.clang-format` exists, currently unenforced).
-- [ ] **Worldgen determinism test** — same seed ⇒ byte-identical chunks (client/server parity).
-- [ ] **Save/load round-trip test** — world + edits + inventory survive a save→load cycle.
-- [ ] **Inventory / combat-math tests** — stacking, ammo, mag reload, penetration, damage mods.
+- [~] **ASan + UBSan CI job** running the test suite (added; verifying on CI).
+- [x] **Layering guard** — CI fails if anything under `engine/` includes `game/`.
+- [ ] **clang-format check** in CI — deferred: needs a one-time format pass across the tree
+      first (else it fails on all existing files), then enforce.
+- [x] **Worldgen determinism test** — same seed ⇒ byte-identical chunks.
+- [x] **Save/load round-trip test** — edits + tick survive save→load; corrupt saves rejected.
+- [~] **Inventory / combat-math tests** — inventory done (stacking/removal/mags/codec);
+      combat math (penetration, damage mods, effect execution) still needs a ServerSim
+      integration test like the lag-comp one.
 - [ ] **Headless render smoke gate** — `--shot` must succeed in CI so a shader/UBO
-      regression fails the build. (Wire the R720 VLM parity gate in as a nightly later.)
+      regression fails the build (needs a GL context on the runner: xvfb/EGL). Wire the
+      R720 VLM parity gate in as a nightly later.
+- [x] **Bonus: cross-convention animation retargeting** (Mixamo/UE4/UE5) — see Phase 5.
 
 ## Phase 2 — Scale & performance
 - [ ] **F1 interest management** — per-client scope → priority → budget before delta-encode.
@@ -102,11 +107,9 @@ them. Close that first — everything after this is riskier without it.
 ---
 
 ## Doc hygiene (fix stale checkboxes found during the survey)
-- ROADMAP Phase **8.7 "Visual node scripting — NOT built"** is wrong — node graphs *are*
-  shipped (`NodeGraph.cpp`, imnodes→Lua, subgraphs, watches).
-- `ANIMATION_BLEND_GRAPH.md` **"not yet integrated"** banner is stale — its §0–§1 sampler
-  refactor + 2-clip `blendPose` are integrated; only §2 (additive) and §3 (graph) remain.
-- Priority-plan / backlog docs still list **F1/F2 together as deferred**; F2 (lag comp) is done.
+- [x] ROADMAP Phase **8.7** header corrected — node graphs *are* shipped (`NodeGraph.cpp`).
+- [x] `ANIMATION_BLEND_GRAPH.md` banner corrected — §0–§1 integrated; §2/§3 remain.
+- [ ] Priority-plan / backlog docs still list **F1/F2 together as deferred**; F2 (lag comp) is done.
 
 ---
 

@@ -154,10 +154,12 @@ loopback transport.
 - [ ] Expand API (player state/inventory/weapons, dungeon params, world events); wire the
       no-code authoring/Design panel to emit Lua defs (Phase 8.6)
 
-## Phase 8.7 — Visual node scripting (ARCHITECTURE §editor/nodegraph) — NOT built
-- [ ] ImGui node-graph panel (ImNodes MIT or hand-rolled): event nodes → action nodes
-- [ ] Graph saved per-project as JSON; COMPILES TO LUA (reuses ScriptHost sandbox/budget,
-      no second VM); drop-to-code path; slots in as an editor panel
+## Phase 8.7 — Visual node scripting (ARCHITECTURE §editor/nodegraph) — SHIPPED
+- [x] ImGui node-graph panel (imnodes): event nodes → action nodes, RMB place menu,
+      object highlight, subgraphs, watches (`src/engine/script/NodeGraph.cpp`)
+- [x] Graph saved per-project as JSON; COMPILES TO LUA (reuses ScriptHost sandbox/budget,
+      no second VM); slots in as an editor panel
+- [ ] Open follow-ups: merge multiple live event graphs; ImGuiColorTextEdit highlighting
 
 ## Phase 8.6 — Authoring & modeling (ARCHITECTURE §game/authoring, §game/modeling)
 - [~] Effect-composition core: EffectList on items/abilities, server executors — DONE for

@@ -1,11 +1,13 @@
 # Animation Blend Graph — design & drop-in code
 
-Status: design + reference implementation (not yet integrated). The clip sampler
-(`samplePose` / `resolve`) already produces a shear-free posed skeleton. The gap the
-OSS survey (`docs/ENGINE_REUSE_SURVEY.md`) flagged is the **runtime layer above the
-sampler**: blending, additive layers, and a state graph. This document specifies that
-layer as pure math on the existing `Pose` / `Trs` types — no new heavy deps, namespace
-`meat`, glm, hand-rolled.
+Status: PARTIALLY INTEGRATED. §0–§1 (the sampler refactor + two-clip `blendPose` /
+`sampleLocalTrs`) are shipped in `src/engine/anim/Animator.{h,cpp}`. Still UNBUILT: §2
+additive layers (aim-offset / hit-react, per-bone masks) and §3 the `AnimGraph` state
+machine (states, 1D blend spaces, parameterized transitions). The clip sampler
+(`samplePose` / `resolve`) produces a shear-free posed skeleton; the remaining gap the
+OSS survey (`docs/ENGINE_REUSE_SURVEY.md`) flagged is the **state/additive layer above
+blending**. This document specifies that layer as pure math on the existing `Pose` / `Trs`
+types — no new heavy deps, namespace `meat`, glm, hand-rolled.
 
 Everything blends in **local TRS space, then resolves once**. We never lerp final
 skinning matrices: a component-wise `mix` of two `mat4`s shears (rotation columns lose
