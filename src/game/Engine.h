@@ -60,6 +60,11 @@ struct EngineConfig {
 // Composition root. The simulation authority is always a ServerSim; this class
 // wires one up (in-process or remote) and runs the client loop against it.
 // Construction order = ownership diagram; destruction is the reverse.
+//
+// Lives in game/, not engine/, on purpose: it depends on ServerSim, Client,
+// GameRules and WorldGen, so it is application code that composes the reusable
+// engine/ subsystems with this game's logic. Keeping it here is what lets
+// engine/ stay free of any game/ include (the layering only points downward).
 class Engine {
 public:
     int run(const EngineConfig& config);
