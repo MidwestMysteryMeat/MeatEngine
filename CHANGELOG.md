@@ -16,12 +16,19 @@ All notable changes to MeatEngine are documented here. The format follows
   a concurrent-player cap; and periodic autosave for crash-safety.
 - **GameMode framework**: Sandbox and Deathmatch (frag-limit win condition, HUD
   banner), selectable via `--mode` / `game.json`.
+- **Effect system**: eight composable effect kinds — Damage, AreaDamage, Heal,
+  ApplyModifier (enforced damage + move-speed, i.e. slow/haste), Knockback,
+  Ignite (stacking damage-over-time with kill credit), Chain (arc to the nearest
+  targets), and SpawnEntity (summon an owned turret/companion). The primitives
+  are exposed to Lua (`game.ignite` / `game.chain_damage` / `game.spawn_turret` /
+  `game.spawn_companion`) so scripts author their own effects.
 - **Animation**: cross-convention retargeting bridge so Mixamo, UE4, and UE5
   mannequin clips all drive the canonical (Mixamo) skeleton.
 - **Persistence**: save-file schema versioning (refuses newer-engine saves).
 - **Packaging**: `cmake --install` + CPack produce a versioned game archive.
-- **Tests**: 55 → 121 headless checks across worldgen/dungeon determinism,
-  save/load, inventory, effects, reconnection, and packet fuzzing.
+- **Tests**: 55 → 149 headless checks across worldgen/dungeon determinism,
+  save/load, inventory, the effect system (knockback/ignite/chain/spawn), the Lua
+  effect-primitive bridge, reconnection, and packet fuzzing.
 - `docs/PRODUCTION_PLAN.md` — the phased path to production parity.
 
 ### Fixed

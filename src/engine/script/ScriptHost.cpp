@@ -113,6 +113,29 @@ void ScriptHost::bind(ScriptApi api) {
                           });
     if (a.announce)
         game.set_function("announce", [&a](const std::string& s) { a.announce(s); });
+    if (a.ignite)
+        game.set_function("ignite", [&a](int peer, double dps, double seconds, int source) {
+            a.ignite(peer, static_cast<float>(dps), static_cast<float>(seconds), source);
+        });
+    if (a.chainDamage)
+        game.set_function(
+            "chain_damage",
+            [&a](double x, double y, double z, double dmg, int maxTargets, double range,
+                 int source) {
+                a.chainDamage(static_cast<float>(x), static_cast<float>(y),
+                              static_cast<float>(z), static_cast<float>(dmg), maxTargets,
+                              static_cast<float>(range), source);
+            });
+    if (a.spawnTurret)
+        game.set_function("spawn_turret", [&a](int source, double x, double y, double z) {
+            return a.spawnTurret(source, static_cast<float>(x), static_cast<float>(y),
+                                 static_cast<float>(z));
+        });
+    if (a.spawnCompanion)
+        game.set_function("spawn_companion", [&a](int source, double x, double y, double z) {
+            return a.spawnCompanion(source, static_cast<float>(x), static_cast<float>(y),
+                                    static_cast<float>(z));
+        });
     if (a.playerHealth)
         game.set_function("player_health",
                           [&a](int peer) { return static_cast<double>(a.playerHealth(peer)); });

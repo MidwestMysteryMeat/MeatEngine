@@ -86,13 +86,18 @@ entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
       deployables, and pickups all replicate through `SnapshotMsg.entities` tagged by
       `EntityArchetype` (per-client interest scoping applies to the whole set). This was
       already in place; `SpawnEntity` rides it with no new wire work.
-- [~] **Effect kinds** — Damage / AreaDamage / Heal / ApplyModifier (enforced
+- [x] **Effect kinds** — Damage / AreaDamage / Heal / ApplyModifier (enforced
       speed = **Slow/haste**) / **Knockback** / **Ignite** (DoT, stacks + kill-credit) /
       **Chain** (arc to N nearest targets, kill-credit) / **SpawnEntity** (summons an
-      owned turret/companion at the target point, replicated via the entity path) done,
-      with public `applyDamageOverTime` / `applyChainDamage` / `spawnTurret` /
-      `spawnCompanion` entries for abilities/scripts. Remaining: **Lua-defined effects**
-      (a scripting-layer bridge that registers a Lua table into the `EffectKind` dispatch).
+      owned turret/companion at the target point, replicated via the entity path) — eight
+      built-in kinds, each with a public `applyDamageOverTime` / `applyChainDamage` /
+      `spawnTurret` / `spawnCompanion` entry. **Lua-defined effects**: those primitives
+      are exposed to scripts (`game.ignite` / `game.chain_damage` / `game.spawn_turret` /
+      `game.spawn_companion`) so a Lua script composes its own effects from the same
+      server-authoritative building blocks; the bridge is arg-for-arg tested. Optional
+      follow-up: a first-class `EffectKind::Scripted` that dispatches to a named Lua
+      handler carried in the effect itself (the composable primitives already cover the
+      real use case).
 - [ ] **Dynamic navmesh rebuild on voxel edit** (tiled Detour) — AI silently breaks when
       terrain changes, which is always in a voxel game.
 - [x] **Cross-convention animation retargeting** — Mixamo, UE4-mannequin, and UE5-mannequin

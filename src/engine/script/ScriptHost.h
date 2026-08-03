@@ -34,6 +34,15 @@ struct ScriptApi {
     std::function<float(int peerId)> playerHealth;
     // C6-c: named watch value for the editor Watches panel (+ optional log line).
     std::function<void(const std::string& name, const std::string& value)> watch;
+    // Effect primitives: the same server-authoritative building blocks the built-in
+    // effect kinds use, exposed so scripts can compose their own (Lua-defined)
+    // effects. Every call runs on the server tick and is bounds-checked host-side.
+    std::function<void(int peer, float dps, float seconds, int source)> ignite;
+    std::function<void(float x, float y, float z, float damage, int maxTargets,
+                       float range, int source)>
+        chainDamage;
+    std::function<int(int source, float x, float y, float z)> spawnTurret;    // → entity id
+    std::function<int(int source, float x, float y, float z)> spawnCompanion; // → entity id
 };
 
 // Embeds Lua (sol2) with a sandboxed standard library. Loads scripts from a

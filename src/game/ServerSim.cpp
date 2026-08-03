@@ -525,6 +525,23 @@ void ServerSim::setupScripting() {
         log::setWatch(name, value);
         log::info("[watch] {} = {}", name, value);
     };
+    // Effect primitives for Lua-defined effects (shared with the built-in kinds).
+    api.ignite = [this](int peer, float dps, float seconds, int source) {
+        applyDamageOverTime(static_cast<PeerId>(peer), dps, seconds,
+                            static_cast<PeerId>(source));
+    };
+    api.chainDamage = [this](float x, float y, float z, float dmg, int maxTargets,
+                             float range, int source) {
+        applyChainDamage(static_cast<PeerId>(source), glm::vec3(x, y, z), dmg, maxTargets,
+                         range);
+    };
+    api.spawnTurret = [this](int source, float x, float y, float z) -> int {
+        return static_cast<int>(spawnTurret(static_cast<PeerId>(source), glm::vec3(x, y, z)));
+    };
+    api.spawnCompanion = [this](int source, float x, float y, float z) -> int {
+        return static_cast<int>(
+            spawnCompanion(static_cast<PeerId>(source), glm::vec3(x, y, z)));
+    };
     m_scripts.bind(std::move(api));
     m_scripts.loadDir(m_scriptDir);
 }

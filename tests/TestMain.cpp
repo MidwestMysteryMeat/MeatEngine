@@ -37,6 +37,7 @@ void runDungeon();
 void runGameMode();
 void runCrypto();
 void runCharacter();
+void runScripting();
 
 } // namespace meattest
 
@@ -56,6 +57,7 @@ int main() {
     meattest::runGameMode();
     meattest::runCrypto();
     meattest::runCharacter();
+    meattest::runScripting();
 
     std::printf("\n%d checks, %d failures\n", meattest::g_checks, meattest::g_failures);
     return meattest::g_failures == 0 ? 0 : 1;
