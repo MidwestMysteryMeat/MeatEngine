@@ -1,6 +1,9 @@
 #include "engine/net/DeltaSnapshot.h"
 
 #include <algorithm>
+#include <cassert>
+#include <cmath>
+#include <cstdint>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -8,29 +11,50 @@ namespace meat {
 namespace {
 
 // Positions dominate the snapshot payload and don't need 32-bit precision on the wire — clients
-// only interpolate them for rendering; the server stays authoritative. Quantize each component to
-// 16 bits over the world bound (±2048 m → ~6 cm steps), halving a vec3 from 12 to 6 bytes. Absolute
-// (not delta-of-delta), so there's no cumulative drift. (bitsery is vendored for a future full
-// bit-packed codec; this surgical fixed-point pass avoids threading a bit-stream through the
-// byte-aligned framing.)
-constexpr float kPosMin = -2048.0f, kPosMax = 2048.0f;
-std::uint16_t quantize(float v, float lo, float hi) {
-    const float t = std::clamp((v - lo) / (hi - lo), 0.0f, 1.0f);
-    return static_cast<std::uint16_t>(t * 65535.0f + 0.5f);
+// only interpolate them for rendering; the server stays authoritative. Each component is quantized
+// to signed 24-bit fixed-point at 1/256 m (~3.9 mm) steps: 9 bytes/vec3 vs 12 for raw float, and a
+// ±32,768 m range — 16× the old ±2048 m window that used to silently clamp distant players back
+// toward the origin. Absolute (not delta-of-delta), so there's no cumulative drift. (bitsery is
+// vendored for a future full bit-packed codec; this surgical fixed-point pass avoids threading a
+// bit-stream through the byte-aligned framing.)
+constexpr float kPosStepsPerMeter = 256.0f;      // fixed-point scale (power of two: exact)
+constexpr std::int32_t kPosQMax = (1 << 23) - 1; // largest signed 24-bit magnitude
+constexpr float kPosMax = static_cast<float>(kPosQMax) / kPosStepsPerMeter; // ±32767.996 m
+
+std::int32_t quantize(float v) {
+    const float scaled = std::lround(v * kPosStepsPerMeter);
+    // A position past ±32 km is beyond any reachable voxel world; clamp so the wire stays valid,
+    // but assert in dev builds so it surfaces as a bug rather than a silent teleport in release.
+    assert(scaled >= -kPosQMax && scaled <= kPosQMax && "snapshot position exceeds ±32 km wire range");
+    return std::clamp(static_cast<std::int32_t>(scaled), -kPosQMax, kPosQMax);
 }
-float dequantize(std::uint16_t q, float lo, float hi) {
-    return lo + (static_cast<float>(q) / 65535.0f) * (hi - lo);
+float dequantize(std::int32_t q) { return static_cast<float>(q) / kPosStepsPerMeter; }
+
+void writeI24(ByteWriter& w, std::int32_t q) {
+    const auto u = static_cast<std::uint32_t>(q);
+    w.write(static_cast<std::uint8_t>(u & 0xFF));
+    w.write(static_cast<std::uint8_t>((u >> 8) & 0xFF));
+    w.write(static_cast<std::uint8_t>((u >> 16) & 0xFF));
 }
+bool readI24(ByteReader& r, std::int32_t& out) {
+    std::uint8_t b0 = 0, b1 = 0, b2 = 0;
+    if (!r.read(b0) || !r.read(b1) || !r.read(b2)) return false;
+    std::uint32_t u = static_cast<std::uint32_t>(b0) | (static_cast<std::uint32_t>(b1) << 8) |
+                      (static_cast<std::uint32_t>(b2) << 16);
+    if (u & 0x800000u) u |= 0xFF000000u; // sign-extend bit 23 into the top byte
+    out = static_cast<std::int32_t>(u);
+    return true;
+}
+
 void writePos(ByteWriter& w, const glm::vec3& p) {
-    w.write(quantize(p.x, kPosMin, kPosMax));
-    w.write(quantize(p.y, kPosMin, kPosMax));
-    w.write(quantize(p.z, kPosMin, kPosMax));
+    writeI24(w, quantize(p.x));
+    writeI24(w, quantize(p.y));
+    writeI24(w, quantize(p.z));
 }
 bool readPos(ByteReader& r, glm::vec3& p) {
-    std::uint16_t x = 0, y = 0, z = 0;
-    if (!r.read(x) || !r.read(y) || !r.read(z)) return false;
-    p = {dequantize(x, kPosMin, kPosMax), dequantize(y, kPosMin, kPosMax),
-         dequantize(z, kPosMin, kPosMax)};
+    std::int32_t x = 0, y = 0, z = 0;
+    if (!readI24(r, x) || !readI24(r, y) || !readI24(r, z)) return false;
+    p = {dequantize(x), dequantize(y), dequantize(z)};
     return true;
 }
 

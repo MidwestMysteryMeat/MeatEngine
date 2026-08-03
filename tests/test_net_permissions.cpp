@@ -9,6 +9,8 @@
 // return value. A permission check that returns "denied" while the block still
 // changed would pass a mock-based test and fail reality.
 
+#include "Harness.h"
+
 #include "engine/net/DeltaSnapshot.h"
 #include "engine/net/LoopbackTransport.h"
 #include "engine/net/Messages.h"
@@ -17,7 +19,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
-#include <filesystem>
 #include <limits>
 #include <map>
 #include <optional>
@@ -27,36 +28,7 @@
 
 namespace {
 
-int g_failures = 0;
-int g_checks = 0;
-
-// ServerSim loads content (e.g. prop_crate.obj) through paths relative to the
-// process CWD, so the prop tests only pass when run from a directory that has
-// assets/ under it. Anchor to the repo root by walking up for that asset, so
-// the suite passes whether launched from the repo root, build/, or CI.
-void anchorToAssetsRoot() {
-    namespace fs = std::filesystem;
-    fs::path dir = fs::current_path();
-    for (int up = 0; up < 8; ++up) {
-        if (fs::exists(dir / "assets" / "models" / "prop_crate.obj")) {
-            fs::current_path(dir);
-            return;
-        }
-        if (!dir.has_parent_path() || dir.parent_path() == dir) break;
-        dir = dir.parent_path();
-    }
-    std::printf("  [warn] assets/ not found from CWD — prop tests may fail\n");
-}
-
-void check(bool condition, const char* what) {
-    ++g_checks;
-    if (condition) {
-        std::printf("  [pass] %s\n", what);
-    } else {
-        std::printf("  [FAIL] %s\n", what);
-        ++g_failures;
-    }
-}
+using meattest::check;
 
 // A server plus the wire its one peer talks over. The peer is connected from
 // construction, which mirrors how single-player boots.
@@ -508,11 +480,9 @@ void testHitscanIsLagCompensated() {
 
 } // namespace
 
-int main() {
-    std::setvbuf(stdout, nullptr, _IONBF, 0); // a crash must not eat the tail
-    anchorToAssetsRoot(); // pass regardless of where the binary is launched
-    std::printf("MeatEngine headless tests\n\n");
+namespace meattest {
 
+void runNetPermissions() {
     testPlayerCannotEditVoxels();
     testEditorCanEditVoxels();
     testWrongTokenIsStillAPlayer();
@@ -527,7 +497,6 @@ int main() {
     testExtremeVoxelCoordinatesAreRefused();
     testMoveAndRemovePropNeedPermission();
     testHitscanIsLagCompensated();
-
-    std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
-    return g_failures == 0 ? 0 : 1;
 }
+
+} // namespace meattest

@@ -30,7 +30,8 @@ enum class MsgType : std::uint8_t {
 // Bumped whenever the wire format of any message changes incompatibly. The
 // server refuses a Hello that does not match, so a stale client is told to
 // update instead of desyncing on a field it does not know about.
-inline constexpr std::uint16_t kProtocolVersion = 2;
+// v3: snapshot positions moved from 16-bit-over-±2048 m to signed 24-bit fixed-point (±32 km).
+inline constexpr std::uint16_t kProtocolVersion = 3;
 
 // Every network string is capped. Without a cap the length prefix is a u16, so
 // a peer may spend 64 KiB per field for free and a malicious asset path can be

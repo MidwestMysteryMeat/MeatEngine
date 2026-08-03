@@ -145,12 +145,19 @@ u16  numChangedEntities
 
 | bit | field  | payload            |
 |-----|--------|--------------------|
-| 0   | Pos    | vec3 (12 B)        |
+| 0   | Pos    | quantized vec3 (9 B — see below) |
 | 1   | Vel    | vec3 (12 B)        |
 | 2   | Yaw    | f32 (4 B)          |
 | 3   | Pitch  | f32 (4 B)          |
 | 4   | Flags  | u8 (`onGround|crouched<<1`) |
 | 5   | Health | f32 (4 B)          |
+
+**Position quantization** (`DeltaSnapshot.cpp` `writePos`/`readPos`): each Pos component is signed
+24-bit fixed-point at 1/256 m (~3.9 mm) steps — 9 B/vec3 vs 12 for raw float, range ±32,768 m.
+This replaced an earlier 16-bit-over-±2048 m scheme that silently clamped distant players toward
+the origin (protocol v2→v3). Velocity stays raw float: it is small-magnitude and used only for
+client-side extrapolation, so fixed-point buys little there. A position beyond ±32 km trips a
+dev-build assert rather than clamping silently.
 
 **Entity field bits** (`EntityState`, `Messages.h:57-65`; `id` is the key):
 
