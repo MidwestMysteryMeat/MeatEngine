@@ -1545,30 +1545,47 @@ void Engine::loadEditorExtras() {
     if (!in) return;
     nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
     if (j.is_discarded() || !j.is_object()) return;
+    // The parse is non-throwing, but the field reads below were not: a
+    // hand-edited editor_extras.json missing one key threw an uncaught
+    // nlohmann exception and terminated at startup. Read every vector
+    // defensively, the way the gravity-volume loop already did.
+    const auto vec3 = [](const nlohmann::json& node, const char* key, glm::vec3 fallback) {
+        if (!node.contains(key))
+            return fallback;
+        const auto& a = node[key];
+        if (!a.is_array() || a.size() < 3)
+            return fallback;
+        for (int i = 0; i < 3; ++i)
+            if (!a[i].is_number())
+                return fallback;
+        return glm::vec3{a[0].get<float>(), a[1].get<float>(), a[2].get<float>()};
+    };
     for (const auto& l : j.value("lights", nlohmann::json::array())) {
+        if (!l.is_object()) continue;
         EditorLight light;
         light.type = l.value("type", 0);
-        light.pos = {l["pos"][0], l["pos"][1], l["pos"][2]};
-        light.color = {l["color"][0], l["color"][1], l["color"][2]};
+        light.pos = vec3(l, "pos", glm::vec3{0.0f});
+        light.color = vec3(l, "color", glm::vec3{1.0f});
         light.radius = l.value("radius", 8.0f);
-        light.dir = {l["dir"][0], l["dir"][1], l["dir"][2]};
+        light.dir = vec3(l, "dir", glm::vec3{0.0f, -1.0f, 0.0f});
         light.angle = l.value("angle", 0.6f);
         m_editorLights.push_back(light);
     }
     for (const auto& v : j.value("seedVolumes", nlohmann::json::array())) {
+        if (!v.is_object()) continue;
         SeedVolume vol;
-        vol.min = {v["min"][0], v["min"][1], v["min"][2]};
-        vol.max = {v["max"][0], v["max"][1], v["max"][2]};
+        vol.min = vec3(v, "min", glm::vec3{0.0f});
+        vol.max = vec3(v, "max", glm::vec3{0.0f});
         vol.seed = v.value("seed", 0u);
         m_seedVolumes.push_back(vol);
     }
     m_gravityVolumes.clear();
     for (const auto& g : j.value("gravityVolumes", nlohmann::json::array())) {
+        if (!g.is_object()) continue;
         EditorGravityVolume vol;
-        vol.min = {g["min"][0], g["min"][1], g["min"][2]};
-        vol.max = {g["max"][0], g["max"][1], g["max"][2]};
-        if (g.contains("gravity") && g["gravity"].is_array() && g["gravity"].size() >= 3)
-            vol.gravity = {g["gravity"][0], g["gravity"][1], g["gravity"][2]};
+        vol.min = vec3(g, "min", glm::vec3{0.0f});
+        vol.max = vec3(g, "max", glm::vec3{0.0f});
+        vol.gravity = vec3(g, "gravity", vol.gravity);
         vol.priority = g.value("priority", 20);
         m_gravityVolumes.push_back(vol);
     }

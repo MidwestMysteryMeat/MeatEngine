@@ -1758,8 +1758,17 @@ void ServerSim::pump(Transport& transport) {
             if (auto it = m_players.find(e.peer); it != m_players.end() && it->second) {
                 const std::uint32_t sid = it->second->pilotingShip;
                 if (sid != 0) {
-                    for (Ship& s : m_ships)
-                        if (s.id == sid) s.pilot = 0;
+                    // Free the seat this peer actually held. Clearing the pilot
+                    // unconditionally meant a passenger disconnecting kicked the
+                    // pilot out of control until they re-boarded.
+                    for (Ship& s : m_ships) {
+                        if (s.id != sid)
+                            continue;
+                        if (s.pilot == e.peer)
+                            s.pilot = 0;
+                        if (s.passenger == e.peer)
+                            s.passenger = 0;
+                    }
                 }
             }
             m_players.erase(e.peer);
