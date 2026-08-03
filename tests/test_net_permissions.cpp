@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <filesystem>
 #include <limits>
 #include <map>
 #include <optional>
@@ -28,6 +29,24 @@ namespace {
 
 int g_failures = 0;
 int g_checks = 0;
+
+// ServerSim loads content (e.g. prop_crate.obj) through paths relative to the
+// process CWD, so the prop tests only pass when run from a directory that has
+// assets/ under it. Anchor to the repo root by walking up for that asset, so
+// the suite passes whether launched from the repo root, build/, or CI.
+void anchorToAssetsRoot() {
+    namespace fs = std::filesystem;
+    fs::path dir = fs::current_path();
+    for (int up = 0; up < 8; ++up) {
+        if (fs::exists(dir / "assets" / "models" / "prop_crate.obj")) {
+            fs::current_path(dir);
+            return;
+        }
+        if (!dir.has_parent_path() || dir.parent_path() == dir) break;
+        dir = dir.parent_path();
+    }
+    std::printf("  [warn] assets/ not found from CWD — prop tests may fail\n");
+}
 
 void check(bool condition, const char* what) {
     ++g_checks;
@@ -491,6 +510,7 @@ void testHitscanIsLagCompensated() {
 
 int main() {
     std::setvbuf(stdout, nullptr, _IONBF, 0); // a crash must not eat the tail
+    anchorToAssetsRoot(); // pass regardless of where the binary is launched
     std::printf("MeatEngine headless tests\n\n");
 
     testPlayerCannotEditVoxels();
