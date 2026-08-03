@@ -46,6 +46,7 @@ struct CharacterController::Impl {
     bool warnedUninit = false;
     glm::vec3 up{0.0f, 1.0f, 0.0f}; // B3b local-up (matches CharacterVirtual mUp)
     float speedScale = 1.0f;        // gameplay speed modifier (slow/haste effects)
+    glm::vec3 knockback{0.0f};      // external impulse velocity, decays each tick
 };
 
 CharacterController::CharacterController() : m_impl(std::make_unique<Impl>()) {}
@@ -177,6 +178,10 @@ void CharacterController::update(const PlayerCommand& cmd, float fixedDt, Physic
     } else {
         vel = horiz + up * vUp;
     }
+    // External knockback rides ON TOP of the move velocity (so the accel-to-target
+    // above doesn't instantly cancel it) and decays with a ~0.15 s time constant.
+    vel += im.knockback;
+    im.knockback *= std::exp(-fixedDt / 0.15f);
     im.character->SetLinearVelocity(JPH::Vec3(vel.x, vel.y, vel.z));
 
     JPH::CharacterVirtual::ExtendedUpdateSettings updateSettings;
@@ -203,6 +208,8 @@ void CharacterController::setGravity(glm::vec3 gravity) {
 void CharacterController::setSpeedScale(float scale) {
     m_impl->speedScale = scale > 0.0f ? scale : 0.0f; // clamp; 0 = rooted
 }
+
+void CharacterController::addImpulse(glm::vec3 dv) { m_impl->knockback += dv; }
 
 void CharacterController::setUp(glm::vec3 up) {
     const float len = glm::length(up);

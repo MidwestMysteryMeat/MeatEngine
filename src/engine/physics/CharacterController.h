@@ -55,6 +55,9 @@ public:
     // Gameplay speed multiplier applied on top of the tuning speeds (slow/haste
     // effects). 1 = normal, <1 slows, 0 roots. Server drives it from active mods.
     void setSpeedScale(float scale);
+    // Add an external velocity impulse (m/s) — knockback from a hit or blast. It
+    // rides on top of movement and decays over a fraction of a second.
+    void addImpulse(glm::vec3 dv);
     glm::vec3 up() const;
 
     glm::vec3 position() const; // feet (capsule bottom), meters

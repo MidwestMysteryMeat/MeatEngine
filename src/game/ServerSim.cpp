@@ -1660,6 +1660,21 @@ void ServerSim::applyEffect(Transport& transport, const Effect& effect, PeerId s
         if (targetPlayer)
             targetPlayer->modifiers.push_back({effect.params[0], effect.params[1], effect.duration});
         break;
+    case EffectKind::Knockback:
+        if (targetPlayer) {
+            // Push away from the effect origin — the source player's position if
+            // we have it, else the effect's targetPos (a blast center).
+            glm::vec3 from = targetPos;
+            if (const auto it = m_players.find(source); it != m_players.end() && it->second)
+                from = it->second->controller.position();
+            glm::vec3 dir = targetPlayer->controller.position() - from;
+            dir.y = 0.0f; // shove is horizontal; the lift is added separately
+            const float len = glm::length(dir);
+            dir = len > 1e-3f ? dir / len : glm::vec3(0.0f, 0.0f, 1.0f);
+            const float mag = effect.params[0];
+            targetPlayer->controller.addImpulse(dir * mag + glm::vec3(0.0f, mag * 0.4f, 0.0f));
+        }
+        break;
     }
 }
 

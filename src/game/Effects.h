@@ -25,6 +25,11 @@ enum class EffectKind : std::uint8_t {
     // enforced: the damage mult scales server-side damage, the speed mult drives
     // CharacterController::setSpeedScale each tick (so speedMult<1 is a Slow).
     ApplyModifier,
+    // Shove the target player away from the effect origin: params[0] = impulse
+    // speed (m/s). Applied via CharacterController::addImpulse (horizontal push +
+    // a small upward pop); decays over a fraction of a second. NPCs are unaffected
+    // (they don't use the character controller).
+    Knockback,
 };
 
 // POD effect: kind + a small param block + radius/duration. No allocation, no
@@ -51,6 +56,9 @@ inline Effect healEffect(float amount) {
 }
 inline Effect modifierEffect(float damageMult, float speedMult, float duration) {
     return Effect{EffectKind::ApplyModifier, {damageMult, speedMult, 0.0f, 0.0f}, 0.0f, duration};
+}
+inline Effect knockbackEffect(float speed) {
+    return Effect{EffectKind::Knockback, {speed, 0.0f, 0.0f, 0.0f}, 0.0f, 0.0f};
 }
 
 } // namespace meat

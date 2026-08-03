@@ -56,12 +56,34 @@ void testSpeedScaleAffectsMovement() {
     check(forwardDistance(0.5f) < base * 0.75f, "0.5x speed scale covers less ground");
 }
 
+void testKnockbackShovesCharacter() {
+    std::printf("a knockback impulse shoves the character in its direction\n");
+    meat::PhysicsWorld world;
+    if (!world.init()) { check(false, "physics init"); return; }
+    world.addStaticBox({0.0f, -1.0f, 0.0f}, {50.0f, 1.0f, 50.0f});
+    meat::CharacterController cc;
+    if (!cc.init(world, {0.0f, 0.5f, 0.0f})) { check(false, "controller init"); return; }
+    const meat::PlayerCommand idle{};
+    auto tick = [&]() {
+        cc.update(idle, kDt, world); // idle: the controller wants zero velocity
+        world.step(kDt);
+    };
+    for (int i = 0; i < 90; ++i) tick(); // settle
+    const glm::vec3 start = cc.position();
+    cc.addImpulse({6.0f, 0.0f, 0.0f}); // shove +X
+    for (int i = 0; i < 20; ++i) tick(); // ~0.33 s of decaying knockback
+    const glm::vec3 end = cc.position();
+    check(end.x - start.x > 0.5f,
+          "the knockback moved the character along +X despite idle input");
+}
+
 } // namespace
 
 namespace meattest {
 
 void runCharacter() {
     testSpeedScaleAffectsMovement();
+    testKnockbackShovesCharacter();
 }
 
 } // namespace meattest
