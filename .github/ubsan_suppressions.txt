@@ -1,0 +1,10 @@
+# UBSan runtime suppressions for the sanitizer CI job.
+#
+# FastNoiseLite's Hash/GradCoord multiply the seed by large primes and rely on
+# signed-int WRAPAROUND — the standard technique for noise/hash functions. That
+# is technically signed-integer-overflow UB, but it is intentional, benign, and
+# lives in a third-party header we don't edit (compiled into our instrumented TU
+# because it's header-only). Suppress just that one check in that one file; every
+# other UBSan check, including signed-integer-overflow in OUR code, stays fatal
+# (that class is exactly what caught the abs(INT_MIN) voxel bug).
+signed-integer-overflow:FastNoiseLite.h

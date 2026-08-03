@@ -87,9 +87,11 @@ jobs:
       - name: Run tests under ASan+UBSan
         env:
           # Deps are uninstrumented, so ignore their benign leaks; halt on any
-          # real UBSan/ASan error with a stack trace.
+          # real UBSan/ASan error with a stack trace. The suppressions file
+          # exempts FastNoiseLite's intentional hash wraparound (third-party);
+          # our own signed-overflow checks stay fatal.
           ASAN_OPTIONS: detect_leaks=0
-          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1:suppressions=${{ github.workspace }}/.github/ubsan_suppressions.txt
         run: ./build/MeatTests
 
   windows:
