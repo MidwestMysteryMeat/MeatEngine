@@ -1,5 +1,6 @@
 # MeatEngine
 
+[![CI](https://github.com/MidwestMysteryMeat/MeatEngine/actions/workflows/ci.yml/badge.svg)](https://github.com/MidwestMysteryMeat/MeatEngine/actions/workflows/ci.yml)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-blue)
 ![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows-informational)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
@@ -120,6 +121,9 @@ Python 3 + `jinja2` (for glad's loader generation), plus GL/X11 dev headers on L
 via `FetchContent` (pinned commits); nothing is installed by hand. That first configure
 compiles every dependency — Assimp and Jolt dominate — so expect roughly 10–20 minutes
 once, then incremental builds are fast.
+
+Both platforms build and run the headless test suite on every push via CI
+(Ubuntu/GCC + Windows/MSVC) — see the badge above and [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
 ### Windows
 

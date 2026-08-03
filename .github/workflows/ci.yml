@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux (Ubuntu, GCC, Release)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # GL/X11 dev headers for GLFW's X11 backend, plus Wayland/EGL bits it
+      # probes for; ninja for the generator; python3 + jinja2 for glad codegen.
+      # build-essential guarantees gcc/g++/make on the runner.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            ninja-build \
+            libgl1-mesa-dev \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            libwayland-dev libxkbcommon-dev wayland-protocols \
+            python3 python3-pip
+          python3 -m pip install --user jinja2
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -Wno-dev -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      # Headless trust-boundary tests — no GPU, window, or socket needed.
+      - name: Test
+        run: ./build/MeatTests
+
+  windows:
+    name: Windows (MSVC, Release)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install glad generator dependency
+        run: python -m pip install --user jinja2
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -Wno-dev -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: .\build\MeatTests.exe
