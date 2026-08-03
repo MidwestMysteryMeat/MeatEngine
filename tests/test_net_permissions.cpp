@@ -323,11 +323,87 @@ struct ScriptedTransport final : meat::Transport {
     void connect(meat::PeerId p) {
         pending.push_back({meat::NetEvent::Type::Connected, p, {}});
     }
+    void drop(meat::PeerId p) { // the peer's link dropped (crash/quit/timeout)
+        pending.push_back({meat::NetEvent::Type::Disconnected, p, {}});
+    }
+    void raw(meat::PeerId p, std::vector<std::byte> bytes) { // arbitrary wire bytes
+        pending.push_back({meat::NetEvent::Type::Packet, p, std::move(bytes)});
+    }
     template <typename Msg>
     void packet(meat::PeerId p, const Msg& msg) {
         pending.push_back({meat::NetEvent::Type::Packet, p, meat::pack(msg)});
     }
 };
+
+// A peer that drops and rejoins must be cleaned up and admitted fresh, with no
+// leftover state and no crash — the common case for a flaky connection.
+void testReconnectIsClean() {
+    std::printf("a peer can disconnect and reconnect cleanly\n");
+    ScriptedTransport wire;
+    meat::ServerSim server;
+    if (!server.init(9u)) { check(false, "server booted"); return; }
+    auto stateOf = [&](meat::PeerId who) -> const meat::PlayerState* {
+        for (const meat::PlayerState& p : wire.lastSnapshot[1].players)
+            if (p.playerId == who) return &p;
+        return nullptr;
+    };
+
+    wire.connect(1);
+    wire.packet(1, meat::HelloMsg{meat::kProtocolVersion, "p", "", ""});
+    server.pump(wire);
+    for (int i = 0; i < 10; ++i) server.tick(wire);
+    check(stateOf(1) != nullptr, "the peer is present after joining");
+
+    wire.drop(1); // link lost
+    server.pump(wire);
+    for (int i = 0; i < 5; ++i) server.tick(wire);
+
+    // Reconnect with the same id (ENet may reuse it): a fresh Hello must re-admit.
+    wire.connect(1);
+    wire.packet(1, meat::HelloMsg{meat::kProtocolVersion, "p", "", ""});
+    server.pump(wire);
+    for (int i = 0; i < 10; ++i) server.tick(wire);
+    check(stateOf(1) != nullptr, "the peer is admitted fresh after reconnecting");
+    check(true, "no crash across drop + reconnect");
+}
+
+// Property-style fuzz: feed the server a large volume of pseudo-random packets
+// (varied types, lengths, and bytes) from an authenticated peer and assert the
+// authoritative world is never corrupted and the server never crashes.
+void testRandomPacketsSurvive() {
+    std::printf("random packet fuzzing does not corrupt state or crash\n");
+    ScriptedTransport wire;
+    meat::ServerSim server;
+    meat::NetPolicy policy;
+    policy.allowRemoteEditing = true;
+    policy.editorToken = "test-editor-token";
+    server.setNetPolicy(policy);
+    if (!server.init(9u)) { check(false, "server booted"); return; }
+    wire.connect(1);
+    wire.packet(1, meat::HelloMsg{meat::kProtocolVersion, "p", "test-editor-token", ""});
+    server.pump(wire);
+
+    const glm::ivec3 probe{50, 50, 50};
+    const meat::BlockId before = server.voxels().blockAt(probe);
+    std::uint64_t rng = 0x9E3779B97F4A7C15ull; // deterministic xorshift
+    auto nextByte = [&]() -> std::byte {
+        rng ^= rng << 13;
+        rng ^= rng >> 7;
+        rng ^= rng << 17;
+        return static_cast<std::byte>(rng & 0xFF);
+    };
+    for (int p = 0; p < 3000; ++p) {
+        const std::size_t len = 1 + (static_cast<std::size_t>(nextByte()) % 40);
+        std::vector<std::byte> junk(len);
+        for (std::byte& b : junk) b = nextByte();
+        wire.raw(1, std::move(junk));
+        if ((p & 0x3F) == 0) server.pump(wire); // drain periodically
+    }
+    server.pump(wire);
+    for (int i = 0; i < 5; ++i) server.tick(wire);
+    check(server.voxels().blockAt(probe) == before, "no random packet mutated the world");
+    check(true, "the server survived the fuzz barrage");
+}
 
 void testMoveAndRemovePropNeedPermission() {
     std::printf("moving/removing an existing prop needs permission\n");
@@ -682,6 +758,8 @@ void runNetPermissions() {
     testMedkitHealsThroughEffectSystem();
     testInterestManagementScopesEntities();
     testServerPasswordGatesJoin();
+    testReconnectIsClean();
+    testRandomPacketsSurvive();
 }
 
 } // namespace meattest

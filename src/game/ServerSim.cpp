@@ -1810,6 +1810,7 @@ void ServerSim::pump(Transport& transport) {
             m_players.erase(e.peer);
             m_rejectLog.erase(e.peer);       // no state kept for a peer that is gone
             m_clientBaselines.erase(e.peer); // its snapshot ring goes with it
+            m_frags.erase(e.peer);           // a reconnect starts from a clean score
             break;
         }
         case NetEvent::Type::Packet:
