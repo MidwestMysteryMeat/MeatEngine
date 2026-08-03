@@ -821,6 +821,89 @@ void testSpawnEntityReplicates() {
           "the turret replicates to the client as a Turret entity");
 }
 
+// Connect `count` players into a fresh TeamDeathmatch server and spawn them.
+// Returns nothing; the caller inspects teamOf/teamScore/health on `server`.
+void joinTeamPlayers(ScriptedTransport& wire, meat::ServerSim& server, meat::PeerId count) {
+    for (meat::PeerId p = 1; p <= count; ++p) {
+        wire.connect(p);
+        wire.packet(p, meat::HelloMsg{meat::kProtocolVersion, "p", "", ""});
+    }
+    server.pump(wire);
+    for (int i = 0; i < 10; ++i) server.tick(wire); // spawn + auto-assign teams
+}
+
+// TeamDeathmatch auto-balances teams, scores per team (not per player), ignores a
+// teammate kill, and ends the match when a team's combined frags hit the limit.
+void testTeamDeathmatchScoring() {
+    std::printf("team deathmatch balances teams, scores per team, and ends on the limit\n");
+    ScriptedTransport wire;
+    meat::GameRules rules;
+    rules.terrain = meat::GameRules::Terrain::Void;
+    rules.gameMode = meat::GameRules::GameMode::TeamDeathmatch;
+    rules.fragLimit = 3;
+    meat::ServerSim server(rules);
+    if (!server.init(21u)) { check(false, "server booted"); return; }
+    joinTeamPlayers(wire, server, 4);
+
+    int t1 = 0, t2 = 0;
+    for (meat::PeerId p = 1; p <= 4; ++p) {
+        if (server.teamOf(p) == 1) ++t1;
+        else if (server.teamOf(p) == 2) ++t2;
+    }
+    check(t1 == 2 && t2 == 2, "four players split evenly across two teams");
+
+    meat::PeerId killer = 0, mate = 0, enemy = 0;
+    for (meat::PeerId p = 1; p <= 4; ++p) {
+        if (server.teamOf(p) == 1) { if (!killer) killer = p; else mate = p; }
+        else if (!enemy) enemy = p;
+    }
+    server.registerFrag(killer, mate); // teammate kill
+    check(server.teamScore(1) == 0, "a teammate kill scores nothing for the team");
+
+    server.registerFrag(killer, enemy);
+    server.registerFrag(killer, enemy);
+    check(server.teamScore(1) == 2 && !server.matchOver(),
+          "enemy frags build the team score; the match stays open below the limit");
+    server.registerFrag(killer, enemy);
+    check(server.matchOver() && server.winningTeam() == 1,
+          "reaching the team frag limit ends the match for that team");
+}
+
+// Friendly fire gates teammate damage: with it off, a chain arc skips teammates
+// (and the caster); with it on, a teammate can be caught. Proves the flag, not
+// just the default, is what spares them.
+void testFriendlyFireGate() {
+    std::printf("friendly fire gates teammate damage from an area effect\n");
+    auto run = [](bool ff, int& mateHits, int& enemyHits) {
+        ScriptedTransport wire;
+        meat::GameRules rules;
+        rules.terrain = meat::GameRules::Terrain::Void;
+        rules.gameMode = meat::GameRules::GameMode::TeamDeathmatch;
+        rules.friendlyFire = ff;
+        meat::ServerSim server(rules);
+        mateHits = enemyHits = 0;
+        if (!server.init(22u)) return;
+        joinTeamPlayers(wire, server, 3); // teams split 2/1
+
+        meat::PeerId src = 0; // pick the majority team (has both a mate and an enemy)
+        for (meat::PeerId p = 1; p <= 3; ++p)
+            if (server.teamOf(p) == 1) { src = p; break; }
+        server.applyChainDamage(src, glm::vec3(0.0f), 25.0f, 5, 1000.0f);
+
+        for (meat::PeerId p = 1; p <= 3; ++p) {
+            if (p == src) continue; // the caster is never a chain target
+            const bool hurt = (100.0f - server.playerHealth(p)) > 0.5f;
+            if (server.teamOf(p) == server.teamOf(src)) mateHits += hurt ? 1 : 0;
+            else enemyHits += hurt ? 1 : 0;
+        }
+    };
+    int m0 = 0, e0 = 0, m1 = 0, e1 = 0;
+    run(false, m0, e0);
+    run(true, m1, e1);
+    check(m0 == 0 && e0 >= 1, "friendly fire off: teammate spared, enemy hit");
+    check(m1 >= 1, "friendly fire on: a teammate can be caught in the arc");
+}
+
 } // namespace
 
 namespace meattest {
@@ -848,6 +931,8 @@ void runNetPermissions() {
     testRandomPacketsSurvive();
     testChainDamageArcsAndCaps();
     testSpawnEntityReplicates();
+    testTeamDeathmatchScoring();
+    testFriendlyFireGate();
 }
 
 } // namespace meattest

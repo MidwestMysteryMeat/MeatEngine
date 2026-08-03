@@ -111,6 +111,17 @@ public:
     }
     bool matchOver() const { return m_matchOver; }
     PeerId matchWinner() const { return m_matchWinner; }
+    // TeamDeathmatch: which team a player is on (0 if unassigned/FFA), a team's
+    // combined score, and the winning team once the match is over (0 while open).
+    int teamOf(PeerId p) const {
+        const auto it = m_players.find(p);
+        return (it == m_players.end() || !it->second) ? 0 : it->second->team;
+    }
+    int teamScore(int team) const {
+        const auto it = m_teamFrags.find(team);
+        return it == m_teamFrags.end() ? 0 : it->second;
+    }
+    int winningTeam() const { return m_winningTeam; }
     const GameRules& rules() const { return m_rules; }
     int playerCount() const { return static_cast<int>(m_players.size()); }
     // B3b: authoritative gravity field (env base + volumes + orbital bodies).
@@ -171,6 +182,7 @@ private:
         bool hasCmd = false; // false until the first command; closes tick-0 replay
         bool spawned = false;
         bool helloDone = false; // guards Welcome/loadout against Hello replay
+        int team = 0;           // TeamDeathmatch team (1..N); 0 = none (FFA/Sandbox)
         float health = 100.0f;
         float fireCooldown = 0.0f;
         float placeCooldown = 0.0f;
@@ -468,8 +480,19 @@ private:
     std::unordered_map<PeerId, std::map<std::uint64_t, SnapshotMsg>> m_clientBaselines;
     // Deathmatch scoring: frags per peer, plus the latched match-over result.
     std::unordered_map<PeerId, int> m_frags;
+    std::unordered_map<int, int> m_teamFrags; // TeamDeathmatch: combined score per team
     bool m_matchOver = false;
     PeerId m_matchWinner = 0;
+    int m_winningTeam = 0; // TeamDeathmatch winner (0 while the match is open)
+    // Assign a joining player to the smaller team (ties → lower id). No-op unless
+    // the mode uses teams. Called once when the player first spawns.
+    void assignTeam(Player& player);
+    // Friendly-fire gate: true when src must NOT damage dst because they share a
+    // team and friendly fire is off. False for FFA/Sandbox, self, or unknown peers.
+    bool friendlyBlocked(PeerId src, PeerId dst) const;
+    // Reverse lookup: the peer id owning a Player* (0 if not found). Used to gate
+    // friendly fire in the effect system, which holds a Player* not its peer.
+    PeerId peerOfPlayer(const Player* p) const;
     // Periodic autosave (0 interval = disabled).
     std::string m_autosavePath;
     std::uint64_t m_autosaveIntervalTicks = 0;

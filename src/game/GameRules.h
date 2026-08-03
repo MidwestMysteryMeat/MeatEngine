@@ -39,9 +39,13 @@ struct GameRules {
     // condition (the historical free-play). Deathmatch = first to fragLimit frags
     // wins. Selectable via --mode / game.json "mode". More modes (Horde/Breach/
     // teams) build on the same frag/score + match-over hooks.
-    enum class GameMode : std::uint8_t { Sandbox = 0, Deathmatch = 1 };
+    // TeamDeathmatch = two auto-balanced teams; a team wins when its combined
+    // frags reach fragLimit. Friendly fire is off by default there (teammates'
+    // shots/blasts/effects pass through), toggled by friendlyFire.
+    enum class GameMode : std::uint8_t { Sandbox = 0, Deathmatch = 1, TeamDeathmatch = 2 };
     GameMode gameMode = GameMode::Sandbox;
-    int fragLimit = 10; // Deathmatch target score
+    int fragLimit = 10; // Deathmatch / TeamDeathmatch target score
+    bool friendlyFire = false; // TeamDeathmatch: can teammates damage each other?
     // When true, the environment's hemiStrength is applied (A3). When false, ambient is
     // classic isotropic only — the dark PSX-night look. Toggled via game.json / F7 / New Map.
     bool hemisphereAmbient = true;

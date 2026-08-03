@@ -1048,14 +1048,49 @@ void ServerSim::damageNpc(Transport& transport, Npc& npc, float damage) {
 // Credit a player-vs-player kill for Deathmatch and latch the match result once
 // someone reaches fragLimit. Suicides / environment kills (killer 0 or self) do
 // not score. Sandbox mode ignores this entirely.
+void ServerSim::assignTeam(Player& player) {
+    if (m_rules.gameMode != GameRules::GameMode::TeamDeathmatch) return;
+    if (player.team != 0) return; // already assigned
+    // Balance across two teams: join whichever currently has fewer members (ties
+    // go to team 1). Count spawned players' current teams.
+    int counts[3] = {0, 0, 0}; // index 1,2 used
+    for (const auto& [peer, pl] : m_players)
+        if (pl && pl->team >= 1 && pl->team <= 2) ++counts[pl->team];
+    player.team = (counts[1] <= counts[2]) ? 1 : 2;
+}
+
+bool ServerSim::friendlyBlocked(PeerId src, PeerId dst) const {
+    if (m_rules.friendlyFire || src == 0 || dst == 0 || src == dst) return false;
+    const int st = teamOf(src);
+    return st != 0 && st == teamOf(dst); // same team, friendly fire off
+}
+
+PeerId ServerSim::peerOfPlayer(const Player* p) const {
+    if (!p) return 0;
+    for (const auto& [peer, pl] : m_players)
+        if (pl.get() == p) return peer;
+    return 0;
+}
+
 void ServerSim::registerFrag(PeerId killer, PeerId victim) {
-    if (m_rules.gameMode != GameRules::GameMode::Deathmatch) return;
+    const bool team = m_rules.gameMode == GameRules::GameMode::TeamDeathmatch;
+    if (m_rules.gameMode != GameRules::GameMode::Deathmatch && !team) return;
     if (killer == 0 || killer == victim) return;
-    const int score = ++m_frags[killer];
+    const int killerTeam = teamOf(killer);
+    // A teammate kill (only possible with friendly fire on) scores for no one.
+    if (team && killerTeam != 0 && killerTeam == teamOf(victim)) return;
+    ++m_frags[killer]; // personal tally is always kept (leaderboard)
+    const int score = team ? (m_teamFrags[killerTeam] += 1) : m_frags[killer];
     if (!m_matchOver && score >= m_rules.fragLimit) {
         m_matchOver = true;
-        m_matchWinner = killer;
-        log::info("server: DEATHMATCH over — player {} wins ({} frags)", killer, score);
+        if (team) {
+            m_winningTeam = killerTeam;
+            log::info("server: TEAM DEATHMATCH over — team {} wins ({} frags)", killerTeam,
+                      score);
+        } else {
+            m_matchWinner = killer;
+            log::info("server: DEATHMATCH over — player {} wins ({} frags)", killer, score);
+        }
         // HUD banner to everyone (reuses the ScriptFx announce path). m_activeTransport
         // is set during a tick's combat step, and null in a direct unit-test call.
         if (m_activeTransport) {
@@ -1065,7 +1100,8 @@ void ServerSim::registerFrag(PeerId killer, PeerId victim) {
             fx.r = 1.0f;
             fx.g = 0.85f;
             fx.b = 0.2f;
-            fx.text = "Deathmatch — player " + std::to_string(killer) + " wins!";
+            fx.text = team ? ("Team Deathmatch — team " + std::to_string(killerTeam) + " wins!")
+                           : ("Deathmatch — player " + std::to_string(killer) + " wins!");
             for (const auto& [peer, pl] : m_players)
                 if (pl) m_activeTransport->send(peer, pack(fx), true);
         }
@@ -1441,6 +1477,7 @@ void ServerSim::marchBullet(Transport& transport, PeerId peer, Player& player,
         float bestT = segmentEnd;
         for (auto& [otherPeer, other] : m_players) {
             if (otherPeer == peer || !other->spawned) continue;
+            if (friendlyBlocked(peer, otherPeer)) continue; // teammate: bullet passes through
             glm::vec3 feet = other->controller.position();
             bool crouched = other->controller.crouched();
             if (rewindTick != m_tick) rewoundPlayerPose(*other, rewindTick, feet, crouched);
@@ -1565,6 +1602,7 @@ void ServerSim::applyBlast(Transport& transport, PeerId source, glm::vec3 center
                            float radius, float damage) {
     for (auto& [peer, player] : m_players) {
         if (!player->spawned) continue;
+        if (friendlyBlocked(source, peer)) continue; // teammates shrug off the blast (self still hurts)
         const glm::vec3 body = player->controller.position() + glm::vec3(0, 0.9f, 0);
         const float dist = glm::length(body - center);
         if (dist > radius) continue;
@@ -1682,7 +1720,9 @@ void ServerSim::applyChainDamage(PeerId source, glm::vec3 origin, float damage,
         float bestD2 = range2;
         for (auto& [peer, pl] : m_players) {
             if (!pl || !pl->spawned || pl->health <= 0.0f) continue;
+            if (peer == source) continue; // a chain doesn't arc back to its caster
             if (std::find(hit.begin(), hit.end(), peer) != hit.end()) continue;
+            if (friendlyBlocked(source, peer)) continue; // arc skips teammates
             const glm::vec3 d = pl->controller.position() - lastPos;
             const float d2 = glm::dot(d, d);
             if (d2 <= bestD2) { bestD2 = d2; best = pl.get(); bestPeer = peer; }
@@ -1739,6 +1779,7 @@ void ServerSim::applyEffect(Transport& transport, const Effect& effect, PeerId s
         if (targetNpc) {
             damageNpc(transport, *targetNpc, dmg);
         } else if (targetPlayer) {
+            if (friendlyBlocked(source, peerOfPlayer(targetPlayer))) break; // no teammate damage
             targetPlayer->health -= dmg;
             if (targetPlayer->health <= 0.0f) {
                 dropPlayerLoot(*targetPlayer, targetPlayer->controller.position());
@@ -1763,7 +1804,7 @@ void ServerSim::applyEffect(Transport& transport, const Effect& effect, PeerId s
     case EffectKind::Ignite:
         // Damage-over-time: params[0] = damage/sec, duration = seconds. Stacks;
         // ticked in tickBurns each fixed tick, credited to the igniter on kill.
-        if (targetPlayer)
+        if (targetPlayer && !friendlyBlocked(source, peerOfPlayer(targetPlayer)))
             targetPlayer->burns.push_back({effect.params[0], effect.duration, source});
         break;
     case EffectKind::Chain:
@@ -2169,6 +2210,7 @@ void ServerSim::tick(Transport& transport) {
             if (!player->controller.init(m_physics, player->spawnOverride.value_or(defaultSpawnPos())))
                 continue;
             player->spawned = true;
+            assignTeam(*player); // TeamDeathmatch: balance onto a team at first spawn
         }
         if (player->pilotingShip == 0) {
             // B3b: sample the field at the feet before integrating so habitat/orbital SOI apply.

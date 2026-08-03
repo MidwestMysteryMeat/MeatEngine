@@ -59,6 +59,16 @@ void applyPerspectiveString(meat::EngineConfig& config, const std::string& p) {
                                                             : Perspective::First;
 }
 
+void applyModeString(meat::EngineConfig& config, const std::string& s) {
+    using GameMode = meat::GameRules::GameMode;
+    if (s == "deathmatch" || s == "dm")
+        config.rules.gameMode = GameMode::Deathmatch;
+    else if (s == "team" || s == "tdm" || s == "teamdeathmatch")
+        config.rules.gameMode = GameMode::TeamDeathmatch;
+    else
+        config.rules.gameMode = GameMode::Sandbox;
+}
+
 // B5: nested "world" object and/or top-level map keys. Nested world wins when
 // both are present so projects can group map defaults cleanly.
 void applyWorldFields(meat::EngineConfig& config, const nlohmann::json& j) {
@@ -71,14 +81,12 @@ void applyWorldFields(meat::EngineConfig& config, const nlohmann::json& j) {
         applyEnvironmentString(config, j["environment"].get<std::string>());
     if (j.contains("perspective") && j["perspective"].is_string())
         applyPerspectiveString(config, j["perspective"].get<std::string>());
-    if (j.contains("mode") && j["mode"].is_string()) {
-        const std::string m = j["mode"].get<std::string>();
-        config.rules.gameMode = (m == "deathmatch" || m == "dm")
-                                    ? meat::GameRules::GameMode::Deathmatch
-                                    : meat::GameRules::GameMode::Sandbox;
-    }
+    if (j.contains("mode") && j["mode"].is_string())
+        applyModeString(config, j["mode"].get<std::string>());
     if (j.contains("fragLimit") && j["fragLimit"].is_number_integer())
         config.rules.fragLimit = j["fragLimit"].get<int>();
+    if (j.contains("friendlyFire") && j["friendlyFire"].is_boolean())
+        config.rules.friendlyFire = j["friendlyFire"].get<bool>();
     if (j.contains("seed") && j["seed"].is_number_unsigned())
         config.seed = j["seed"].get<std::uint32_t>();
     else if (j.contains("seed") && j["seed"].is_number_integer())
@@ -269,12 +277,9 @@ meat::EngineConfig parseArgs(int argc, char** argv) {
         } else if (arg == "--perspective") {
             if (const char* p = next()) applyPerspectiveString(config, p);
         } else if (arg == "--mode") {
-            if (const char* m = next()) {
-                const std::string s = m;
-                config.rules.gameMode = (s == "deathmatch" || s == "dm")
-                                            ? meat::GameRules::GameMode::Deathmatch
-                                            : meat::GameRules::GameMode::Sandbox;
-            }
+            if (const char* m = next()) applyModeString(config, m);
+        } else if (arg == "--friendly-fire") {
+            config.rules.friendlyFire = true;
         } else {
             meat::log::warn("unknown argument '{}'", arg);
         }

@@ -14,8 +14,10 @@ All notable changes to MeatEngine are documented here. The format follows
   hitscan; connection auth via a server join password (`--password`); **wire
   encryption** (XChaCha20-Poly1305 via Monocypher, auto-enabled with a password);
   a concurrent-player cap; and periodic autosave for crash-safety.
-- **GameMode framework**: Sandbox and Deathmatch (frag-limit win condition, HUD
-  banner), selectable via `--mode` / `game.json`.
+- **GameMode framework**: Sandbox, Deathmatch, and **Team Deathmatch** (two
+  auto-balanced teams, per-team scoring, team frag-limit win), plus a
+  **friendly-fire** toggle (`--friendly-fire`) that gates teammate damage across
+  hitscan, blasts, and effects. Selectable via `--mode` / `game.json`.
 - **Effect system**: eight composable effect kinds — Damage, AreaDamage, Heal,
   ApplyModifier (enforced damage + move-speed, i.e. slow/haste), Knockback,
   Ignite (stacking damage-over-time with kill credit), Chain (arc to the nearest
@@ -26,9 +28,10 @@ All notable changes to MeatEngine are documented here. The format follows
   mannequin clips all drive the canonical (Mixamo) skeleton.
 - **Persistence**: save-file schema versioning (refuses newer-engine saves).
 - **Packaging**: `cmake --install` + CPack produce a versioned game archive.
-- **Tests**: 55 → 149 headless checks across worldgen/dungeon determinism,
+- **Tests**: 55 → 155 headless checks across worldgen/dungeon determinism,
   save/load, inventory, the effect system (knockback/ignite/chain/spawn), the Lua
-  effect-primitive bridge, reconnection, and packet fuzzing.
+  effect-primitive bridge, team deathmatch + friendly fire, reconnection, and
+  packet fuzzing.
 - `docs/PRODUCTION_PLAN.md` — the phased path to production parity.
 
 ### Fixed

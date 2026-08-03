@@ -78,10 +78,13 @@ entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
 - [x] engine/→game/ layering fixed (Engine moved to game/); Phase-1 guard locks it in.
 
 ## Phase 5 — Feature depth (enough to ship a game)
-- [~] **GameMode framework** — first slice done: `GameRules.gameMode` (Sandbox / Deathmatch),
-      per-player frag scoring + fragLimit win condition (`registerFrag`/`matchOver`), wired to
-      `--mode` and `game.json`. Remaining: teams + friendly fire, respawn policy, more modes
-      (Breach/Horde), mode in Welcome, and a client-facing match-over announce.
+- [~] **GameMode framework** — `GameRules.gameMode` = Sandbox / Deathmatch /
+      **TeamDeathmatch**. FFA per-player frags + fragLimit; TeamDeathmatch auto-balances two
+      teams, scores per team, ignores teammate kills, and ends on the team limit. **Friendly
+      fire** (`--friendly-fire` / `friendlyFire`) gates teammate damage across every PvP path
+      — hitscan, blast, effect Damage/Chain/Ignite. Match-over fires a HUD announce. Wired to
+      `--mode team|tdm` / `game.json`. Remaining: respawn policy (timed/wave), team replicated
+      in Welcome/PlayerState for client HUD colouring, more modes (Breach/Horde).
 - [x] **Unified entity-snapshot path** — ships, NPCs, turrets, companions, projectiles,
       deployables, and pickups all replicate through `SnapshotMsg.entities` tagged by
       `EntityArchetype` (per-client interest scoping applies to the whole set). This was
