@@ -36,9 +36,10 @@ them. Close that first — everything after this is riskier without it.
 - [ ] **Combat-math / effects integration test** — penetration, damage mods, and effect
       execution (Heal/ApplyModifier/AreaDamage) via a two-peer ServerSim harness. The last
       Phase-1 coverage gap; lower ROI (Damage is covered by the lag-comp test).
-- [ ] **Headless render smoke gate** — `--shot` must succeed in CI so a shader/UBO
-      regression fails the build (needs a GL context on the runner: xvfb/EGL). Wire the
-      R720 VLM parity gate in as a nightly later.
+- [~] **Headless render smoke gate** — CI `render-smoke` job builds the engine and runs
+      `--shot` under xvfb + mesa llvmpipe, requiring a non-trivial screenshot (a shader/UBO
+      regression fails engine init or yields a blank frame). Remaining: wire the R720 VLM
+      parity gate as a nightly for actual visual-correctness grading.
 - [x] **Bonus: cross-convention animation retargeting** (Mixamo/UE4/UE5) — see Phase 5.
 
 **Coverage: 55 → 99 checks this session** across 6 new suites (net-permissions, delta-codec,

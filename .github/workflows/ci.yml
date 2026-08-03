@@ -114,6 +114,61 @@ jobs:
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1:suppressions=${{ github.workspace }}/.github/ubsan_suppressions.txt
         run: ./build/MeatTests
 
+  render-smoke:
+    name: Render smoke (headless GL, Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      # Build deps + a software GL stack (mesa llvmpipe) and xvfb for a virtual
+      # display, so the engine can open a real GL 4.5 context with no GPU.
+      - name: Install build + headless-GL dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential ninja-build \
+            libgl1-mesa-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            libwayland-dev libxkbcommon-dev wayland-protocols \
+            python3 python3-pip \
+            xvfb libgl1-mesa-dri mesa-utils
+          python3 -m pip install --user jinja2
+
+      - name: Cache build tree
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: build-${{ runner.os }}-release-${{ hashFiles('cmake/Dependencies.cmake', 'CMakeLists.txt') }}
+          restore-keys: build-${{ runner.os }}-release-
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -Wno-dev -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build the engine
+        run: cmake --build build --target MeatEngine --parallel
+
+      # Render a few frames headlessly and require a non-trivial screenshot. A
+      # shader/UBO regression (like the one that once broke ALL rendering) fails
+      # engine init or produces a blank frame — caught here, not by players.
+      - name: Render a frame under xvfb
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          GALLIUM_DRIVER: llvmpipe
+        run: |
+          xvfb-run -a --server-args="-screen 0 1280x720x24" \
+            ./build/MeatEngine --shot /tmp/ci_shot.png
+          ls -l /tmp/ci_shot_*.png
+          python3 - <<'PY'
+          import glob, os, sys
+          files = sorted(glob.glob('/tmp/ci_shot_*.png'))
+          if not files:
+              sys.exit("no screenshot produced — engine init or capture failed")
+          biggest = max(os.path.getsize(f) for f in files)
+          print(f"largest screenshot: {biggest} bytes across {len(files)} frames")
+          if biggest < 5000:
+              sys.exit("screenshot suspiciously small — render likely produced a blank frame")
+          PY
+
   windows:
     name: Windows (MSVC, Release)
     # Pin the stable VS2022 image: windows-latest now ships a PREVIEW VS2026 MSVC
