@@ -16,6 +16,7 @@
 #include "engine/net/Messages.h"
 #include "game/ServerSim.h"
 
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
@@ -23,6 +24,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -419,14 +421,16 @@ void testHitscanIsLagCompensated() {
         return nullptr;
     };
 
-    // Chunk colliders stream in asynchronously; a sprinting player can outrun
-    // them and fall. Ground-state gates keep the test independent of how fast
-    // this machine's worker threads mesh.
+    // Chunk colliders stream in on worker threads, so grounding depends on
+    // wall-clock (workers finishing), not tick count. A tight tick loop can
+    // outrun the workers — especially on a slow build like ASan — so yield a
+    // moment each iteration to let them finish and the collider get applied.
     auto waitVictimGrounded = [&](int maxSteps) {
         for (int i = 0; i < maxSteps; ++i) {
             const meat::PlayerState* v = stateOf(1, 2);
             if (v && v->onGround) return true;
             step(idle, idle, 0);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
         return false;
     };
