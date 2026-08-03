@@ -56,8 +56,10 @@ entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
 - [ ] **Entity/projectile interpolation** for smooth remote motion under latency.
 
 ## Phase 3 — Security & data durability
-- [ ] **Transport connection auth** — challenge/response connect token (netcode.io/yojimbo
-      pattern, `BORROWING.md #1`); ENet is currently unauthenticated.
+- [~] **Transport connection auth** — join-password gate done (`NetPolicy.serverPassword`,
+      HelloMsg v4, `--password`): a wrong password is disconnected before any player state
+      is created. Remaining: cryptographic challenge/response connect tokens + wire encryption
+      (that needs an encrypted transport / GNS — see below). This is access control, not secrecy.
 - [ ] **Optional encrypted transport** — GameNetworkingSockets provider behind the
       `Transport` interface (Steam Datagram Relay path).
 - [x] **Save schema versioning** — saves carry `kSaveVersion`; the loader refuses a

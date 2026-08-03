@@ -486,6 +486,49 @@ void testHitscanIsLagCompensated() {
           "the same aim with a live view MISSES the moved victim");
 }
 
+// Connection auth: a password-protected server admits only peers that present
+// the right join password, before any player state is created — so a wrong
+// password can't author the world even with a valid editor token.
+void testServerPasswordGatesJoin() {
+    std::printf("a join password gates who is admitted to the server\n");
+    auto boot = [](meat::LoopbackPair& wire, meat::ServerSim& server, const char* pw) {
+        meat::NetPolicy policy;
+        policy.allowRemoteEditing = true;
+        policy.editorToken = "test-editor-token";
+        policy.serverPassword = "secret";
+        server.setNetPolicy(policy);
+        if (!server.init(1234u)) return false;
+        server.pump(wire.serverEnd()); // consume Connected
+        wire.clientEnd().send(
+            1, meat::pack(meat::HelloMsg{meat::kProtocolVersion, "p", "test-editor-token", pw}),
+            true);
+        server.pump(wire.serverEnd());
+        return true;
+    };
+
+    {   // Wrong password: rejected at the door — a VoxelOp does nothing.
+        meat::LoopbackPair wire;
+        meat::ServerSim server;
+        if (!boot(wire, server, "wrong")) { check(false, "server booted"); return; }
+        const meat::BlockId before = server.voxels().blockAt(kTarget);
+        wire.clientEnd().send(1, meat::pack(meat::VoxelOpMsg{kTarget, 1}), true);
+        server.pump(wire.serverEnd());
+        check(server.voxels().blockAt(kTarget) == before,
+              "a wrong password is refused entry (its edits are ignored)");
+    }
+    {   // Right password: admitted, and its editor token authorises the edit.
+        meat::LoopbackPair wire;
+        meat::ServerSim server;
+        if (!boot(wire, server, "secret")) { check(false, "server booted"); return; }
+        const meat::BlockId before = server.voxels().blockAt(kTarget);
+        const meat::BlockId placed = (before == 1) ? meat::BlockId{2} : meat::BlockId{1};
+        wire.clientEnd().send(1, meat::pack(meat::VoxelOpMsg{kTarget, placed}), true);
+        server.pump(wire.serverEnd());
+        check(server.voxels().blockAt(kTarget) == placed,
+              "the right password admits the peer and authorises it");
+    }
+}
+
 // Effect execution end-to-end: a damaged player using a medkit heals. This
 // exercises the use→consumable→runEffects→Heal path (currently the only test of
 // the effect system beyond hitscan Damage), observed the way a client sees it —
@@ -638,6 +681,7 @@ void runNetPermissions() {
     testHitscanIsLagCompensated();
     testMedkitHealsThroughEffectSystem();
     testInterestManagementScopesEntities();
+    testServerPasswordGatesJoin();
 }
 
 } // namespace meattest

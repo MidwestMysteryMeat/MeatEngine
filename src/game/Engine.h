@@ -39,6 +39,7 @@ struct EngineConfig {
     std::uint32_t seed = 1337;
     std::string loadPath;   // --load <file>: start the server from a save
     std::string serverName = "MeatEngine Server";
+    std::string serverPassword; // --password: gate who may join (empty = open)
     std::string master;     // --master host[:port] — announce/browse internet list
     GameRules rules;        // from a project's game.json (or defaults)
     std::string autoShot;   // --shot <png>: capture after a few seconds, then quit

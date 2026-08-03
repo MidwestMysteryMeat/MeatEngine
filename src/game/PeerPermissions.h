@@ -58,6 +58,12 @@ struct NetPolicy {
     // leaked token cannot author the world.
     bool allowRemoteEditing = false;
 
+    // Connection auth: if non-empty, a joining peer must present this exact
+    // password in Hello or it is disconnected. Empty = open server (anyone may
+    // join), the historical default. This gates ACCESS; it is not wire secrecy —
+    // an encrypted transport (GNS) is the follow-up for confidentiality.
+    std::string serverPassword;
+
     // Peers may not author the world faster than a human plausibly could. See
     // RateLimiter in ServerSim.h for the buckets these feed.
     float voxelEditsPerSecond = 30.0f;

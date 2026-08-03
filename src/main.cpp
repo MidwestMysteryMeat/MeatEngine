@@ -212,6 +212,8 @@ meat::EngineConfig parseArgs(int argc, char** argv) {
             config.mode = Mode::Game; // straight to singleplayer, skip the menu
         } else if (arg == "--name") {
             if (const char* n = next()) config.serverName = n;
+        } else if (arg == "--password") {
+            if (const char* p = next()) config.serverPassword = p;
         } else if (arg == "--master") {
             if (const char* m = next()) config.master = m;
         } else if (arg == "--shot") {

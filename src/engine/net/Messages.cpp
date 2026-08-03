@@ -71,6 +71,7 @@ void encode(const HelloMsg& msg, ByteWriter& w) {
     w.write(msg.protocol);
     w.write(std::string_view{msg.name});
     w.write(std::string_view{msg.editorToken});
+    w.write(std::string_view{msg.password});
 }
 
 // Length caps are enforced here rather than at the call site so that every
@@ -82,6 +83,7 @@ bool decode(HelloMsg& msg, ByteReader& r) {
     if (!r.read(msg.name) || msg.name.size() > kMaxNameBytes) return false;
     if (!r.read(msg.editorToken) || msg.editorToken.size() > kMaxTokenBytes)
         return false;
+    if (!r.read(msg.password) || msg.password.size() > kMaxTokenBytes) return false;
     return true;
 }
 

@@ -30,8 +30,9 @@ enum class MsgType : std::uint8_t {
 // Bumped whenever the wire format of any message changes incompatibly. The
 // server refuses a Hello that does not match, so a stale client is told to
 // update instead of desyncing on a field it does not know about.
-// v3: snapshot positions moved from 16-bit-over-±2048 m to signed 24-bit fixed-point (±32 km).
-inline constexpr std::uint16_t kProtocolVersion = 3;
+// v3: snapshot positions → signed 24-bit fixed-point (±32 km).
+// v4: HelloMsg gains a join password (connection auth).
+inline constexpr std::uint16_t kProtocolVersion = 4;
 
 // Every network string is capped. Without a cap the length prefix is a u16, so
 // a peer may spend 64 KiB per field for free and a malicious asset path can be
@@ -48,6 +49,9 @@ struct HelloMsg {
     // the network from anyone but its rightful holder. Empty for ordinary
     // players, which is the overwhelmingly common case.
     std::string editorToken;
+    // Server join password (connection auth). Empty when the server is open.
+    // Checked before the peer is admitted; a mismatch is disconnected.
+    std::string password;
 };
 
 struct WelcomeMsg {

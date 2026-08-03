@@ -1841,6 +1841,16 @@ void ServerSim::handlePacket(Transport& transport, PeerId peer,
             transport.disconnect(peer);
             return;
         }
+        // Connection auth: a password-protected server admits only peers that
+        // present the right password. Checked before helloDone so a rejected
+        // peer is never admitted and gains no player. (Access control, not wire
+        // secrecy — that needs an encrypted transport.)
+        if (!m_netPolicy.serverPassword.empty() &&
+            hello.password != m_netPolicy.serverPassword) {
+            noteRejected(peer, "join with wrong/absent server password");
+            transport.disconnect(peer);
+            return;
+        }
         player.helloDone = true;
         // The only place a peer's rights are decided. Everything downstream just
         // reads permissions. Comparison is against a per-boot token that reached

@@ -26,7 +26,8 @@ public:
     // passes the server's per-boot token in-process when it hosts; a client
     // joining someone else's server leaves it empty and connects as a player.
     void attach(Transport& transport, const std::string& playerName,
-                const std::string& editorToken = {}); // sends Hello
+                const std::string& editorToken = {},
+                const std::string& password = {}); // sends Hello
     bool welcomed() const { return m_welcomed; }
     PeerId playerId() const { return m_playerId; }
     std::uint32_t worldSeed() const { return m_seed; }
@@ -102,6 +103,7 @@ private:
     Transport* m_transport = nullptr;
     std::string m_playerName;
     std::string m_editorToken;
+    std::string m_password;
     PeerId m_playerId = 0;
     std::uint32_t m_seed = 0;
     bool m_welcomed = false;

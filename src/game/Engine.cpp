@@ -199,6 +199,7 @@ bool Engine::initNetwork(const EngineConfig& config) {
         // default and refuses every edit, token or not.
         NetPolicy policy;
         policy.allowRemoteEditing = true;
+        policy.serverPassword = config.serverPassword; // gate joiners when set
         server->setNetPolicy(policy);
         return config.loadPath.empty() ? server->init(config.seed)
                                        : server->initFromSave(config.loadPath);
@@ -230,7 +231,9 @@ bool Engine::initNetwork(const EngineConfig& config) {
     std::string editorToken;
     if (m_server && (config.mode == Mode::Game || config.mode == Mode::Host))
         editorToken = m_server->editorToken();
-    m_client.attach(*m_clientTransport, "player", editorToken);
+    // Present the join password when connecting to a protected server. Our own
+    // hosted server has it in-process; a --join client gets it from config.
+    m_client.attach(*m_clientTransport, "player", editorToken, config.serverPassword);
     return true;
 }
 

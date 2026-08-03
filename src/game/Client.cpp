@@ -20,10 +20,11 @@ constexpr std::size_t kMaxUnacked = 120; // 2 s of input; beyond this we're desy
 } // namespace
 
 void Client::attach(Transport& transport, const std::string& playerName,
-                    const std::string& editorToken) {
+                    const std::string& editorToken, const std::string& password) {
     m_transport = &transport;
     m_playerName = playerName;
     m_editorToken = editorToken;
+    m_password = password;
     // Hello is sent on the Connected event in pump() — sending here would race
     // the UDP handshake and vanish (loopback is born connected and masks that).
 }
@@ -66,7 +67,7 @@ void Client::pump(VoxelWorld& voxels, PhysicsWorld& physics, CharacterController
     for (NetEvent& e : events) {
         if (e.type == NetEvent::Type::Connected) {
             m_transport->send( // server = peer 1
-                1, pack(HelloMsg{kProtocolVersion, m_playerName, m_editorToken}),
+                1, pack(HelloMsg{kProtocolVersion, m_playerName, m_editorToken, m_password}),
                 true);
             continue;
         }
