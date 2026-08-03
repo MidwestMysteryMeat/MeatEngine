@@ -423,22 +423,24 @@ void testHitscanIsLagCompensated() {
 
     // Chunk colliders stream in on worker threads, so grounding depends on
     // wall-clock (workers finishing), not tick count. A tight tick loop can
-    // outrun the workers — especially on a slow build like ASan — so yield a
-    // moment each iteration to let them finish and the collider get applied.
+    // outrun the workers — badly so under ASan, where the instrumented mesher
+    // is several times slower — so yield generously each iteration and give it
+    // a large budget. It returns the instant the victim grounds, so a fast
+    // build barely waits; only a slow one pays. (~5 s ceiling.)
     auto waitVictimGrounded = [&](int maxSteps) {
         for (int i = 0; i < maxSteps; ++i) {
             const meat::PlayerState* v = stateOf(1, 2);
             if (v && v->onGround) return true;
             step(idle, idle, 0);
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
         return false;
     };
 
     for (int i = 0; i < 10; ++i) step(idle, idle, 0); // spawn
-    if (!waitVictimGrounded(600)) { check(false, "victim grounded at spawn"); return; }
+    if (!waitVictimGrounded(1000)) { check(false, "victim grounded at spawn"); return; }
     for (int i = 0; i < 150; ++i) step(idle, sprintX, 0);  // open ~10 m of distance
-    if (!waitVictimGrounded(600)) { check(false, "victim grounded after the run"); return; }
+    if (!waitVictimGrounded(1000)) { check(false, "victim grounded after the run"); return; }
 
     // The victim now stands still; the next fresh snapshot is the shooter's
     // "view": T0, with the victim exactly where the pose history has them.
@@ -522,8 +524,21 @@ void testMedkitHealsThroughEffectSystem() {
     away.sprint = true;
     away.yaw = 1.5707963f;
 
-    for (int i = 0; i < 30; ++i) step(idle, idle);   // spawn + settle
+    // Ground both players before doing anything positional — chunk colliders
+    // stream in on worker threads (slow under ASan), and a falling victim would
+    // make the aimed shot miss. Generous budget; returns the moment grounded.
+    auto waitGrounded = [&](meat::PeerId who) {
+        for (int i = 0; i < 1000; ++i) {
+            const meat::PlayerState* p = stateOf(who);
+            if (p && p->onGround) return true;
+            step(idle, idle);
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        return false;
+    };
+    if (!waitGrounded(1) || !waitGrounded(2)) { check(false, "both players grounded"); return; }
     for (int i = 0; i < 120; ++i) step(idle, away);  // ~8 m of separation
+    if (!waitGrounded(2)) { check(false, "victim grounded after moving"); return; }
     for (int i = 0; i < 30; ++i) step(idle, idle);   // stand still, land a fresh snapshot
 
     const meat::PlayerState* s0 = stateOf(1);
