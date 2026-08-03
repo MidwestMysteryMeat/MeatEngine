@@ -1,6 +1,5 @@
 #pragma once
 #include "engine/core/EditorHost.h"
-#include "engine/core/EntityRegistry.h"
 #include "engine/core/EventBus.h"
 #include "engine/core/JobQueue.h"
 #include "engine/core/TickRate.h"
@@ -98,7 +97,6 @@ private:
     // members destroy in reverse order, so the queue joins its workers before
     // the data they hold references to is freed.
     JobQueue m_jobs;
-    EntityRegistry m_entities;
     EventBus m_events;
     CharacterController m_player; // client prediction body
 

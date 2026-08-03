@@ -28,6 +28,7 @@ void anchorToAssetsRoot() {
 // Suites, defined in their own translation units.
 void runNetPermissions();
 void runDeltaSnapshot();
+void runEntityRegistry();
 
 } // namespace meattest
 
@@ -38,6 +39,7 @@ int main() {
 
     meattest::runNetPermissions();
     meattest::runDeltaSnapshot();
+    meattest::runEntityRegistry();
 
     std::printf("\n%d checks, %d failures\n", meattest::g_checks, meattest::g_failures);
     return meattest::g_failures == 0 ? 0 : 1;

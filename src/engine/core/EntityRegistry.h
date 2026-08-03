@@ -13,6 +13,12 @@ namespace meat {
 using EntityId = std::uint64_t;
 inline constexpr EntityId kInvalidEntity = 0;
 
+// Adoption status: this is the project's chosen entity model (hand-rolled, EnTT
+// deliberately rejected), validated by tests/test_entity_registry.cpp, but NOT
+// yet the live store. ServerSim still keys its NPCs/projectiles/etc. off a plain
+// m_nextEntityId counter + typed vectors; the only current tie-in is
+// PhysicsWorld::RayHit::entity (body user-data → EntityId, 0 until bodies carry
+// it). Migrate those systems onto this registry rather than adding a parallel one.
 class EntityRegistry {
 public:
     EntityId create() {
