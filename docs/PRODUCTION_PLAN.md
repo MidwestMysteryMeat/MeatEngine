@@ -23,19 +23,26 @@ The shader-UBO bug broke *all* rendering and shipped undetected; the `abs(INT_MI
 write reached the authoritative server. Both were invisible because nothing tested for
 them. Close that first — everything after this is riskier without it.
 
-- [~] **ASan + UBSan CI job** running the test suite (added; verifying on CI).
+- [x] **ASan + UBSan CI job** — Debug + `MEAT_SANITIZE`; already caught a real UBSan
+      finding (FastNoiseLite's intentional hash wraparound, scoped-suppressed).
 - [x] **Layering guard** — CI fails if anything under `engine/` includes `game/`.
+- [x] **Build-tree caching** — skips the ~15-min dep rebuild on CI.
 - [ ] **clang-format check** in CI — deferred: needs a one-time format pass across the tree
       first (else it fails on all existing files), then enforce.
 - [x] **Worldgen determinism test** — same seed ⇒ byte-identical chunks.
+- [x] **Dungeon determinism test** — same seed ⇒ identical rooms/entrance; carve queries.
 - [x] **Save/load round-trip test** — edits + tick survive save→load; corrupt saves rejected.
-- [~] **Inventory / combat-math tests** — inventory done (stacking/removal/mags/codec);
-      combat math (penetration, damage mods, effect execution) still needs a ServerSim
-      integration test like the lag-comp one.
+- [x] **Inventory tests** — stacking/spill, cross-slot removal, magazines, wire codec.
+- [ ] **Combat-math / effects integration test** — penetration, damage mods, and effect
+      execution (Heal/ApplyModifier/AreaDamage) via a two-peer ServerSim harness. The last
+      Phase-1 coverage gap; lower ROI (Damage is covered by the lag-comp test).
 - [ ] **Headless render smoke gate** — `--shot` must succeed in CI so a shader/UBO
       regression fails the build (needs a GL context on the runner: xvfb/EGL). Wire the
       R720 VLM parity gate in as a nightly later.
 - [x] **Bonus: cross-convention animation retargeting** (Mixamo/UE4/UE5) — see Phase 5.
+
+**Coverage: 55 → 99 checks this session** across 6 new suites (net-permissions, delta-codec,
+entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
 
 ## Phase 2 — Scale & performance
 - [ ] **F1 interest management** — per-client scope → priority → budget before delta-encode.
