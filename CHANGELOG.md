@@ -28,7 +28,7 @@ All notable changes to MeatEngine are documented here. The format follows
   mannequin clips all drive the canonical (Mixamo) skeleton.
 - **Persistence**: save-file schema versioning (refuses newer-engine saves).
 - **Packaging**: `cmake --install` + CPack produce a versioned game archive.
-- **Tests**: 55 → 155 headless checks across worldgen/dungeon determinism,
+- **Tests**: 55 → 158 headless checks across worldgen/dungeon determinism,
   save/load, inventory, the effect system (knockback/ignite/chain/spawn), the Lua
   effect-primitive bridge, team deathmatch + friendly fire, reconnection, and
   packet fuzzing.
@@ -43,5 +43,9 @@ All notable changes to MeatEngine are documented here. The format follows
 ### Changed
 - `Engine` moved from `engine/` to `game/` (it composes game systems), so the
   engine layer no longer depends on the game layer.
+- **Unified player death**: every damage source (bullets, blasts, effects, NPCs,
+  scripts) now routes through one `killPlayer` path — so blast/effect kills credit
+  a frag, all deaths eject from ship seats and fire `on_player_death`, and respawn
+  clears lingering damage-over-time and buffs.
 
 <!-- Add a new "## [x.y.z] - YYYY-MM-DD" section per tagged release. -->

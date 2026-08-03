@@ -393,6 +393,12 @@ private:
     void damageNpc(Transport& transport, Npc& npc, float damage); // death → loot drop
     void spawnPickup(ItemId item, std::uint16_t count, glm::vec3 pos); // ItemPickup world entity
     void dropPlayerLoot(Player& player, glm::vec3 pos); // drop-on-death scatter (GameRules-gated)
+    // The single player-death path: scatter loot, respawn at the pad, eject from
+    // any ship seat, credit the killer (no-op for env/suicide/Sandbox), and fire
+    // the on_player_death script hook. Every damage source routes through here so
+    // scoring, ship handling, and the death hook stay consistent — and a future
+    // respawn policy has one home. killer 0 = environment/NPC (no frag).
+    void killPlayer(Player& victim, PeerId victimPeer, PeerId killer);
     void loadSaveBody(const nlohmann::json& j); // may throw; initFromSave bounds it
     bool tryPickup(Transport& transport, PeerId peer, Player& player); // true if grabbed
     void fireHitscan(Transport& transport, PeerId peer, Player& player,

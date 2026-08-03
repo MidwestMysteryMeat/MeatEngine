@@ -76,6 +76,12 @@ entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
 - [ ] **Split the god-files** by concern: `ServerSim.cpp` (2518), `RoomEditor.cpp` (2396),
       `Engine.cpp` (1984) are ~35% of the codebase.
 - [x] engine/→game/ layering fixed (Engine moved to game/); Phase-1 guard locks it in.
+- [x] **Unified player-death path** — eight duplicated drop+respawn blocks (hitscan, blast,
+      effect Damage/Chain/Ignite, NPC melee, AI ship, Lua kill) collapsed into one
+      `killPlayer(victim, victimPeer, killer)`. Fixed real inconsistencies in the process:
+      blast/effect kills now credit a frag, every death (not just Lua's) ejects the victim
+      from a ship seat and fires `on_player_death`, and respawn clears lingering DoT/modifiers
+      so a lethal burn kills once. This is also the single seam a respawn policy will hook.
 
 ## Phase 5 — Feature depth (enough to ship a game)
 - [~] **GameMode framework** — `GameRules.gameMode` = Sandbox / Deathmatch /

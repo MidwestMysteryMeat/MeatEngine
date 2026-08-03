@@ -482,19 +482,7 @@ void ServerSim::setupScripting() {
         log::info("[lua] damage_player {} for {:.1f} (hp now {:.0f})", peerId, dealt, pl.health);
         if (pl.health > 0.0f) return;
         log::info("[lua] player {} killed by script", peerId);
-        dropPlayerLoot(pl, pl.controller.position());
-        pl.controller.setState(defaultSpawnPos(), glm::vec3(0));
-        pl.health = 100.0f;
-        if (pl.pilotingShip != 0) {
-            if (Ship* ps = findShip(pl.pilotingShip)) {
-                if (pl.shipRole == 1) ps->pilot = 0;
-                if (pl.shipRole == 2) ps->passenger = 0;
-                if (ps->pilot == 0 && ps->passenger == 0) ensureShipBody(*ps);
-            }
-            pl.pilotingShip = 0;
-            pl.shipRole = 0;
-        }
-        m_scripts.onPlayerDeath(static_cast<std::uint32_t>(peer));
+        killPlayer(pl, peer, 0); // script/environment kill: no frag credit
     };
     api.announce = [this](const std::string& s) {
         if (s.empty()) return;
@@ -870,19 +858,7 @@ void ServerSim::updateShips(Transport& transport) {
                             best->health -= kAiDamage;
                             if (best->health <= 0.0f) {
                                 log::info("server: AI ship {} downed player {}", ship.id, bestPeer);
-                                dropPlayerLoot(*best, best->controller.position());
-                                best->controller.setState(defaultSpawnPos(), glm::vec3(0));
-                                best->health = 100.0f;
-                                if (best->pilotingShip != 0) {
-                                    if (Ship* ps = findShip(best->pilotingShip)) {
-                                        if (best->shipRole == 1) ps->pilot = 0;
-                                        if (best->shipRole == 2) ps->passenger = 0;
-                                        if (ps->pilot == 0 && ps->passenger == 0)
-                                            ensureShipBody(*ps);
-                                    }
-                                    best->pilotingShip = 0;
-                                    best->shipRole = 0;
-                                }
+                                killPlayer(*best, bestPeer, 0); // AI/environment kill
                             }
                         }
                     }
@@ -1130,6 +1106,26 @@ void ServerSim::dropPlayerLoot(Player& player, glm::vec3 pos) {
     if (dropped > 0) player.inventoryDirty = true; // flushed on the victim's next combat tick
 }
 
+void ServerSim::killPlayer(Player& victim, PeerId victimPeer, PeerId killer) {
+    dropPlayerLoot(victim, victim.controller.position()); // scatter before respawn
+    victim.controller.setState(defaultSpawnPos(), glm::vec3(0));
+    victim.health = 100.0f;
+    victim.burns.clear();     // respawn is a clean slate: no lingering DoT...
+    victim.modifiers.clear(); // ...or buffs/debuffs (else a burn re-kills post-respawn)
+    // Eject from any ship seat so the hull frees up and the capsule respawns clean.
+    if (victim.pilotingShip != 0) {
+        if (Ship* ps = findShip(victim.pilotingShip)) {
+            if (victim.shipRole == 1) ps->pilot = 0;
+            if (victim.shipRole == 2) ps->passenger = 0;
+            if (ps->pilot == 0 && ps->passenger == 0) ensureShipBody(*ps);
+        }
+        victim.pilotingShip = 0;
+        victim.shipRole = 0;
+    }
+    registerFrag(killer, victimPeer); // no-op for Sandbox / environment / suicide
+    if (victimPeer != 0) m_scripts.onPlayerDeath(static_cast<std::uint32_t>(victimPeer));
+}
+
 std::vector<glm::ivec3> ServerSim::planPath(glm::vec3 fromPos, glm::vec3 toPos, glm::ivec3 fromCell,
                                             glm::ivec3 toCell) {
     // Optional Detour navmesh first. Its string-pulled world corners are snapped
@@ -1205,9 +1201,7 @@ void ServerSim::updateNpcs(Transport& transport) {
                 bestPlayer->health -= zombie ? 15.0f : 12.0f;
                 if (bestPlayer->health <= 0.0f) {
                     log::info("server: player {} was mauled", bestPeer);
-                    dropPlayerLoot(*bestPlayer, bestPlayer->controller.position());
-                    bestPlayer->controller.setState(defaultSpawnPos(), glm::vec3(0));
-                    bestPlayer->health = 100.0f;
+                    killPlayer(*bestPlayer, bestPeer, 0); // NPC/environment kill
                 }
             }
             continue; // in melee range: no need to path
@@ -1218,9 +1212,7 @@ void ServerSim::updateNpcs(Transport& transport) {
                 bestPlayer->health -= 8.0f; // LoS already verified above
                 if (bestPlayer->health <= 0.0f) {
                     log::info("server: player {} was shot down", bestPeer);
-                    dropPlayerLoot(*bestPlayer, bestPlayer->controller.position());
-                    bestPlayer->controller.setState(defaultSpawnPos(), glm::vec3(0));
-                    bestPlayer->health = 100.0f;
+                    killPlayer(*bestPlayer, bestPeer, 0); // NPC/environment kill
                 }
             }
             if (dist < kShootRange * 0.6f) continue; // holds distance, doesn't rush
@@ -1536,10 +1528,7 @@ void ServerSim::marchBullet(Transport& transport, PeerId peer, Player& player,
             victim->health -= shotDamage * damageScale;
             if (victim->health <= 0.0f) {
                 log::info("server: player {} fragged player {}", peer, victimPeer);
-                registerFrag(peer, victimPeer);
-                dropPlayerLoot(*victim, victim->controller.position()); // scatter before respawn
-                victim->controller.setState(defaultSpawnPos(), glm::vec3(0));
-                victim->health = 100.0f;
+                killPlayer(*victim, victimPeer, peer);
             }
             return; // flesh stops bullets (AP ammo types may change this later)
         }
@@ -1610,9 +1599,7 @@ void ServerSim::applyBlast(Transport& transport, PeerId source, glm::vec3 center
         player->health -= dealt;
         if (player->health <= 0.0f) {
             log::info("server: player {} blew up player {}", source, peer);
-            dropPlayerLoot(*player, player->controller.position()); // scatter before respawn
-            player->controller.setState(defaultSpawnPos(), glm::vec3(0));
-            player->health = 100.0f;
+            killPlayer(*player, peer, source); // blast now credits the source
         }
     }
     for (Npc& npc : m_npcs) {
@@ -1731,12 +1718,7 @@ void ServerSim::applyChainDamage(PeerId source, glm::vec3 origin, float damage,
         best->health -= damage;
         hit.push_back(bestPeer);
         lastPos = best->controller.position();
-        if (best->health <= 0.0f) {
-            dropPlayerLoot(*best, best->controller.position());
-            best->controller.setState(defaultSpawnPos(), glm::vec3(0));
-            best->health = 100.0f;
-            if (source != 0 && source != bestPeer) registerFrag(source, bestPeer);
-        }
+        if (best->health <= 0.0f) killPlayer(*best, bestPeer, source);
     }
 }
 
@@ -1757,12 +1739,7 @@ void ServerSim::tickBurns(Transport& transport, PeerId peer, Player& player, flo
     std::erase_if(player.burns, [](const Player::Burn& b) { return b.remaining <= 0.0f; });
     if (total <= 0.0f || player.health <= 0.0f) return;
     player.health -= total;
-    if (player.health <= 0.0f) {
-        dropPlayerLoot(player, player.controller.position());
-        player.controller.setState(defaultSpawnPos(), glm::vec3(0));
-        player.health = 100.0f;
-        if (killer != 0 && killer != peer) registerFrag(killer, peer); // DoT kill credit
-    }
+    if (player.health <= 0.0f) killPlayer(player, peer, killer); // DoT kill credit
     (void)transport;
 }
 
@@ -1779,13 +1756,11 @@ void ServerSim::applyEffect(Transport& transport, const Effect& effect, PeerId s
         if (targetNpc) {
             damageNpc(transport, *targetNpc, dmg);
         } else if (targetPlayer) {
-            if (friendlyBlocked(source, peerOfPlayer(targetPlayer))) break; // no teammate damage
+            const PeerId victimPeer = peerOfPlayer(targetPlayer);
+            if (friendlyBlocked(source, victimPeer)) break; // no teammate damage
             targetPlayer->health -= dmg;
-            if (targetPlayer->health <= 0.0f) {
-                dropPlayerLoot(*targetPlayer, targetPlayer->controller.position());
-                targetPlayer->controller.setState(defaultSpawnPos(), glm::vec3(0));
-                targetPlayer->health = 100.0f;
-            }
+            if (targetPlayer->health <= 0.0f)
+                killPlayer(*targetPlayer, victimPeer, source); // effect Damage now credits
         }
         break;
     }

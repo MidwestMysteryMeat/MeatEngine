@@ -904,6 +904,36 @@ void testFriendlyFireGate() {
     check(m1 >= 1, "friendly fire on: a teammate can be caught in the arc");
 }
 
+// Every damage source now routes through one killPlayer path, so an effect kill
+// credits a frag (blast/effect Damage previously did not) and the respawn clears
+// the victim's DoT so a lethal burn kills exactly once, not repeatedly.
+void testDamageOverTimeKillCreditsOnce() {
+    std::printf("a lethal DoT credits one frag and clears on respawn (no re-kill)\n");
+    ScriptedTransport wire;
+    meat::GameRules rules;
+    rules.terrain = meat::GameRules::Terrain::Void;
+    rules.gameMode = meat::GameRules::GameMode::Deathmatch;
+    rules.fragLimit = 99; // don't let the match end mid-test
+    meat::ServerSim server(rules);
+    if (!server.init(31u)) { check(false, "server booted"); return; }
+    for (meat::PeerId p = 1; p <= 2; ++p) {
+        wire.connect(p);
+        wire.packet(p, meat::HelloMsg{meat::kProtocolVersion, "p", "", ""});
+    }
+    server.pump(wire);
+    for (int i = 0; i < 10; ++i) server.tick(wire);
+    check(server.fragsOf(1) == 0, "no frags before the kill");
+
+    // Player 1 ignites player 2 lethally: 1000 dps over 1 s dies in a handful of
+    // ticks, and the burn still has time left when the victim respawns.
+    server.applyDamageOverTime(2, 1000.0f, 1.0f, 1);
+    for (int i = 0; i < 60; ++i) server.tick(wire); // run out the whole burn window
+
+    check(server.fragsOf(1) == 1, "the igniter is credited exactly one frag");
+    check(server.playerHealth(2) > 99.0f,
+          "the victim respawned at full health with the burn cleared");
+}
+
 } // namespace
 
 namespace meattest {
@@ -933,6 +963,7 @@ void runNetPermissions() {
     testSpawnEntityReplicates();
     testTeamDeathmatchScoring();
     testFriendlyFireGate();
+    testDamageOverTimeKillCreditsOnce();
 }
 
 } // namespace meattest
