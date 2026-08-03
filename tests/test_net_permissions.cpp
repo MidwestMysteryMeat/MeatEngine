@@ -421,18 +421,20 @@ void testHitscanIsLagCompensated() {
         return nullptr;
     };
 
-    // Chunk colliders stream in on worker threads, so grounding depends on
-    // wall-clock (workers finishing), not tick count. A tight tick loop can
-    // outrun the workers — badly so under ASan, where the instrumented mesher
-    // is several times slower — so yield generously each iteration and give it
-    // a large budget. It returns the instant the victim grounds, so a fast
-    // build barely waits; only a slow one pays. (~5 s ceiling.)
-    auto waitVictimGrounded = [&](int maxSteps) {
-        for (int i = 0; i < maxSteps; ++i) {
+    // Chunk colliders are built on worker threads. Rather than guess a wall-clock
+    // budget (unreliable under ASan's much slower instrumented mesher), prime the
+    // spawn stream, then wait DETERMINISTICALLY for the mesh queue to drain, then
+    // let the victim settle onto the now-present collider.
+    auto waitVictimGrounded = [&](int /*unused*/) {
+        for (int i = 0; i < 30; ++i) step(idle, idle, 0); // prime spawn-area meshing
+        for (int i = 0; i < 8000 && !server.meshingIdle(); ++i) {
+            step(idle, idle, 0);
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        for (int i = 0; i < 300; ++i) {
             const meat::PlayerState* v = stateOf(1, 2);
             if (v && v->onGround) return true;
             step(idle, idle, 0);
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
         return false;
     };
@@ -528,11 +530,15 @@ void testMedkitHealsThroughEffectSystem() {
     // stream in on worker threads (slow under ASan), and a falling victim would
     // make the aimed shot miss. Generous budget; returns the moment grounded.
     auto waitGrounded = [&](meat::PeerId who) {
-        for (int i = 0; i < 1000; ++i) {
+        for (int i = 0; i < 30; ++i) step(idle, idle); // prime spawn-area meshing
+        for (int i = 0; i < 8000 && !server.meshingIdle(); ++i) {
+            step(idle, idle);
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        for (int i = 0; i < 300; ++i) {
             const meat::PlayerState* p = stateOf(who);
             if (p && p->onGround) return true;
             step(idle, idle);
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
         return false;
     };

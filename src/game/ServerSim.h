@@ -71,6 +71,10 @@ public:
     // permission check that reports "denied" while the block changed anyway.
     // (propCount() lives further down, where WorldProp is in scope.)
     const VoxelWorld& voxels() const { return m_voxels; }
+    // True when no chunk-mesh/collider jobs are queued or running. Tests wait on
+    // this to know the spawn-area colliders are built before checking grounding,
+    // instead of guessing a wall-clock budget (which is unreliable under ASan).
+    bool meshingIdle() const { return m_jobs.idle(); }
     const GameRules& rules() const { return m_rules; }
     int playerCount() const { return static_cast<int>(m_players.size()); }
     // B3b: authoritative gravity field (env base + volumes + orbital bodies).
