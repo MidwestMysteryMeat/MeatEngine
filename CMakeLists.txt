@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.28)
 project(MeatEngine VERSION 0.1.0 LANGUAGES C CXX)
 
+# Several vendored deps (RecastNavigation, glm, enkiTS) declare an ancient
+# cmake_minimum_required(<3.5), which CMake 4.x rejects as a hard error rather
+# than a warning. Floor those old policy requests at 3.5 so the tree configures
+# on modern CMake (the CI runners and any evaluator's toolchain) as well as older
+# ones. Introduced in CMake 3.31; ignored (harmless) on earlier versions.
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
