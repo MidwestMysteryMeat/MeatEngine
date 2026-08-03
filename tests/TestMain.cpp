@@ -30,6 +30,7 @@ void runNetPermissions();
 void runDeltaSnapshot();
 void runEntityRegistry();
 void runWorldgen();
+void runSaveLoad();
 
 } // namespace meattest
 
@@ -42,6 +43,7 @@ int main() {
     meattest::runDeltaSnapshot();
     meattest::runEntityRegistry();
     meattest::runWorldgen();
+    meattest::runSaveLoad();
 
     std::printf("\n%d checks, %d failures\n", meattest::g_checks, meattest::g_failures);
     return meattest::g_failures == 0 ? 0 : 1;
