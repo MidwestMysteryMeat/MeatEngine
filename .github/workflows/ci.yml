@@ -116,7 +116,10 @@ jobs:
 
   windows:
     name: Windows (MSVC, Release)
-    runs-on: windows-latest
+    # Pin the stable VS2022 image: windows-latest now ships a PREVIEW VS2026 MSVC
+    # whose sol2 template instantiation hangs (>27 min on one TU). VS2022 builds
+    # the whole tree in minutes, matching local dev.
+    runs-on: windows-2022
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
@@ -145,8 +148,11 @@ jobs:
       - name: Configure
         run: cmake -S . -B build -G Ninja -Wno-dev -DCMAKE_BUILD_TYPE=Release
 
+      # Build only the test binary — it compiles every engine source plus the
+      # tests and is what the Test step runs, so MSVC coverage is preserved
+      # without also compiling everything again for MeatEngine.exe.
       - name: Build
-        run: cmake --build build --parallel
+        run: cmake --build build --target MeatTests --parallel
 
       - name: Test
         run: .\build\MeatTests.exe
