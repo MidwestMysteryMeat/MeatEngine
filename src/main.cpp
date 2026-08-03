@@ -214,6 +214,11 @@ meat::EngineConfig parseArgs(int argc, char** argv) {
             if (const char* n = next()) config.serverName = n;
         } else if (arg == "--password") {
             if (const char* p = next()) config.serverPassword = p;
+        } else if (arg == "--maxplayers") {
+            if (const char* n = next()) {
+                const int v = std::atoi(n);
+                if (v > 0) config.maxPlayers = v;
+            }
         } else if (arg == "--master") {
             if (const char* m = next()) config.master = m;
         } else if (arg == "--shot") {

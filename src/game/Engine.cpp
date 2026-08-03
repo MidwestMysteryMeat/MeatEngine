@@ -200,6 +200,7 @@ bool Engine::initNetwork(const EngineConfig& config) {
         NetPolicy policy;
         policy.allowRemoteEditing = true;
         policy.serverPassword = config.serverPassword; // gate joiners when set
+        policy.maxPlayers = config.maxPlayers;          // concurrent-player cap
         server->setNetPolicy(policy);
         return config.loadPath.empty() ? server->init(config.seed)
                                        : server->initFromSave(config.loadPath);

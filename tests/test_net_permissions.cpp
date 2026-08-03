@@ -335,6 +335,21 @@ struct ScriptedTransport final : meat::Transport {
     }
 };
 
+// A full server refuses further connections before allocating any state, so a
+// connection flood can't exhaust it.
+void testServerFullRefusesConnections() {
+    std::printf("a full server refuses further connections\n");
+    ScriptedTransport wire;
+    meat::ServerSim server;
+    meat::NetPolicy policy;
+    policy.maxPlayers = 2;
+    server.setNetPolicy(policy);
+    if (!server.init(1u)) { check(false, "server booted"); return; }
+    for (meat::PeerId p = 1; p <= 6; ++p) wire.connect(p); // flood past the cap
+    server.pump(wire);
+    check(server.playerCount() == 2, "admits exactly maxPlayers and no more");
+}
+
 // A peer that drops and rejoins must be cleaned up and admitted fresh, with no
 // leftover state and no crash — the common case for a flaky connection.
 void testReconnectIsClean() {
@@ -758,6 +773,7 @@ void runNetPermissions() {
     testMedkitHealsThroughEffectSystem();
     testInterestManagementScopesEntities();
     testServerPasswordGatesJoin();
+    testServerFullRefusesConnections();
     testReconnectIsClean();
     testRandomPacketsSurvive();
 }

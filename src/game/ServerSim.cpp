@@ -1776,6 +1776,14 @@ void ServerSim::pump(Transport& transport) {
     for (NetEvent& e : events) {
         switch (e.type) {
         case NetEvent::Type::Connected: {
+            // Refuse when full, before allocating any per-peer state — a
+            // connection flood must not be able to exhaust the server.
+            if (static_cast<int>(m_players.size()) >= m_netPolicy.maxPlayers) {
+                log::info("server: peer {} refused — server full ({}/{})", e.peer,
+                          m_players.size(), m_netPolicy.maxPlayers);
+                transport.disconnect(e.peer);
+                break;
+            }
             log::info("server: peer {} connected", e.peer);
             auto player = std::make_unique<Player>();
             // Ordinary player until a Hello proves otherwise, and metered from

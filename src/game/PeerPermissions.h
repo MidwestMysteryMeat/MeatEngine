@@ -68,6 +68,11 @@ struct NetPolicy {
     // RateLimiter in ServerSim.h for the buckets these feed.
     float voxelEditsPerSecond = 30.0f;
     float propEditsPerSecond = 10.0f;
+
+    // Hard cap on concurrent players. A new connection past this is refused
+    // before any per-player state is allocated, so a connection flood can't
+    // exhaust the server's memory. Dedicated hosts tune this to their capacity.
+    int maxPlayers = 64;
 };
 
 } // namespace meat
