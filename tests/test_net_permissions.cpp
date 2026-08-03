@@ -585,6 +585,38 @@ void testMedkitHealsThroughEffectSystem() {
     check(vHealed->health > hurt, "using the medkit restored health via the effect system");
 }
 
+// F1 interest management: with a positive interestRadius a client should only
+// receive entities near its own player. Same seed, wide vs tiny radius — the
+// tiny-radius client must see strictly fewer entities (dungeon NPCs/loot sit
+// underground, far from the surface spawn). Players are never scoped out.
+void testInterestManagementScopesEntities() {
+    std::printf("interest management culls entities outside a client's radius\n");
+    auto entityCountFor = [](float radius) -> std::size_t {
+        ScriptedTransport wire;
+        meat::GameRules rules;
+        rules.terrain = meat::GameRules::Terrain::Normal; // spawns dungeon NPCs + loot
+        rules.interestRadius = radius;
+        meat::ServerSim server(rules);
+        if (!server.init(4242u)) return static_cast<std::size_t>(-1);
+        wire.connect(1);
+        wire.packet(1, meat::HelloMsg{meat::kProtocolVersion, "p", ""});
+        server.pump(wire);
+        std::uint64_t t = 0;
+        for (int i = 0; i < 40; ++i) {
+            meat::PlayerCommand c{};
+            c.tick = ++t;
+            wire.packet(1, meat::CommandMsg{c, 0});
+            server.pump(wire);
+            server.tick(wire);
+        }
+        return wire.lastSnapshot[1].entities.size();
+    };
+    const std::size_t wide = entityCountFor(100000.0f); // effectively unbounded
+    const std::size_t tiny = entityCountFor(3.0f);      // just around the player
+    check(wide > 0, "there are entities to scope (dungeon NPCs/loot)");
+    check(tiny < wide, "a tiny interest radius replicates fewer entities");
+}
+
 } // namespace
 
 namespace meattest {
@@ -605,6 +637,7 @@ void runNetPermissions() {
     testMoveAndRemovePropNeedPermission();
     testHitscanIsLagCompensated();
     testMedkitHealsThroughEffectSystem();
+    testInterestManagementScopesEntities();
 }
 
 } // namespace meattest

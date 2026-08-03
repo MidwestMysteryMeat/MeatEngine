@@ -173,7 +173,7 @@ void ServerSim::reseedWorld(std::uint32_t seed, GameRules::Terrain terrain,
     m_companions.clear();
     m_voxelDamage.clear();
     m_nextEntityId = 1;
-    m_snapshotRing.clear();
+    m_clientBaselines.clear();
 
     // Chunks + colliders + navmesh (unload callback removes both).
     m_voxels.clearWorld();
@@ -1777,7 +1777,8 @@ void ServerSim::pump(Transport& transport) {
                 }
             }
             m_players.erase(e.peer);
-            m_rejectLog.erase(e.peer); // no state kept for a peer that is gone
+            m_rejectLog.erase(e.peer);       // no state kept for a peer that is gone
+            m_clientBaselines.erase(e.peer); // its snapshot ring goes with it
             break;
         }
         case NetEvent::Type::Packet:
@@ -2507,26 +2508,42 @@ void ServerSim::broadcastSnapshot(Transport& transport) {
         snap.entities.push_back({e.id, static_cast<std::uint8_t>(e.type), e.pos, e.yaw, 0,
                                  0.0f, e.item});
     }
-    // Store this snapshot as a baseline candidate, then evict the oldest so the
-    // ring stays ~1.6 s deep (32 @ 20 Hz). Stored before the per-peer lastCmdTick
-    // mutation below — lastCmdTick is never diffed, so the baseline copy is fine.
-    m_snapshotRing[snap.tick] = snap;
-    while (m_snapshotRing.size() > 32) m_snapshotRing.erase(m_snapshotRing.begin());
-
+    // Each client gets an INTEREST-SCOPED view: all players (always relevant —
+    // you must see who can shoot you) plus only the entities near its own player
+    // when interestRadius > 0. Its delta baseline is its own last-acked view (not
+    // a shared one), because scoping can hand two clients different entity sets.
     static const SnapshotMsg kEmptyBaseline{}; // tick 0, no records => keyframe
+    const float radius = m_rules.interestRadius;
+    const float radius2 = radius * radius;
     for (auto& [peer, player] : m_players) {
-        snap.lastCmdTick = player->lastCmdTick; // per-recipient ack of their own input
-        // Baseline = the snapshot this client last acked, if we still hold it;
-        // otherwise the empty keyframe (cold start or ack aged out of the ring).
+        SnapshotMsg view;
+        view.tick = snap.tick;
+        view.lastCmdTick = player->lastCmdTick; // per-recipient ack of their own input
+        view.players = snap.players;            // players are never scoped out
+        if (radius <= 0.0f) {
+            view.entities = snap.entities; // disabled: every entity, historical behaviour
+        } else {
+            const glm::vec3 center = player->controller.position();
+            for (const EntityState& e : snap.entities) {
+                const glm::vec3 d = e.pos - center;
+                if (glm::dot(d, d) <= radius2) view.entities.push_back(e);
+            }
+        }
+
+        auto& ring = m_clientBaselines[peer];
         const SnapshotMsg* base = &kEmptyBaseline;
         if (player->ackedSnapshotTick != 0) {
-            const auto it = m_snapshotRing.find(player->ackedSnapshotTick);
-            if (it != m_snapshotRing.end()) base = &it->second;
+            const auto it = ring.find(player->ackedSnapshotTick);
+            if (it != ring.end()) base = &it->second;
         }
         ByteWriter w;
         w.write(static_cast<std::uint8_t>(MsgType::DeltaSnapshot));
-        encodeDelta(snap, *base, w);
+        encodeDelta(view, *base, w);
         transport.send(peer, std::move(w).take(), false); // still unreliable
+
+        // Remember exactly what this client saw, for its next delta baseline.
+        ring[view.tick] = std::move(view);
+        while (ring.size() > 32) ring.erase(ring.begin());
     }
 }
 

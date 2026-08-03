@@ -413,11 +413,12 @@ private:
     // die with the block; pristine blocks are implicit full-hp.
     std::unordered_map<glm::ivec3, float, IVec3Hash> m_voxelDamage;
     std::unordered_map<PeerId, std::unique_ptr<Player>> m_players;
-    // Ring of the last N emitted snapshots (tick -> full state), shared across
-    // clients because there is no interest management yet. Each client's delta
-    // baseline is ring[player->ackedSnapshotTick]. Ordered map so we can evict
-    // the oldest (begin()) cheaply. N = 32 (~1.6 s at 20 Hz).
-    std::map<std::uint64_t, SnapshotMsg> m_snapshotRing;
+    // Per-client ring of the last N snapshots WE SENT THAT CLIENT (tick -> the
+    // interest-scoped view it received). The delta baseline for a client is its
+    // own ring[ackedSnapshotTick] — it must diff against exactly what that client
+    // saw, since scoping can give two clients different entity sets. Ordered inner
+    // map evicts the oldest cheaply. N = 32 (~1.6 s at 20 Hz). Erased on disconnect.
+    std::unordered_map<PeerId, std::map<std::uint64_t, SnapshotMsg>> m_clientBaselines;
     BlockPalette m_palette;
     GameRules m_rules;
     ItemRegistry m_items;

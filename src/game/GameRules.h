@@ -47,6 +47,11 @@ struct GameRules {
     // from Welcome on a join client so host scale wins). Devs pick anything from fine
     // (< 0.5) to chunkier-than-Minecraft (> 1). Must match across a session.
     float voxelSize = 0.5f; // == meat::kDefaultVoxelSize (avoid the heavy Chunk.h include here)
+    // F1 interest management: only replicate non-player entities within this many
+    // metres of each client's own player. 0 = disabled (every client gets every
+    // entity — the historical behaviour). Players are always replicated regardless
+    // (you must see who can shoot you). Cuts snapshot bandwidth on large maps.
+    float interestRadius = 0.0f;
 
     std::uint8_t flagsByte() const {
         return static_cast<std::uint8_t>((finiteAmmo ? 1 : 0) | (minedBlockDrops ? 2 : 0) |
