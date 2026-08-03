@@ -1633,6 +1633,38 @@ void ServerSim::applyDamageOverTime(PeerId target, float dps, float seconds, Pee
     it->second->burns.push_back({dps, seconds, source});
 }
 
+void ServerSim::applyChainDamage(PeerId source, glm::vec3 origin, float damage,
+                                 int maxTargets, float range) {
+    if (damage <= 0.0f || maxTargets <= 0) return;
+    const float range2 = range * range;
+    std::vector<PeerId> hit;
+    hit.reserve(static_cast<std::size_t>(maxTargets));
+    glm::vec3 lastPos = origin;
+    for (int n = 0; n < maxTargets; ++n) {
+        // Nearest live, spawned, not-yet-hit player within range of the last arc.
+        Player* best = nullptr;
+        PeerId bestPeer = 0;
+        float bestD2 = range2;
+        for (auto& [peer, pl] : m_players) {
+            if (!pl || !pl->spawned || pl->health <= 0.0f) continue;
+            if (std::find(hit.begin(), hit.end(), peer) != hit.end()) continue;
+            const glm::vec3 d = pl->controller.position() - lastPos;
+            const float d2 = glm::dot(d, d);
+            if (d2 <= bestD2) { bestD2 = d2; best = pl.get(); bestPeer = peer; }
+        }
+        if (!best) break; // arc dies when no target is in range
+        best->health -= damage;
+        hit.push_back(bestPeer);
+        lastPos = best->controller.position();
+        if (best->health <= 0.0f) {
+            dropPlayerLoot(*best, best->controller.position());
+            best->controller.setState(defaultSpawnPos(), glm::vec3(0));
+            best->health = 100.0f;
+            if (source != 0 && source != bestPeer) registerFrag(source, bestPeer);
+        }
+    }
+}
+
 void ServerSim::tickBurns(Transport& transport, PeerId peer, Player& player, float dt) {
     if (player.burns.empty()) return; // hot path: most players carry none
     // Clamp each tick's contribution to the burn's own remaining lifetime so a
@@ -1698,6 +1730,15 @@ void ServerSim::applyEffect(Transport& transport, const Effect& effect, PeerId s
         // ticked in tickBurns each fixed tick, credited to the igniter on kill.
         if (targetPlayer)
             targetPlayer->burns.push_back({effect.params[0], effect.duration, source});
+        break;
+    case EffectKind::Chain:
+        // Arc damage: params[0] = damage per target, params[1] = max targets,
+        // `radius` = jump range. Starts nearest the primary target's position (or
+        // the effect's targetPos for a positional trigger).
+        applyChainDamage(source,
+                         targetPlayer ? targetPlayer->controller.position() : targetPos,
+                         effect.params[0], std::max(1, static_cast<int>(effect.params[1])),
+                         effect.radius);
         break;
     case EffectKind::Knockback:
         if (targetPlayer) {

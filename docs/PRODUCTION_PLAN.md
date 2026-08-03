@@ -85,9 +85,11 @@ entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
 - [ ] **Unified entity-snapshot path** — turrets/companions/pickups replicate via the player
       path; enables generic `SpawnEntity`.
 - [~] **Effect kinds** — Damage / AreaDamage / Heal / ApplyModifier (enforced
-      speed = **Slow/haste**) / **Knockback** / **Ignite** (DoT, stacks + kill-credit,
-      public `applyDamageOverTime` for abilities/scripts) done. Remaining: **Chain**
-      (multi-target), **SpawnEntity**, plus **Lua-defined effects**.
+      speed = **Slow/haste**) / **Knockback** / **Ignite** (DoT, stacks + kill-credit) /
+      **Chain** (arc to N nearest targets within range, kill-credit) done, with public
+      `applyDamageOverTime` + `applyChainDamage` entries for abilities/scripts.
+      Remaining: **SpawnEntity** (needs the unified entity-snapshot path below), plus
+      **Lua-defined effects**.
 - [ ] **Dynamic navmesh rebuild on voxel edit** (tiled Detour) — AI silently breaks when
       terrain changes, which is always in a voxel game.
 - [x] **Cross-convention animation retargeting** — Mixamo, UE4-mannequin, and UE5-mannequin

@@ -751,6 +751,45 @@ void testInterestManagementScopesEntities() {
     check(tiny < wide, "a tiny interest radius replicates fewer entities");
 }
 
+// The Chain effect arcs damage across several players and stops at its target
+// cap. Three players connect (they spawn co-located, so all are within jump
+// range) on a Void world so no ambient AI muddies the health readings; a chain
+// of two must damage exactly two of them, sparing the third. Driven through the
+// public applyChainDamage entry — the same code the Chain effect kind runs.
+void testChainDamageArcsAndCaps() {
+    std::printf("chain damage arcs to nearby players and stops at its target cap\n");
+    ScriptedTransport wire;
+    meat::GameRules rules;
+    rules.terrain = meat::GameRules::Terrain::Void; // no ambient AI to skew health
+    meat::ServerSim server(rules);
+    if (!server.init(11u)) { check(false, "server booted"); return; }
+
+    for (meat::PeerId p = 1; p <= 3; ++p) {
+        wire.connect(p);
+        wire.packet(p, meat::HelloMsg{meat::kProtocolVersion, "p", "", ""});
+    }
+    server.pump(wire);
+    for (int i = 0; i < 10; ++i) server.tick(wire); // spawn all three
+    check(server.playerCount() == 3, "three players joined");
+    check(server.playerHealth(1) > 99.0f && server.playerHealth(2) > 99.0f &&
+              server.playerHealth(3) > 99.0f,
+          "all three start at full health");
+
+    // Big range so co-location/origin don't matter; cap of 2 out of 3 players.
+    server.applyChainDamage(0, glm::vec3(0.0f), 25.0f, 2, 1000.0f);
+
+    int damaged = 0;
+    float totalTaken = 0.0f;
+    for (meat::PeerId p = 1; p <= 3; ++p) {
+        const float taken = 100.0f - server.playerHealth(p);
+        if (taken > 0.5f) ++damaged;
+        totalTaken += taken;
+    }
+    check(damaged == 2, "the chain struck exactly its max of two targets");
+    check(std::fabs(totalTaken - 50.0f) < 0.1f,
+          "each struck player took the chain's 25 damage, the third none");
+}
+
 } // namespace
 
 namespace meattest {
@@ -776,6 +815,7 @@ void runNetPermissions() {
     testServerFullRefusesConnections();
     testReconnectIsClean();
     testRandomPacketsSurvive();
+    testChainDamageArcsAndCaps();
 }
 
 } // namespace meattest

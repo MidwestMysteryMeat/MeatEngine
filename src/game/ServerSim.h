@@ -90,6 +90,11 @@ public:
     // Apply a damage-over-time (Ignite) to a player: dps for `seconds`, credited
     // to `source` on kill. Public so abilities/scripts (and tests) can drive it.
     void applyDamageOverTime(PeerId target, float dps, float seconds, PeerId source);
+    // Chain (arc) damage: deal `damage` to up to `maxTargets` players, each within
+    // `range` of the previous, starting from the one nearest `origin`. Kills credit
+    // `source`. Public so abilities/scripts (and tests) can drive it.
+    void applyChainDamage(PeerId source, glm::vec3 origin, float damage, int maxTargets,
+                          float range);
     int fragsOf(PeerId p) const {
         const auto it = m_frags.find(p);
         return it == m_frags.end() ? 0 : it->second;
