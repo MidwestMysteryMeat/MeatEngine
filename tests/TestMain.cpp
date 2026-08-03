@@ -33,6 +33,7 @@ void runWorldgen();
 void runSaveLoad();
 void runBoneRetarget();
 void runInventory();
+void runDungeon();
 
 } // namespace meattest
 
@@ -48,6 +49,7 @@ int main() {
     meattest::runSaveLoad();
     meattest::runBoneRetarget();
     meattest::runInventory();
+    meattest::runDungeon();
 
     std::printf("\n%d checks, %d failures\n", meattest::g_checks, meattest::g_failures);
     return meattest::g_failures == 0 ? 0 : 1;
