@@ -102,3 +102,18 @@ if(MEAT_TEST_SOURCES)
     # Run from the repository root: the server loads assets by relative path.
     add_test(NAME headless COMMAND MeatTests WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
+
+# AddressSanitizer + UndefinedBehaviorSanitizer on OUR targets only (deps stay
+# uninstrumented — ASan's malloc interceptor still catches heap errors anywhere,
+# and UBSan covers our code). CI runs the test suite under this. Would have
+# caught the abs(INT_MIN) out-of-bounds write immediately. Clang/GCC only.
+option(MEAT_SANITIZE "Build engine + tests with ASan+UBSan" OFF)
+if(MEAT_SANITIZE AND NOT MSVC)
+    set(_meat_san -fsanitize=address,undefined -fno-omit-frame-pointer)
+    foreach(_t MeatEngine MeatTests)
+        if(TARGET ${_t})
+            target_compile_options(${_t} PRIVATE ${_meat_san})
+            target_link_options(${_t} PRIVATE ${_meat_san})
+        endif()
+    endforeach()
+endif()
