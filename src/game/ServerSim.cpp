@@ -174,6 +174,9 @@ void ServerSim::reseedWorld(std::uint32_t seed, GameRules::Terrain terrain,
     m_voxelDamage.clear();
     m_nextEntityId = 1;
     m_clientBaselines.clear();
+    m_frags.clear();
+    m_matchOver = false;
+    m_matchWinner = 0;
 
     // Chunks + colliders + navmesh (unload callback removes both).
     m_voxels.clearWorld();
@@ -1025,6 +1028,20 @@ void ServerSim::damageNpc(Transport& transport, Npc& npc, float damage) {
 }
 
 // Drop-on-death: scatter part of the victim's bag as world pickups at the spot
+// Credit a player-vs-player kill for Deathmatch and latch the match result once
+// someone reaches fragLimit. Suicides / environment kills (killer 0 or self) do
+// not score. Sandbox mode ignores this entirely.
+void ServerSim::registerFrag(PeerId killer, PeerId victim) {
+    if (m_rules.gameMode != GameRules::GameMode::Deathmatch) return;
+    if (killer == 0 || killer == victim) return;
+    const int score = ++m_frags[killer];
+    if (!m_matchOver && score >= m_rules.fragLimit) {
+        m_matchOver = true;
+        m_matchWinner = killer;
+        log::info("server: DEATHMATCH over — player {} wins ({} frags)", killer, score);
+    }
+}
+
 // they fell, so a killer (or the room) can loot the kill. Deterministic — the
 // same bag + position produce the same scatter on every peer/replay, keeping the
 // server-authoritative snapshots in sync. GameRules-gated (no-op when disabled).
@@ -1452,6 +1469,7 @@ void ServerSim::marchBullet(Transport& transport, PeerId peer, Player& player,
             victim->health -= shotDamage * damageScale;
             if (victim->health <= 0.0f) {
                 log::info("server: player {} fragged player {}", peer, victimPeer);
+                registerFrag(peer, victimPeer);
                 dropPlayerLoot(*victim, victim->controller.position()); // scatter before respawn
                 victim->controller.setState(defaultSpawnPos(), glm::vec3(0));
                 victim->health = 100.0f;

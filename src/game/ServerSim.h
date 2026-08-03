@@ -75,6 +75,17 @@ public:
     // this to know the spawn-area colliders are built before checking grounding,
     // instead of guessing a wall-clock budget (which is unreliable under ASan).
     bool meshingIdle() const { return m_jobs.idle(); }
+
+    // GameMode (Deathmatch) scoring. registerFrag credits a player-vs-player kill
+    // and, once someone reaches fragLimit, ends the match. Public so the kill
+    // paths and tests can drive it. Sandbox mode ignores scoring.
+    void registerFrag(PeerId killer, PeerId victim);
+    int fragsOf(PeerId p) const {
+        const auto it = m_frags.find(p);
+        return it == m_frags.end() ? 0 : it->second;
+    }
+    bool matchOver() const { return m_matchOver; }
+    PeerId matchWinner() const { return m_matchWinner; }
     const GameRules& rules() const { return m_rules; }
     int playerCount() const { return static_cast<int>(m_players.size()); }
     // B3b: authoritative gravity field (env base + volumes + orbital bodies).
@@ -419,6 +430,10 @@ private:
     // saw, since scoping can give two clients different entity sets. Ordered inner
     // map evicts the oldest cheaply. N = 32 (~1.6 s at 20 Hz). Erased on disconnect.
     std::unordered_map<PeerId, std::map<std::uint64_t, SnapshotMsg>> m_clientBaselines;
+    // Deathmatch scoring: frags per peer, plus the latched match-over result.
+    std::unordered_map<PeerId, int> m_frags;
+    bool m_matchOver = false;
+    PeerId m_matchWinner = 0;
     BlockPalette m_palette;
     GameRules m_rules;
     ItemRegistry m_items;

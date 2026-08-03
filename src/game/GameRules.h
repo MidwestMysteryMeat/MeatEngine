@@ -35,6 +35,13 @@ struct GameRules {
     // Project genre template (H1/H4). Space presets Void+Space env+ships; Racer spawns a car.
     enum class Template : std::uint8_t { Fps = 0, Tps = 1, Space = 2, Racer = 3 };
     Template gameTemplate = Template::Fps;
+    // Game mode: the rules of victory layered over a template. Sandbox = no win
+    // condition (the historical free-play). Deathmatch = first to fragLimit frags
+    // wins. Selectable via --mode / game.json "mode". More modes (Horde/Breach/
+    // teams) build on the same frag/score + match-over hooks.
+    enum class GameMode : std::uint8_t { Sandbox = 0, Deathmatch = 1 };
+    GameMode gameMode = GameMode::Sandbox;
+    int fragLimit = 10; // Deathmatch target score
     // When true, the environment's hemiStrength is applied (A3). When false, ambient is
     // classic isotropic only — the dark PSX-night look. Toggled via game.json / F7 / New Map.
     bool hemisphereAmbient = true;

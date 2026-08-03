@@ -71,6 +71,14 @@ void applyWorldFields(meat::EngineConfig& config, const nlohmann::json& j) {
         applyEnvironmentString(config, j["environment"].get<std::string>());
     if (j.contains("perspective") && j["perspective"].is_string())
         applyPerspectiveString(config, j["perspective"].get<std::string>());
+    if (j.contains("mode") && j["mode"].is_string()) {
+        const std::string m = j["mode"].get<std::string>();
+        config.rules.gameMode = (m == "deathmatch" || m == "dm")
+                                    ? meat::GameRules::GameMode::Deathmatch
+                                    : meat::GameRules::GameMode::Sandbox;
+    }
+    if (j.contains("fragLimit") && j["fragLimit"].is_number_integer())
+        config.rules.fragLimit = j["fragLimit"].get<int>();
     if (j.contains("seed") && j["seed"].is_number_unsigned())
         config.seed = j["seed"].get<std::uint32_t>();
     else if (j.contains("seed") && j["seed"].is_number_integer())
@@ -253,6 +261,13 @@ meat::EngineConfig parseArgs(int argc, char** argv) {
             if (const char* t = next()) applyTemplatePreset(config, t);
         } else if (arg == "--perspective") {
             if (const char* p = next()) applyPerspectiveString(config, p);
+        } else if (arg == "--mode") {
+            if (const char* m = next()) {
+                const std::string s = m;
+                config.rules.gameMode = (s == "deathmatch" || s == "dm")
+                                            ? meat::GameRules::GameMode::Deathmatch
+                                            : meat::GameRules::GameMode::Sandbox;
+            }
         } else {
             meat::log::warn("unknown argument '{}'", arg);
         }

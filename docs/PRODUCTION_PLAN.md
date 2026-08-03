@@ -73,8 +73,10 @@ entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
 - [x] engine/→game/ layering fixed (Engine moved to game/); Phase-1 guard locks it in.
 
 ## Phase 5 — Feature depth (enough to ship a game)
-- [ ] **GameMode framework** — teams, friendly fire, respawn policy, win-condition hooks;
-      `--mode` + mode in Welcome. Reference modes: Breach / Horde / Deathmatch / Sandbox.
+- [~] **GameMode framework** — first slice done: `GameRules.gameMode` (Sandbox / Deathmatch),
+      per-player frag scoring + fragLimit win condition (`registerFrag`/`matchOver`), wired to
+      `--mode` and `game.json`. Remaining: teams + friendly fire, respawn policy, more modes
+      (Breach/Horde), mode in Welcome, and a client-facing match-over announce.
 - [ ] **Unified entity-snapshot path** — turrets/companions/pickups replicate via the player
       path; enables generic `SpawnEntity`.
 - [ ] **Effect kinds** — Ignite / Knockback / Slow / Chain / SpawnEntity (only Damage /
