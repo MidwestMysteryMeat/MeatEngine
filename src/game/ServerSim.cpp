@@ -28,6 +28,11 @@ namespace meat {
 namespace {
 constexpr float kFixedDtServer = 1.0f / 60.0f;
 constexpr int kSnapshotEvery = 3; // 60 Hz sim → 20 Hz snapshots
+// Save-file schema version. Bump when the on-disk layout changes; the loader
+// rejects a save from a NEWER engine (it can't know the layout) and treats a
+// versionless file as the pre-versioning v0 (best-effort read). Same discipline
+// as the wire's kProtocolVersion so a content change can't silently misread old saves.
+constexpr int kSaveVersion = 1;
 // Spawn in world metres at voxel cell (16,16,16) — historical (8,8,8) at the
 // default 0.5 m/voxel. Scaling with kVoxelSize keeps the player above the
 // surface (voxel y ≈ 6–12) when the host picks a larger block size.
@@ -2308,6 +2313,7 @@ void ServerSim::processCombat(Transport& transport, PeerId peer, Player& player)
 
 bool ServerSim::saveTo(const std::string& path) const {
     nlohmann::json j;
+    j["version"] = kSaveVersion;
     j["seed"] = m_seed;
     j["tick"] = m_tick;
 
@@ -2373,6 +2379,15 @@ bool ServerSim::initFromSave(const std::string& path) {
     nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
     if (j.is_discarded() || !j.contains("seed")) {
         log::error("load: '{}' is not a valid save", path);
+        return false;
+    }
+    // A versionless file predates versioning (v0); a version we don't recognise
+    // is from a newer engine whose layout we can't safely parse — refuse it
+    // rather than silently misread fields.
+    const int version = j.value("version", 0);
+    if (version > kSaveVersion) {
+        log::error("load: '{}' is save version {} but this build understands up to {}", path,
+                   version, kSaveVersion);
         return false;
     }
     if (!init(j["seed"].get<std::uint32_t>())) return false;

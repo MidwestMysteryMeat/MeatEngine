@@ -8,8 +8,11 @@
 #include "engine/net/Messages.h"
 #include "game/ServerSim.h"
 
+#include <nlohmann/json.hpp>
+
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <string>
 
 namespace {
@@ -95,6 +98,50 @@ void testCorruptSaveIsRejected() {
           "initFromSave rejects a missing file");
 }
 
+void testSaveIsVersionedAndRejectsFuture() {
+    std::printf("saves carry a schema version and a newer one is refused\n");
+    const std::string path =
+        (std::filesystem::temp_directory_path() / "meatengine_ver_save.json").string();
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+
+    {
+        meat::ServerSim s;
+        if (!s.init(1u)) { check(false, "server booted"); return; }
+        check(s.saveTo(path), "saveTo succeeded");
+    }
+    // The written file must carry a numeric version field.
+    {
+        std::ifstream in(path);
+        nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
+        check(!j.is_discarded() && j.contains("version") && j["version"].is_number(),
+              "the save has a numeric version field");
+    }
+    // A save from a hypothetical newer engine must be refused, not misread.
+    {
+        std::ifstream in(path);
+        nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
+        j["version"] = 99999; // pretend it's from the future
+        std::ofstream out(path);
+        out << j.dump();
+        out.close();
+        meat::ServerSim s;
+        check(!s.initFromSave(path), "a future save version is rejected");
+    }
+    // A versionless (legacy) save is still accepted as v0.
+    {
+        std::ifstream in(path);
+        nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
+        j.erase("version");
+        std::ofstream out(path);
+        out << j.dump();
+        out.close();
+        meat::ServerSim s;
+        check(s.initFromSave(path), "a legacy versionless save still loads");
+    }
+    std::filesystem::remove(path, ec);
+}
+
 } // namespace
 
 namespace meattest {
@@ -102,6 +149,7 @@ namespace meattest {
 void runSaveLoad() {
     testEditsSurviveRoundTrip();
     testCorruptSaveIsRejected();
+    testSaveIsVersionedAndRejectsFuture();
 }
 
 } // namespace meattest
