@@ -48,6 +48,16 @@ jobs:
             python3 python3-pip
           python3 -m pip install --user jinja2
 
+      # Cache the whole build tree keyed on the dep + config files. The ~15-min
+      # FetchContent build of Assimp/Jolt/etc. is skipped on a hit; Ninja still
+      # recompiles our changed sources. Key busts when deps or CMake config change.
+      - name: Cache build tree
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: build-${{ runner.os }}-release-${{ hashFiles('cmake/Dependencies.cmake', 'CMakeLists.txt') }}
+          restore-keys: build-${{ runner.os }}-release-
+
       - name: Configure
         run: cmake -S . -B build -G Ninja -Wno-dev -DCMAKE_BUILD_TYPE=Release
 
@@ -75,6 +85,14 @@ jobs:
             libwayland-dev libxkbcommon-dev wayland-protocols \
             python3 python3-pip
           python3 -m pip install --user jinja2
+
+      # Separate cache key from the Release job: this is a Debug + sanitizer tree.
+      - name: Cache build tree
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: build-${{ runner.os }}-asan-${{ hashFiles('cmake/Dependencies.cmake', 'CMakeLists.txt') }}
+          restore-keys: build-${{ runner.os }}-asan-
 
       # Debug + MEAT_SANITIZE instruments the engine/test targets (not deps).
       - name: Configure
@@ -113,6 +131,13 @@ jobs:
             Write-Host "installing jinja2 into $_"
             & $_ -m pip install --quiet jinja2
           }
+
+      - name: Cache build tree
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: build-${{ runner.os }}-release-${{ hashFiles('cmake/Dependencies.cmake', 'CMakeLists.txt') }}
+          restore-keys: build-${{ runner.os }}-release-
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -Wno-dev -DCMAKE_BUILD_TYPE=Release
