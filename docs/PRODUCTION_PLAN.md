@@ -152,6 +152,17 @@ entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
 - [ ] **In-engine object/voxel modeler** — shape library + re-editable nodes → object prefab.
 - [ ] **No-code editor "Design" panel** — weapon/ability/item authoring → project data defs,
       live-test, power-budget balance scorer (ROADMAP 8.6).
+- [~] **Data-driven UI / HUD system + visual UI editor (UMG-like)** — today the HUD is
+      hand-coded ImGui immediate-mode (`Engine.cpp`) + a hardcoded GL crosshair; there is no
+      retained widget tree, no data binding, and no visual authoring. First slice done:
+      `engine/ui` — a retained widget tree (Panel / Bar / Label / Image) with **UMG-style
+      fractional anchors + pixel-inset layout**, recursive layout resolution to pixel rects, a
+      JSON UI-def loader (author HUDs as data, not code), and a **binding context** so a bar's
+      fill / a label's value tracks a named signal (e.g. `player.health`). Tested headless
+      (anchor math, nesting, bindings, parse). Remaining: a **renderer pass** that draws the
+      resolved rects (shares the instanced/2D path), and a **visual editor** panel in
+      `RoomEditor` — drag/place/anchor widgets, bind to signals, live-preview, save to the
+      `.ui.json` the loader reads. That editor is the UE5-UMG equivalent.
 - [ ] Living-world AI: cover-seek, spawner volumes/waves, NPC schedules/factions/world clock.
 - [ ] Destruction depth: structural-integrity collapse, reinforced blocks, radial voxel damage.
 

@@ -18,6 +18,12 @@ All notable changes to MeatEngine are documented here. The format follows
   auto-balanced teams, per-team scoring, team frag-limit win), plus a
   **friendly-fire** toggle (`--friendly-fire`) that gates teammate damage across
   hitscan, blasts, and effects. Selectable via `--mode` / `game.json`.
+- **Data-driven UI / HUD system (Phase 5 first slice)**: `engine/ui` — a retained
+  widget tree (Panel / Bar / Label / Image) with UMG-style fractional anchors +
+  pixel-inset layout, recursive resolution to pixel rects, a JSON HUD-definition
+  loader (author HUDs as data, not code), and a binding context so a bar's fill or
+  a label's value tracks a named signal (e.g. `player.health`). Groundwork for a
+  renderer pass and a visual UI editor (the UE5-UMG equivalent) — see Phase 5.
 - **Access control**: `NetPolicy.onAuthenticate` — a host hook that rejects a
   joining peer by Hello name/token before admission (ban/allow-list/account check,
   no engine-side identity model) — plus `ServerSim::kick(peer)` to remove a live
@@ -43,11 +49,11 @@ All notable changes to MeatEngine are documented here. The format follows
   mannequin clips all drive the canonical (Mixamo) skeleton.
 - **Persistence**: save-file schema versioning (refuses newer-engine saves).
 - **Packaging**: `cmake --install` + CPack produce a versioned game archive.
-- **Tests**: 55 → 183 headless checks across worldgen/dungeon determinism,
+- **Tests**: 55 → 197 headless checks across worldgen/dungeon determinism,
   save/load, inventory, the effect system (knockback/ignite/chain/spawn), the Lua
-  effect-primitive bridge, team deathmatch + friendly fire, crowd determinism +
-  flocking + replication + grid/brute equivalence at scale, MLP inference,
-  reconnection, and packet fuzzing.
+  effect-primitive bridge, team deathmatch + friendly fire + access control, crowd
+  determinism + flocking + replication + grid/brute equivalence at scale, MLP
+  inference, the UI layout/binding/parse core, reconnection, and packet fuzzing.
 - `docs/PRODUCTION_PLAN.md` — the phased path to production parity.
 
 ### Fixed
