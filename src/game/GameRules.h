@@ -46,6 +46,13 @@ struct GameRules {
     GameMode gameMode = GameMode::Sandbox;
     int fragLimit = 10; // Deathmatch / TeamDeathmatch target score
     bool friendlyFire = false; // TeamDeathmatch: can teammates damage each other?
+    // Opt-in PSX *hardware* profile (default off). MeatEngine's PSX look (dither,
+    // vertex-snap, low internal res) is always available via PsxOptions; this flag
+    // adds the authentic *constraints* on top — a fixed 320×240 internal frame, hard
+    // draw-call/triangle budgets with budget culling, and the retro audio profile
+    // (22.05 kHz, few voices). Frustum + distance culling run regardless of this
+    // flag (they are general performance, not PSX-specific).
+    bool psxHardwareProfile = false;
     // When true, the environment's hemiStrength is applied (A3). When false, ambient is
     // classic isotropic only — the dark PSX-night look. Toggled via game.json / F7 / New Map.
     bool hemisphereAmbient = true;

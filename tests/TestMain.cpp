@@ -42,6 +42,7 @@ void runCrowd();
 void runMLP();
 void runUI();
 void runCompression();
+void runCull();
 
 } // namespace meattest
 
@@ -66,6 +67,7 @@ int main() {
     meattest::runMLP();
     meattest::runUI();
     meattest::runCompression();
+    meattest::runCull();
 
     std::printf("\n%d checks, %d failures\n", meattest::g_checks, meattest::g_failures);
     return meattest::g_failures == 0 ? 0 : 1;

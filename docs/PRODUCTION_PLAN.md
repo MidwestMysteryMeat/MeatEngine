@@ -55,6 +55,18 @@ entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
 - [ ] **Benchmark harness** — mesher throughput, snapshot size, frame budget. Numbers first.
 - [ ] **D1 binary greedy mesher** (cgerikj/binary-greedy-meshing) — only after benchmarks say so.
 - [ ] **Entity/projectile interpolation** for smooth remote motion under latency.
+- [~] **Culling** — `engine/render/Cull` (pure, unit-tested): frustum-plane extraction
+      (Gribb-Hartmann), sphere-in-frustum, distance cull, and a nearest-first draw/triangle
+      **budget selector**. Frustum + distance culling are intended to run **always** (general
+      perf); the budget cap is the opt-in PSX profile. Remaining: wire it into the `Renderer`'s
+      per-object submission (the math is done and tested; the hookup is GPU-side).
+- [~] **Opt-in PSX hardware profile** — `GameRules.psxHardwareProfile` (default **off**). MeatEngine's
+      PSX *look* is always available via `PsxOptions` (dither/vertex-snap/low internal res). This flag
+      adds the authentic *constraints* on top: a fixed 320×240 internal frame, hard draw/triangle
+      budgets (the `Cull` budget selector above), and a retro audio profile (22.05 kHz, few voices).
+      Flag + culling primitives landed; wiring the fixed framebuffer + audio profile behind the flag
+      is next. (The *forced* hardware profile is the separate private MeatPSX engine's job; MeatEngine
+      only ever offers it as an option.)
 - [ ] **Instanced entity rendering (GPU instancing)** — the OpenGL equivalent of UE's
       HISM/ISM: draw N identical entities (crowd agents, pickups, props) as one
       `glDrawElementsInstanced` call fed by a per-instance transform buffer, instead of one draw
