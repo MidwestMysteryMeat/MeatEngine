@@ -13,7 +13,23 @@ WidgetKind kindFromString(const std::string& s) {
     if (s == "bar") return WidgetKind::Bar;
     if (s == "label") return WidgetKind::Label;
     if (s == "image") return WidgetKind::Image;
+    if (s == "button") return WidgetKind::Button;
     return WidgetKind::Panel;
+}
+
+const char* kindToString(WidgetKind k) {
+    switch (k) {
+    case WidgetKind::Bar: return "bar";
+    case WidgetKind::Label: return "label";
+    case WidgetKind::Image: return "image";
+    case WidgetKind::Button: return "button";
+    case WidgetKind::Panel:
+    default: return "panel";
+    }
+}
+
+bool contains(const UIRect& r, float x, float y) {
+    return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 }
 
 // Read a JSON array of `n` floats into `out` (up to n), leaving defaults on miss.
@@ -92,6 +108,32 @@ const UIWidget* find(const UIWidget& root, const std::string& id) {
 
 UIWidget* find(UIWidget& root, const std::string& id) {
     return const_cast<UIWidget*>(find(static_cast<const UIWidget&>(root), id));
+}
+
+nlohmann::json toJson(const UIWidget& w) {
+    nlohmann::json j;
+    j["kind"] = kindToString(w.kind);
+    if (!w.id.empty()) j["id"] = w.id;
+    j["anchor"] = {w.anchor.minX, w.anchor.minY, w.anchor.maxX, w.anchor.maxY};
+    j["offset"] = {w.offset.x, w.offset.y, w.offset.z, w.offset.w};
+    j["color"] = {w.color.x, w.color.y, w.color.z, w.color.w};
+    if (!w.text.empty()) j["text"] = w.text;
+    if (!w.binding.empty()) j["binding"] = w.binding;
+    j["value"] = w.value;
+    if (!w.children.empty()) {
+        nlohmann::json kids = nlohmann::json::array();
+        for (const UIWidget& c : w.children) kids.push_back(toJson(c));
+        j["children"] = std::move(kids);
+    }
+    return j;
+}
+
+UIWidget* widgetAt(UIWidget& root, float x, float y) {
+    if (!contains(root.rect, x, y)) return nullptr; // outside this subtree (clipped)
+    // Later siblings / deeper children draw on top, so search them first.
+    for (auto it = root.children.rbegin(); it != root.children.rend(); ++it)
+        if (UIWidget* hit = widgetAt(*it, x, y)) return hit;
+    return &root;
 }
 
 } // namespace ui

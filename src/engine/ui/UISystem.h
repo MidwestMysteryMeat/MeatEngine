@@ -33,5 +33,14 @@ UIWidget parseString(const std::string& json);
 const UIWidget* find(const UIWidget& root, const std::string& id);
 UIWidget* find(UIWidget& root, const std::string& id);
 
+// Serialize a widget tree back to a JSON definition parse() round-trips exactly.
+// This is how the visual editor saves a HUD to its `.ui.json`.
+nlohmann::json toJson(const UIWidget& w);
+
+// Hit-test: the topmost widget whose resolved rect contains (x, y), or nullptr.
+// Later siblings and deeper children win (they draw on top). layout() must have
+// run first. This is the editor's click-to-select and an interactive HUD's input.
+UIWidget* widgetAt(UIWidget& root, float x, float y);
+
 } // namespace ui
 } // namespace meat

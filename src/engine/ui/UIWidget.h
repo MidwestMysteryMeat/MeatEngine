@@ -23,7 +23,7 @@ struct UIAnchor {
     float minX = 0.0f, minY = 0.0f, maxX = 1.0f, maxY = 1.0f;
 };
 
-enum class WidgetKind : std::uint8_t { Panel, Bar, Label, Image };
+enum class WidgetKind : std::uint8_t { Panel, Bar, Label, Image, Button };
 
 // One node of the retained UI tree. Authored as data (see UISystem::parse) and
 // resolved to a pixel `rect` by UISystem::layout each frame the screen size or a

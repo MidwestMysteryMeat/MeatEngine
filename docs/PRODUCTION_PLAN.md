@@ -157,12 +157,16 @@ entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
       retained widget tree, no data binding, and no visual authoring. First slice done:
       `engine/ui` — a retained widget tree (Panel / Bar / Label / Image) with **UMG-style
       fractional anchors + pixel-inset layout**, recursive layout resolution to pixel rects, a
-      JSON UI-def loader (author HUDs as data, not code), and a **binding context** so a bar's
-      fill / a label's value tracks a named signal (e.g. `player.health`). Tested headless
-      (anchor math, nesting, bindings, parse). Remaining: a **renderer pass** that draws the
-      resolved rects (shares the instanced/2D path), and a **visual editor** panel in
-      `RoomEditor` — drag/place/anchor widgets, bind to signals, live-preview, save to the
-      `.ui.json` the loader reads. That editor is the UE5-UMG equivalent.
+      JSON UI-def loader (author HUDs as data, not code), a **binding context** so a bar's
+      fill / a label's value tracks a named signal (e.g. `player.health`), plus the editor
+      primitives — **JSON serialize** (round-trips parse, so the editor can save) and
+      **hit-testing** (`widgetAt`, draw-order aware, for click-to-select and interactive
+      buttons). Panel / Bar / Label / Image / **Button**. Tested headless (anchor math,
+      nesting, bindings, parse, round-trip, hit-test overlap order). Remaining: a **renderer
+      pass** that draws the resolved rects (shares the instanced/2D path), and the **visual
+      editor** panel in `RoomEditor` — drag/place/anchor widgets on the hit-test + serialize
+      primitives now in place, bind to signals, live-preview. That editor is the UE5-UMG
+      equivalent; only the render pass gates a live preview.
 - [ ] Living-world AI: cover-seek, spawner volumes/waves, NPC schedules/factions/world clock.
 - [ ] Destruction depth: structural-integrity collapse, reinforced blocks, radial voxel damage.
 

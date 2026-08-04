@@ -22,7 +22,9 @@ All notable changes to MeatEngine are documented here. The format follows
   widget tree (Panel / Bar / Label / Image) with UMG-style fractional anchors +
   pixel-inset layout, recursive resolution to pixel rects, a JSON HUD-definition
   loader (author HUDs as data, not code), and a binding context so a bar's fill or
-  a label's value tracks a named signal (e.g. `player.health`). Groundwork for a
+  a label's value tracks a named signal (e.g. `player.health`), plus the editor
+  primitives — JSON serialize (round-trips parse, for saving) and draw-order-aware
+  hit-testing (`widgetAt`, for click-to-select and buttons). Groundwork for a
   renderer pass and a visual UI editor (the UE5-UMG equivalent) — see Phase 5.
 - **Access control**: `NetPolicy.onAuthenticate` — a host hook that rejects a
   joining peer by Hello name/token before admission (ban/allow-list/account check,
@@ -49,7 +51,7 @@ All notable changes to MeatEngine are documented here. The format follows
   mannequin clips all drive the canonical (Mixamo) skeleton.
 - **Persistence**: save-file schema versioning (refuses newer-engine saves).
 - **Packaging**: `cmake --install` + CPack produce a versioned game archive.
-- **Tests**: 55 → 197 headless checks across worldgen/dungeon determinism,
+- **Tests**: 55 → 205 headless checks across worldgen/dungeon determinism,
   save/load, inventory, the effect system (knockback/ignite/chain/spawn), the Lua
   effect-primitive bridge, team deathmatch + friendly fire + access control, crowd
   determinism + flocking + replication + grid/brute equivalence at scale, MLP
