@@ -10,6 +10,10 @@
 
 namespace meat {
 
+// The authoritative server timestep: 60 Hz fixed. Shared so every ServerSim
+// translation unit ticks on the same constant.
+constexpr float kFixedDtServer = 1.0f / 60.0f;
+
 // Default player spawn in world metres — voxel cell (16,16,16), scaled by the
 // runtime voxel size so the pad stays above the surface at any block scale.
 inline glm::vec3 defaultSpawnPos() {
