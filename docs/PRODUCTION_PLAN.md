@@ -151,9 +151,13 @@ entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
       sources drives any autorigged character. Remaining: a UE-mannequin autorig *template*
       (Epic's asset can't ship in a public repo, but a UE bone-name fallback table can);
       finger-joint mapping (body/limbs done, fingers stay at rest).
-- [ ] **[doc-only] Animation blend graph + state machine (`AnimGraph`)** — full drop-in code
-      in `ANIMATION_BLEND_GRAPH.md §3` (states, 1D blend spaces, transitions, cross-fade);
-      no `AnimGraph`/`BlendSpace1D`/`AnimState` in `src/`. The most detailed lost design.
+- [~] **Animation blend graph + state machine (`AnimGraph`)** — first slice landed
+      (`engine/anim/AnimGraph`, §3 of `ANIMATION_BLEND_GRAPH.md`): `BlendSpace1D` (bracket +
+      clamp + collapse), `AnimState` (single clip or blend space), edge-gated transitions, and
+      an `AnimGraphPlayer` whose `currentBlend(params)` yields the weighted clip layers (cross-
+      fade included, weights sum to 1) for the sampler. Sits on the existing `Animator::blendPose`
+      primitives; pure + unit-tested. Remaining: wire the player into the NPC/character render
+      path (feed `currentBlend` into `blendPose`), and drive states from gameplay (speed → Loco).
 - [ ] **[doc-only] Additive animation layers** — aim-offset / hit-react, per-bone masks
       (`ANIMATION_BLEND_GRAPH.md §2`). Enables **E3 weapon aim IK** (ozz `IKAimJob`).
 - [ ] **[doc-only] Dungeon v2 template stitching** — editor rooms as templates with door

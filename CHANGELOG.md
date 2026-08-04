@@ -48,7 +48,10 @@ All notable changes to MeatEngine are documented here. The format follows
   are exposed to Lua (`game.ignite` / `game.chain_damage` / `game.spawn_turret` /
   `game.spawn_companion`) so scripts author their own effects.
 - **Animation**: cross-convention retargeting bridge so Mixamo, UE4, and UE5
-  mannequin clips all drive the canonical (Mixamo) skeleton.
+  mannequin clips all drive the canonical (Mixamo) skeleton. Adds `engine/anim/
+  AnimGraph` — a state machine + 1D blend space (bracket/clamp/collapse), edge-gated
+  transitions, and an `AnimGraphPlayer` whose `currentBlend(params)` yields the
+  weighted clip layers (cross-fade included, weights sum to 1) for the sampler.
 - **Culling + opt-in PSX hardware profile**: `engine/render/Cull` — frustum-plane
   extraction, sphere-in-frustum, distance cull, and a nearest-first draw/triangle
   budget selector (pure, unit-tested). `GameRules.psxHardwareProfile` (default off)
@@ -61,7 +64,7 @@ All notable changes to MeatEngine are documented here. The format follows
   archives, cooked assets, and large network payloads.
 - **Persistence**: save-file schema versioning (refuses newer-engine saves).
 - **Packaging**: `cmake --install` + CPack produce a versioned game archive.
-- **Tests**: 55 → 231 headless checks across worldgen/dungeon determinism,
+- **Tests**: 55 → 245 headless checks across worldgen/dungeon determinism,
   save/load, inventory, the effect system (knockback/ignite/chain/spawn), the Lua
   effect-primitive bridge, team deathmatch + friendly fire + access control, crowd
   determinism + flocking + replication + grid/brute equivalence at scale, MLP
