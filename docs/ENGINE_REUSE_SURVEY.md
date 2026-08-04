@@ -768,3 +768,22 @@ lives outside the deterministic core (trainer, env, or its own process), so none
 authoritative simulation. ml-agents + UnrealMLAgents together define the **ML/learning-agents** item:
 adopt the Agent/sensor/actuator/reward architecture and the protobuf env protocol, with our MCP bridge
 as the environment endpoint.
+
+## Compression sources (file / asset / payload compression)
+
+Evaluated for the Phase-6 Compression item. The engine needs fast, safe, lossless
+in-memory compression for saves, resource archives, cooked assets, and large
+reliable network payloads — decoders run on **untrusted** data (saves, packets), so
+bounds-checking is mandatory.
+
+| Project | Repo | License (verified) | Copy? | Verdict |
+|---|---|---|---|---|
+| **LZAV** | avaneev/lzav | **MIT** | **Yes — vendored** | Single-header, zero-dep LZ77; ~540 MB/s compress, ~3.5 GB/s decompress, better ratio than LZ4/Snappy; **internal bounds checking** (safe on malformed data), no inflation on incompressible input. Ideal for saves/assets/packets. **Chosen** — `third_party/lzav/lzav.h`, wrapped by `engine/core/Compression`. |
+| **File-Compression-Utility** | AnshulRanjan2004/File-Compression-Utility | **⚠️ GPL-3.0** | **No** | GPL is **incompatible** with MeatEngine's Apache-2.0 — linking it would force the whole engine to GPL. Educational Huffman CLI regardless. Rejected on license. |
+| **File-Compression** | sspeedy99/File-Compression | **MIT** | **No (superseded)** | Basic single-char Huffman CLI, Linux-only, incomplete (no binary/Unicode). MIT is fine, but LZAV is faster, safer, and library-shaped. Study only. |
+
+**Reuse note.** Only LZAV is used; its MIT notice is retained in the vendored header and listed in
+`THIRD_PARTY.md`. The wrapper adds a self-describing header (magic + original size) and a raw-store
+fallback, and surfaces LZAV's bounds-checked decode as a `std::optional` so a corrupt save or packet
+returns `nullopt` instead of crashing — the same fail-closed discipline as the save loader and the
+crypto layer.

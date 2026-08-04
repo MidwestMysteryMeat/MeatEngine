@@ -178,7 +178,16 @@ entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
       (the engine targets GL 4.5; macOS caps at GL 4.1), so no macOS job yet. Observability:
       structured logging exists; crash telemetry intentionally omitted for privacy.
 - [ ] **Tagged semver releases + CHANGELOG**; artifact upload from CI.
-- [ ] **D2 resource archives** (zip/pk3 mounts) → feeds packaging.
+- [~] **Compression** — `engine/core/Compression` wraps **LZAV** (MIT, single-header, vendored)
+      for lossless in-memory buffers: a self-describing blob (magic + size), raw-store fallback
+      so incompressible data never inflates, and bounds-checked decode that fails to `nullopt`
+      (never crashes) on corrupt/hostile input — safe for untrusted saves and packets. Done +
+      tested (round-trip, ratio, corruption). Next: wire it into **save files** (compress the
+      on-disk world), the **D2 resource archives** below, cooked assets (D3), and large reliable
+      network payloads (join-replay / overlay). Rejected the two Huffman utilities surveyed:
+      `AnshulRanjan2004/File-Compression-Utility` is **GPL-3.0** (incompatible with Apache-2.0),
+      `sspeedy99/File-Compression` is a basic educational MIT CLI superseded by LZAV.
+- [ ] **D2 resource archives** (zip/pk3 mounts) → feeds packaging; per-entry LZAV compression.
 - [ ] **D3 cooked mesh serializer** (bake FBX→binary; drop runtime Assimp on the hot path).
 - [ ] **Developer-UX bar** — dockable single-window layout, command palette, "play here",
       asset/authoring hot-reload, actionable errors, a new-project template that already runs.

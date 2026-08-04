@@ -48,7 +48,7 @@ set(MEAT_LIBS
     monocypher
 )
 
-target_include_directories(MeatEngine PRIVATE src)
+target_include_directories(MeatEngine PRIVATE src third_party/lzav)
 target_compile_definitions(MeatEngine PRIVATE GLFW_INCLUDE_NONE)
 if(WIN32)
     # Win32-only header hygiene; harmless-but-meaningless elsewhere.
@@ -84,7 +84,7 @@ if(MEAT_TEST_SOURCES)
     list(REMOVE_ITEM MEAT_ENGINE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
 
     add_executable(MeatTests ${MEAT_ENGINE_SOURCES} ${MEAT_TEST_SOURCES})
-    target_include_directories(MeatTests PRIVATE src)
+    target_include_directories(MeatTests PRIVATE src third_party/lzav)
     target_compile_definitions(MeatTests PRIVATE GLFW_INCLUDE_NONE)
     if(WIN32)
         target_compile_definitions(MeatTests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
