@@ -737,3 +737,25 @@ window." Client side runs the mirror so the server's inbound acks also flow, fee
   peer could still *warp the ack window* with a forged far-future sequence. That is why borrowing #3
   (netcode.io connect-tokens / authenticated transport) is the right companion before exposing this on
   the public server.
+
+## AI / ML sources (Phase 7 — AI-native systems)
+
+Evaluated for the Phase-7 items in `PRODUCTION_PLAN.md`. Overriding constraint: the
+authoritative tick is lockstep-deterministic, so any library on the tick must be
+integer/fixed-point reproducible — float/BLAS libraries are **tooling/offline only**.
+
+| Project | Repo | License (verified) | Copy? | The ONE thing for MeatEngine | On the tick? |
+|---|---|---|---|---|---|
+| **Neural-Network-from-scratch-in-Cpp** | SorawitChok/Neural-Network-from-scratch-in-Cpp | **MIT** | **Yes** | Zero-dependency pure std-C++ MLP (FC layers, ReLU/LeakyReLU/tanh/sigmoid, MSE/BCE, full backprop). Seed for the **neural-policy runtime**: port the forward pass to fixed-point for a deterministic `NpcBrain`; keep its `double` backprop for the offline trainer. | Forward pass **yes** (after fixed-point port); training no |
+| **mlpack** | mlpack/mlpack | **BSD-3-Clause** | **Yes\*** | Mature C++17 ML (NN + RL + trees), but pulls **Armadillo + ensmallen + LAPACK**. Offline **RL/imitation trainer** for the ML/learning-agents pipeline. | **No** — heavy float/BLAS deps; tooling only |
+| **Unreal_mcp** | ChiR24/Unreal_mcp | **MIT** | **Pattern only** | Reference architecture for the **MCP bridge**: one gateway tool with `search`/`describe`/`execute` verbs, capability-token auth, HTTP/SSE (Streamable) hosted by the engine + optional stdio bridge. Code is TypeScript + UE-specific → adopt the design, surface our `ScriptApi` allow-list. | N/A (out-of-process) |
+
+\* Permissively licensed but heavy-dependency — vendor only in the offline tooling/training target,
+never in the authoritative server (float + BLAS = non-deterministic across platforms).
+
+**Reuse notes.** All three licenses (MIT, MIT, BSD-3) are compatible with MeatEngine's Apache-2.0;
+vendored files retain their notice in `THIRD_PARTY.md`. The from-scratch NN is the only one intended
+for the tick, and only after its `double` forward pass is reworked to integer/fixed-point so NPC
+inference reproduces bit-for-bit under the netcode's lockstep contract. mlpack and the MCP bridge live
+outside the deterministic core by design — mlpack in the trainer, the MCP server in its own process —
+so neither can perturb the authoritative simulation.

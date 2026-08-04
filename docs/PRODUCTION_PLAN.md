@@ -164,6 +164,10 @@ integer/quantised math — never vendor-BLAS float or wall-clock). Non-determini
       A **tiny quantised MLP** evaluated in integer/fixed-point so it stays deterministic on
       the tick (perception vector → action logits). Models ship as data. Heavy runtimes (ONNX
       Runtime / GGML) are tooling-only (dataset gen, eval), never authoritative.
+      **Source:** `SorawitChok/Neural-Network-from-scratch-in-Cpp` (**MIT**, zero-dependency
+      pure std-C++: FC layers, ReLU/tanh/sigmoid, backprop) is the seed — port its forward
+      pass into a fixed-point `NpcBrain` (no BLAS ⇒ no vendor-float drift, ideal for the tick);
+      keep its `double` backprop for the offline trainer only.
 - [ ] **ML / learning agents** — the *training* side (distinct from running a net): agents that
       **learn** a policy rather than execute a hand-authored one. Reinforcement learning
       (self-play deathmatch, navigation, crowd flow) and imitation/behaviour-cloning from the
@@ -171,6 +175,10 @@ integer/quantised math — never vendor-BLAS float or wall-clock). Non-determini
       headless and in parallel through the **MCP bridge** below (observation = snapshot vector,
       action = the gated `ScriptApi` tools, reward = frags/objective/shaping). Output feeds the
       neural-policy runtime above. Deterministic tick = reproducible episodes = stable training.
+      **Source:** `mlpack/mlpack` (**BSD-3-Clause**, header-only C++17 but pulls Armadillo +
+      ensmallen + LAPACK) for the offline RL/imitation trainer in tooling — **never linked into
+      the authoritative server** (float/BLAS = non-deterministic). For a zero-dep in-tree
+      trainer, the from-scratch backprop above suffices for small policies.
 - [ ] **MCP bridge (agent I/O)** — an out-of-process **Model Context Protocol** server exposing
       the engine's *existing* capability surface as MCP tools + resources: read-only resources
       (snapshot, entity list, match/team state, `playerHealth`) and gated tools (the same
@@ -178,6 +186,12 @@ integer/quantised math — never vendor-BLAS float or wall-clock). Non-determini
       so agents act through the identical server-authoritative, permission-checked path, no new
       trust boundary). Talks to the server over a local socket. Turns the engine into an **agent
       environment**: RL training loops, LLM-driven NPCs/directors, and automated playtest agents.
+      **Source/template:** `ChiR24/Unreal_mcp` (**MIT**) — adopt its architecture, not its code
+      (TypeScript + UE-specific): a **single gateway tool** with `search`/`describe`/`execute`
+      verbs over N parent tools, **capability-token auth**, and an **HTTP/SSE (Streamable)**
+      endpoint the engine hosts directly (its "native MCP" mode), with an optional stdio bridge
+      for MCP clients. Our version surfaces the `ScriptApi` allow-list, so the MCP boundary
+      inherits the same permission model as scripting rather than opening a new one.
 - [ ] **AI director** — encounter pacing + spawn flow over the crowd flow fields, authored in the
       already-shipped node-graph (`NodeGraph.cpp`) extended with perception/steering/spawn nodes;
       composes with Phase-5 living-world AI (schedules/factions/world clock).
