@@ -821,6 +821,30 @@ void testSpawnEntityReplicates() {
           "the turret replicates to the client as a Turret entity");
 }
 
+// A boids crowd spawned on the server must reach clients as Crowd entities through
+// the same snapshot path, each with a stable id, so a client can render the flock.
+void testCrowdReplicatesAsEntities() {
+    std::printf("an ambient crowd replicates to clients as Crowd entities\n");
+    ScriptedTransport wire;
+    meat::GameRules rules;
+    rules.terrain = meat::GameRules::Terrain::Void; // no ambient entities to count around
+    meat::ServerSim server(rules);
+    if (!server.init(17u)) { check(false, "server booted"); return; }
+    wire.connect(1);
+    wire.packet(1, meat::HelloMsg{meat::kProtocolVersion, "p", "", ""});
+    server.pump(wire);
+    for (int i = 0; i < 5; ++i) server.tick(wire);
+
+    server.spawnCrowd(99u, 12, glm::vec3(4.0f, 0.0f, 4.0f), 3.0f);
+    check(server.crowdSize() == 12, "the crowd holds the requested agent count");
+    for (int i = 0; i < 4; ++i) server.tick(wire); // step + replicate
+
+    int crowd = 0;
+    for (const meat::EntityState& e : wire.lastSnapshot[1].entities)
+        if (e.archetype == static_cast<std::uint8_t>(meat::EntityArchetype::Crowd)) ++crowd;
+    check(crowd == 12, "all 12 crowd agents replicate as distinct Crowd entities");
+}
+
 // Connect `count` players into a fresh TeamDeathmatch server and spawn them.
 // Returns nothing; the caller inspects teamOf/teamScore/health on `server`.
 void joinTeamPlayers(ScriptedTransport& wire, meat::ServerSim& server, meat::PeerId count) {
@@ -961,6 +985,7 @@ void runNetPermissions() {
     testRandomPacketsSurvive();
     testChainDamageArcsAndCaps();
     testSpawnEntityReplicates();
+    testCrowdReplicatesAsEntities();
     testTeamDeathmatchScoring();
     testFriendlyFireGate();
     testDamageOverTimeKillCreditsOnce();

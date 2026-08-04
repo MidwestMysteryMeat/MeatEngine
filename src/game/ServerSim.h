@@ -2,6 +2,7 @@
 #include "engine/core/JobQueue.h"
 #include "engine/level/MeshLevel.h"
 #include "engine/net/Messages.h"
+#include "engine/ai/CrowdSim.h"
 #include "engine/net/Transport.h"
 #include "engine/script/ScriptHost.h"
 #include "engine/physics/CharacterController.h"
@@ -100,6 +101,13 @@ public:
     // effect, abilities/scripts, and tests share one construction site.
     std::uint32_t spawnTurret(PeerId owner, glm::vec3 pos);
     std::uint32_t spawnCompanion(PeerId owner, glm::vec3 pos);
+    // Phase 7: spawn a boids crowd of `count` ambient agents in a disc around
+    // `center`. Stepped each server tick and replicated as Crowd entities. Reserves
+    // a contiguous id block so agents keep stable entity ids. Replaces any existing
+    // crowd. Public so game setup, scripts, and tests can drive it.
+    void spawnCrowd(std::uint32_t seed, int count, glm::vec3 center, float radius);
+    void setCrowdGoal(glm::vec3 goal) { m_crowd.setGoal(goal); }
+    std::size_t crowdSize() const { return m_crowd.size(); }
     int fragsOf(PeerId p) const {
         const auto it = m_frags.find(p);
         return it == m_frags.end() ? 0 : it->second;
@@ -465,6 +473,8 @@ private:
     std::vector<Turret> m_turrets;
     std::vector<Companion> m_companions;
     std::vector<Ship> m_ships;
+    CrowdSim m_crowd;              // Phase 7: ambient boids crowd
+    std::uint32_t m_crowdBaseId = 0; // entity id of crowd agent 0 (contiguous block)
     ScriptHost m_scripts;
     Transport* m_activeTransport = nullptr; // set each pump/tick for script callbacks
     std::uint64_t m_scriptRng = 0x2545F4914F6CDD1Dull; // seeded in init()

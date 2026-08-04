@@ -1693,6 +1693,14 @@ std::uint32_t ServerSim::spawnCompanion(PeerId owner, glm::vec3 pos) {
     return c.id;
 }
 
+void ServerSim::spawnCrowd(std::uint32_t seed, int count, glm::vec3 center, float radius) {
+    m_crowd.spawn(seed, count, center, radius);
+    // Reserve a contiguous id block so each agent keeps a stable entity id across
+    // snapshots (the delta codec keys on id). agent i => m_crowdBaseId + i.
+    m_crowdBaseId = m_nextEntityId;
+    m_nextEntityId += static_cast<std::uint32_t>(m_crowd.size());
+}
+
 void ServerSim::applyChainDamage(PeerId source, glm::vec3 origin, float damage,
                                  int maxTargets, float range) {
     if (damage <= 0.0f || maxTargets <= 0) return;
@@ -2215,6 +2223,7 @@ void ServerSim::tick(Transport& transport) {
     updateNpcs(transport);
     updateTurrets(transport);
     updateCompanions(transport);
+    m_crowd.step(kFixedDtServer); // Phase 7: ambient boids crowd (no-op when empty)
     m_voxels.update(streamCenter, m_jobs);
 
     ++m_tick;
@@ -2702,6 +2711,17 @@ void ServerSim::broadcastSnapshot(Transport& transport) {
         if (snap.entities.size() >= kMaxSnapshotEntities) break;
         snap.entities.push_back({c.id, static_cast<std::uint8_t>(EntityArchetype::Companion),
                                  c.pos, c.yaw, 0, c.health, 0});
+    }
+    { // Phase 7: ambient crowd agents (stable ids from the reserved block).
+        const auto& agents = m_crowd.agents();
+        for (std::size_t i = 0; i < agents.size(); ++i) {
+            if (snap.entities.size() >= kMaxSnapshotEntities) break;
+            const glm::vec3 v = agents[i].vel;
+            const float yaw = (v.x * v.x + v.z * v.z) > 1e-6f ? std::atan2(-v.x, -v.z) : 0.0f;
+            snap.entities.push_back({m_crowdBaseId + static_cast<std::uint32_t>(i),
+                                     static_cast<std::uint8_t>(EntityArchetype::Crowd),
+                                     agents[i].pos, yaw, 0, 0.0f, 0});
+        }
     }
     for (const Projectile& p : m_projectiles) {
         if (snap.entities.size() >= kMaxSnapshotEntities) break;

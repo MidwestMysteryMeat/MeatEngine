@@ -153,12 +153,13 @@ integer/quantised math — never vendor-BLAS float or wall-clock). Non-determini
 (ONNX/GGML on the GPU) is allowed **only** in tooling/editor/offline bakes, never the tick.
 
 - [~] **AI crowds** — many lightweight agents that flow as a group instead of each paying
-      full A*. First slice (in progress): a deterministic **boids** core (separation /
-      alignment / cohesion + goal seek) for open-field crowds — seeded, fixed-step, order-stable.
-      Next: promote to **DetourCrowd** (`dtCrowd`) on the Recast navmesh the engine already
-      bakes (`m_navmesh`), for shared RVO avoidance through doorways/corridors; replicate via a
-      new `EntityArchetype::Crowd` on the existing entity-snapshot path; crowd **flow fields**
-      feed spawner waves. Target: hundreds of civilians/zombies at server budget.
+      full A*. Done: a deterministic **boids** core (`CrowdSim` — separation / alignment /
+      cohesion + goal seek, seeded, fixed-step, order-stable), **owned by the server, stepped
+      each tick, and replicated** through the entity-snapshot path as `EntityArchetype::Crowd`
+      with stable ids (public `spawnCrowd`/`setCrowdGoal`). Next: a **client render** for the
+      Crowd archetype; promote to **DetourCrowd** (`dtCrowd`) on the Recast navmesh the engine
+      already bakes (`m_navmesh`) for shared RVO avoidance through doorways/corridors; crowd
+      **flow fields** feed spawner waves. Target: hundreds of civilians/zombies at server budget.
 - [~] **Neural policies (embedded inference)** — the *runtime* side: drive NPC behaviour (and
       later animation) with a trained model as a drop-in `NpcBrain` beside the scripted one.
       First slice done: `engine/ai/MLP` — a self-contained feed-forward net (dense layers,

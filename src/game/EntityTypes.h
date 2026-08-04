@@ -19,6 +19,7 @@ enum class EntityArchetype : std::uint8_t {
     Companion = 7,  // mobile ally: follows its owner, engages hostile NPCs
     NpcZombie = 8,  // slow melee shambler; tanky, hits hard
     Ship = 9,       // H4: piloted vehicle (thruster body; board/leave with Use)
+    Crowd = 10,     // Phase 7: a lightweight boids crowd agent (ambient civilians)
     // Scheduled NPCs land with their phases.
 };
 
