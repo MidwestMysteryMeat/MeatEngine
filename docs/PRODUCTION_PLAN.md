@@ -87,11 +87,13 @@ entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
       budgets) for a public, scriptable engine (`ENGINE_REUSE_SURVEY` honorable mention).
 
 ## Phase 4 — Organization
-- [~] **Split the god-files** by concern. Started with `ServerSim.cpp`: the GAS-lite effect
-      system + modifiers/DoT/chain + entity/crowd spawn helpers moved to `ServerSimEffects.cpp`
-      (same class, own translation unit, behaviour identical), trimming it 2780 → 2595. Next
-      cuts from `ServerSim.cpp`: combat (hitscan/blast), NPC/companion/turret AI, and the
-      snapshot/replication path. Then `RoomEditor.cpp` (2396) and `Engine.cpp` (2006).
+- [~] **Split the god-files** by concern. `ServerSim.cpp` underway (same class, own translation
+      units, behaviour byte-identical, 180 checks unchanged): the GAS-lite effect system →
+      `ServerSimEffects.cpp`; combat resolution (NPC damage, frag/team scoring, drop-on-death,
+      the one `killPlayer` path) → `ServerSimCombat.cpp`; shared helper `defaultSpawnPos` →
+      `ServerSimInternal.h`. **2780 → 2476** so far. Next cuts: hitscan/blast + projectiles,
+      NPC/companion/turret AI, and the snapshot/replication path. Then `RoomEditor.cpp` (2396)
+      and `Engine.cpp` (2006).
 - [x] engine/→game/ layering fixed (Engine moved to game/); Phase-1 guard locks it in.
 - [x] **Unified player-death path** — eight duplicated drop+respawn blocks (hitscan, blast,
       effect Damage/Chain/Ignite, NPC melee, AI ship, Lua kill) collapsed into one
