@@ -22,6 +22,8 @@ All notable changes to MeatEngine are documented here. The format follows
   alignment / cohesion + goal-seek) — seeded, fixed-step, order-stable — now
   owned by the server, stepped each tick, and replicated through the entity
   snapshot as `Crowd` entities with stable ids (`spawnCrowd`/`setCrowdGoal`).
+  Neighbour queries use a uniform spatial hash grid: **O(n) instead of O(n²)** and
+  bit-for-bit identical to brute force, so a 400-agent crowd runs at server budget.
 - **Neural-policy runtime seed (Phase 7)**: `engine/ai/MLP`, a self-contained
   feed-forward net (dense layers, ReLU/tanh/sigmoid, `forward` + `argmax` action
   selection) that fails closed on a malformed model — the inference core a learned
@@ -37,10 +39,11 @@ All notable changes to MeatEngine are documented here. The format follows
   mannequin clips all drive the canonical (Mixamo) skeleton.
 - **Persistence**: save-file schema versioning (refuses newer-engine saves).
 - **Packaging**: `cmake --install` + CPack produce a versioned game archive.
-- **Tests**: 55 → 176 headless checks across worldgen/dungeon determinism,
+- **Tests**: 55 → 180 headless checks across worldgen/dungeon determinism,
   save/load, inventory, the effect system (knockback/ignite/chain/spawn), the Lua
   effect-primitive bridge, team deathmatch + friendly fire, crowd determinism +
-  flocking + replication, MLP inference, reconnection, and packet fuzzing.
+  flocking + replication + grid/brute equivalence at scale, MLP inference,
+  reconnection, and packet fuzzing.
 - `docs/PRODUCTION_PLAN.md` — the phased path to production parity.
 
 ### Fixed

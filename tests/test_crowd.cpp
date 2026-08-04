@@ -78,6 +78,34 @@ void testCrowdSeparatesButStaysCohesive() {
     check(endSpread < 25.0f, "cohesion keeps the crowd from flying apart");
 }
 
+void testSpatialGridMatchesBruteForce() {
+    std::printf("the spatial grid reproduces brute force exactly\n");
+    meat::CrowdSim grid, brute;
+    grid.spawn(123, 120, glm::vec3(0.0f), 10.0f);
+    brute.spawn(123, 120, glm::vec3(0.0f), 10.0f);
+    grid.config().spatialGrid = true;   // O(n) neighbour query
+    brute.config().spatialGrid = false; // O(n^2) reference
+    grid.setGoal(glm::vec3(30.0f, 0.0f, -20.0f));
+    brute.setGoal(glm::vec3(30.0f, 0.0f, -20.0f));
+    for (int i = 0; i < 120; ++i) { grid.step(kDt); brute.step(kDt); }
+
+    bool identical = grid.size() == brute.size();
+    for (std::size_t i = 0; i < grid.size() && identical; ++i)
+        if (dist(grid.agents()[i].pos, brute.agents()[i].pos) != 0.0f) identical = false;
+    check(identical, "grid and brute-force crowds are bit-for-bit identical");
+}
+
+void testLargeCrowdStaysBounded() {
+    std::printf("a large crowd runs through the grid and stays coherent\n");
+    meat::CrowdSim c; // spatialGrid on by default → O(n)
+    c.spawn(5, 400, glm::vec3(0.0f), 20.0f);
+    c.setGoal(glm::vec3(50.0f, 0.0f, 0.0f));
+    for (int i = 0; i < 200; ++i) c.step(kDt);
+    check(c.size() == 400, "the 400-agent crowd retains every agent");
+    check(minPairwise(c) > 0.05f, "agents stay separated at scale");
+    check(spread(c) < 70.0f, "the crowd stays bounded (grid neighbour query is correct)");
+}
+
 } // namespace
 
 namespace meattest {
@@ -86,6 +114,8 @@ void runCrowd() {
     testCrowdIsDeterministic();
     testCrowdSeeksGoal();
     testCrowdSeparatesButStaysCohesive();
+    testSpatialGridMatchesBruteForce();
+    testLargeCrowdStaysBounded();
 }
 
 } // namespace meattest

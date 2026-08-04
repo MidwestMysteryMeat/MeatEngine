@@ -2,7 +2,10 @@
 
 #include <glm/geometric.hpp> // length, normalize, dot
 
+#include <algorithm> // sort
 #include <cmath>
+#include <cstdint>
+#include <unordered_map>
 
 namespace meat {
 
@@ -58,55 +61,98 @@ void CrowdSim::setGoal(glm::vec3 goal) {
 
 void CrowdSim::clearGoal() { m_hasGoal = false; }
 
-void CrowdSim::step(float dt) {
-    const std::size_t n = m_agents.size();
-    if (n == 0) return;
+glm::vec3 CrowdSim::steer(std::size_t i, const std::vector<std::size_t>& candidates) const {
     const float sepR2 = m_cfg.separationRadius * m_cfg.separationRadius;
     const float nbrR2 = m_cfg.neighborRadius * m_cfg.neighborRadius;
-
-    // Compute every agent's new velocity from the PRE-step state, then apply — so
-    // iteration order cannot change the result (determinism).
-    std::vector<glm::vec3> newVel(n);
-    for (std::size_t i = 0; i < n; ++i) {
-        const Agent& self = m_agents[i];
-        glm::vec3 sep{0.0f}, aliSum{0.0f}, cohSum{0.0f};
-        int aliN = 0, cohN = 0;
-        for (std::size_t j = 0; j < n; ++j) {
-            if (j == i) continue;
-            const glm::vec3 d = self.pos - m_agents[j].pos;
-            const float d2 = glm::dot(d, d);
-            if (d2 < sepR2 && d2 > 1e-8f) sep += d / d2; // stronger the closer they are
-            if (d2 < nbrR2) {
-                aliSum += m_agents[j].vel;
-                cohSum += m_agents[j].pos;
-                ++aliN;
-                ++cohN;
-            }
+    const Agent& self = m_agents[i];
+    glm::vec3 sep{0.0f}, aliSum{0.0f}, cohSum{0.0f};
+    int aliN = 0, cohN = 0;
+    for (const std::size_t j : candidates) { // candidates are ascending → reproducible sum
+        if (j == i) continue;
+        const glm::vec3 d = self.pos - m_agents[j].pos;
+        const float d2 = glm::dot(d, d);
+        if (d2 < sepR2 && d2 > 1e-8f) sep += d / d2; // stronger the closer they are
+        if (d2 < nbrR2) {
+            aliSum += m_agents[j].vel;
+            cohSum += m_agents[j].pos;
+            ++aliN;
+            ++cohN;
         }
-        glm::vec3 steer{0.0f};
-        steer += sep * m_cfg.separationWeight;
-        if (aliN > 0) {
-            const glm::vec3 avgVel = aliSum / static_cast<float>(aliN);
-            steer += (avgVel - self.vel) * m_cfg.alignmentWeight;
-        }
-        if (cohN > 0) {
-            const glm::vec3 center = cohSum / static_cast<float>(cohN);
-            steer += (center - self.pos) * m_cfg.cohesionWeight;
-        }
-        if (m_hasGoal) {
-            const glm::vec3 toGoal = m_goal - self.pos;
-            const float len2 = glm::dot(toGoal, toGoal);
-            if (len2 > 1e-8f)
-                steer += (toGoal / std::sqrt(len2)) * (m_cfg.maxSpeed * m_cfg.goalWeight);
-        }
-        steer = clampLen(steer, m_cfg.maxForce);
-        newVel[i] = clampLen(self.vel + steer * dt, m_cfg.maxSpeed);
     }
+    glm::vec3 s{0.0f};
+    s += sep * m_cfg.separationWeight;
+    if (aliN > 0) s += (aliSum / static_cast<float>(aliN) - self.vel) * m_cfg.alignmentWeight;
+    if (cohN > 0) s += (cohSum / static_cast<float>(cohN) - self.pos) * m_cfg.cohesionWeight;
+    if (m_hasGoal) {
+        const glm::vec3 toGoal = m_goal - self.pos;
+        const float len2 = glm::dot(toGoal, toGoal);
+        if (len2 > 1e-8f)
+            s += (toGoal / std::sqrt(len2)) * (m_cfg.maxSpeed * m_cfg.goalWeight);
+    }
+    return clampLen(s, m_cfg.maxForce); // steering force; caller integrates onto velocity
+}
 
+void CrowdSim::stepBrute(float dt) {
+    const std::size_t n = m_agents.size();
+    std::vector<std::size_t> all(n);
+    for (std::size_t j = 0; j < n; ++j) all[j] = j; // ascending, so steer() sums in index order
+    std::vector<glm::vec3> newVel(n);
+    for (std::size_t i = 0; i < n; ++i)
+        newVel[i] = clampLen(m_agents[i].vel + steer(i, all) * dt, m_cfg.maxSpeed);
     for (std::size_t i = 0; i < n; ++i) {
         m_agents[i].vel = newVel[i];
         m_agents[i].pos += m_agents[i].vel * dt;
     }
+}
+
+void CrowdSim::stepGrid(float dt) {
+    const std::size_t n = m_agents.size();
+    const float cell = m_cfg.neighborRadius > 1e-4f ? m_cfg.neighborRadius : 1.0f;
+    const float inv = 1.0f / cell;
+    // Pack a cell coord into a collision-free key (coords biased into [0, 2^21)).
+    constexpr std::int64_t kBias = 1 << 20, kMask = (1 << 21) - 1;
+    auto cellOf = [&](glm::vec3 p) {
+        return glm::ivec3(static_cast<int>(std::floor(p.x * inv)),
+                          static_cast<int>(std::floor(p.y * inv)),
+                          static_cast<int>(std::floor(p.z * inv)));
+    };
+    auto key = [&](int x, int y, int z) -> std::int64_t {
+        return ((static_cast<std::int64_t>(x) + kBias) & kMask) << 42 |
+               ((static_cast<std::int64_t>(y) + kBias) & kMask) << 21 |
+               ((static_cast<std::int64_t>(z) + kBias) & kMask);
+    };
+    // Build the grid by iterating agents in order, so each cell's list is ascending.
+    std::unordered_map<std::int64_t, std::vector<std::size_t>> grid;
+    grid.reserve(n);
+    std::vector<glm::ivec3> cells(n);
+    for (std::size_t j = 0; j < n; ++j) {
+        cells[j] = cellOf(m_agents[j].pos);
+        grid[key(cells[j].x, cells[j].y, cells[j].z)].push_back(j);
+    }
+    std::vector<glm::vec3> newVel(n);
+    std::vector<std::size_t> cand;
+    for (std::size_t i = 0; i < n; ++i) {
+        cand.clear();
+        const glm::ivec3 c = cells[i];
+        for (int dx = -1; dx <= 1; ++dx)
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dz = -1; dz <= 1; ++dz) {
+                    const auto it = grid.find(key(c.x + dx, c.y + dy, c.z + dz));
+                    if (it != grid.end()) cand.insert(cand.end(), it->second.begin(), it->second.end());
+                }
+        std::sort(cand.begin(), cand.end()); // ascending → identical sum order to brute force
+        newVel[i] = clampLen(m_agents[i].vel + steer(i, cand) * dt, m_cfg.maxSpeed);
+    }
+    for (std::size_t i = 0; i < n; ++i) {
+        m_agents[i].vel = newVel[i];
+        m_agents[i].pos += m_agents[i].vel * dt;
+    }
+}
+
+void CrowdSim::step(float dt) {
+    if (m_agents.empty()) return;
+    if (m_cfg.spatialGrid) stepGrid(dt);
+    else stepBrute(dt);
 }
 
 glm::vec3 CrowdSim::centroid() const {

@@ -18,6 +18,12 @@ struct CrowdConfig {
     float goalWeight = 0.6f;
     float maxSpeed = 3.5f; // m/s
     float maxForce = 8.0f; // m/s^2 steering clamp (keeps turns smooth + stable)
+    // Neighbour query: a uniform spatial hash grid (O(n)) vs brute force (O(n^2)).
+    // The grid gathers candidates from the 3x3x3 cell block (cell = neighborRadius)
+    // and sorts them by index, so it is *bit-identical* to brute force — just the
+    // scalable path for large crowds. Off falls back to brute force (fine for tiny
+    // crowds / as a reference).
+    bool spatialGrid = true;
 };
 
 // A deterministic boids crowd: a flat array of agents steered by the classic
@@ -57,6 +63,13 @@ public:
     glm::vec3 centroid() const;
 
 private:
+    // New velocity for agent i, given the indices of candidate neighbours (which it
+    // filters by radius). Candidates must be in a fixed order (ascending) so the
+    // float accumulation is reproducible across the brute and grid paths.
+    glm::vec3 steer(std::size_t i, const std::vector<std::size_t>& candidates) const;
+    void stepBrute(float dt);
+    void stepGrid(float dt);
+
     std::vector<Agent> m_agents;
     CrowdConfig m_cfg;
     glm::vec3 m_goal{0.0f};

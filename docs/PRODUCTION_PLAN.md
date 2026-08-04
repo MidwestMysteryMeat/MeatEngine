@@ -55,6 +55,20 @@ entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
 - [ ] **Benchmark harness** — mesher throughput, snapshot size, frame budget. Numbers first.
 - [ ] **D1 binary greedy mesher** (cgerikj/binary-greedy-meshing) — only after benchmarks say so.
 - [ ] **Entity/projectile interpolation** for smooth remote motion under latency.
+- [ ] **Instanced entity rendering (GPU instancing)** — the OpenGL equivalent of UE's
+      HISM/ISM: draw N identical entities (crowd agents, pickups, props) as one
+      `glDrawElementsInstanced` call fed by a per-instance transform buffer, instead of one draw
+      per entity. This is the actual enabler for **large crowds on screen** — the sim already
+      scales (Phase 7 spatial grid); the draw path is the remaining bottleneck. Add per-instance
+      frustum cull + LOD (billboard/imposter at distance) so hundreds of agents stay cheap.
+- [ ] **Static-mesh instancing + baked-static batching** — the world already loads static meshes
+      (B2 `MeshLevelDesc`, Assimp props). Give repeated props (crates, foliage, modular kit
+      pieces) the same instanced path, and merge static, never-moving geometry into batched draws.
+- [ ] **Non-voxel rendering path** — the engine "isn't voxel-only in spirit": B2 already puts
+      triangle-mesh levels + colliders alongside the voxel world. Promote that to a first-class
+      **mesh-only project mode** (skip chunk meshing/streaming entirely, author levels as static
+      meshes) so the engine serves classic BSP/mesh games, not just voxel ones. Shares the
+      instanced-rendering and static-batching work above.
 
 ## Phase 3 — Security & data durability
 - [x] **Transport connection auth + encryption** — join-password gate
@@ -156,8 +170,12 @@ integer/quantised math — never vendor-BLAS float or wall-clock). Non-determini
       full A*. Done: a deterministic **boids** core (`CrowdSim` — separation / alignment /
       cohesion + goal seek, seeded, fixed-step, order-stable), **owned by the server, stepped
       each tick, and replicated** through the entity-snapshot path as `EntityArchetype::Crowd`
-      with stable ids (public `spawnCrowd`/`setCrowdGoal`). Next: a **client render** for the
-      Crowd archetype; promote to **DetourCrowd** (`dtCrowd`) on the Recast navmesh the engine
+      with stable ids (public `spawnCrowd`/`setCrowdGoal`). Neighbour queries use a **uniform
+      spatial hash grid** (cell = neighbour radius, 3×3×3 gather with sorted candidates) — O(n)
+      instead of O(n²) and *bit-identical* to the brute-force reference, so a 400-agent crowd
+      runs at server budget (tested). Next: a **client render** for the Crowd archetype (see the
+      instanced-rendering item in Phase 2 — the draw-call path is what actually makes hundreds
+      of agents cheap); promote to **DetourCrowd** (`dtCrowd`) on the Recast navmesh the engine
       already bakes (`m_navmesh`) for shared RVO avoidance through doorways/corridors; crowd
       **flow fields** feed spawner waves. Target: hundreds of civilians/zombies at server budget.
 - [~] **Neural policies (embedded inference)** — the *runtime* side: drive NPC behaviour (and
