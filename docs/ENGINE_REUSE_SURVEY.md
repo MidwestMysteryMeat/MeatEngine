@@ -787,3 +787,12 @@ bounds-checking is mandatory.
 fallback, and surfaces LZAV's bounds-checked decode as a `std::optional` so a corrupt save or packet
 returns `nullopt` instead of crashing — the same fail-closed discipline as the save loader and the
 crypto layer.
+
+**Security vetting of the vendored `lzav.h` (v5.17, avaneev/lzav — Aleksey Vaneev / Voxengo).**
+Audited before use: includes are pure C/C++ stdlib only (`climits`/`cstring`/`cstdint`/`bit`/
+`cstdlib`/`intrin.h`) — **no** syscall, network, file, `exec`/`system`/`popen`, `dlopen`/
+`LoadLibrary`, `getenv`, or inline asm; **0** non-ASCII bytes and no base64/hex blobs (no hidden
+payload); memory use is `memcpy`/`memset` plus balanced `malloc`/`free` for its internal match
+table. It is pure in-memory compression math. Runtime-validated too: the ASan+UBSan CI job builds
+and runs the round-trip + corrupt-input tests with no leak, overflow, or UB. Nothing else from the
+compression survey (or the AI survey) was pulled into the tree — those are docs-only references.
