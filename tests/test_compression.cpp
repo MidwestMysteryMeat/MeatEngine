@@ -7,6 +7,7 @@
 
 #include "engine/core/Compression.h"
 
+#include <cstdint>
 #include <cstdio>
 #include <string>
 #include <vector>
