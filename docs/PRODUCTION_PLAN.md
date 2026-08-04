@@ -179,10 +179,16 @@ integer/quantised math — never vendor-BLAS float or wall-clock). Non-determini
       headless and in parallel through the **MCP bridge** below (observation = snapshot vector,
       action = the gated `ScriptApi` tools, reward = frags/objective/shaping). Output feeds the
       neural-policy runtime above. Deterministic tick = reproducible episodes = stable training.
-      **Source:** `mlpack/mlpack` (**BSD-3-Clause**, header-only C++17 but pulls Armadillo +
-      ensmallen + LAPACK) for the offline RL/imitation trainer in tooling — **never linked into
-      the authoritative server** (float/BLAS = non-deterministic). For a zero-dep in-tree
-      trainer, the from-scratch backprop above suffices for small policies.
+      **Framework source:** `Unity-Technologies/ml-agents` (**Apache-2.0**, same as MeatEngine)
+      is the reference architecture — the env↔trainer **protobuf** protocol and the
+      Agent / sensor / actuator / reward / Academy abstractions (PPO, SAC, self-play, BC + GAIL).
+      `AlanLaboratory/UnrealMLAgents` (**Apache-2.0**) is the proven-in-a-C++-engine template for
+      porting those C# abstractions to C++ (vector obs, ray sensors, actuators) — early-stage
+      (no inference yet, few sensors), so adopt the design and watch the gaps. **Trainer
+      algorithms:** `mlpack` (**BSD-3**, needs Armadillo/ensmallen/LAPACK) in tooling only,
+      **never on the tick**; the from-scratch backprop is the zero-dep fallback for small
+      policies. The env side reuses our MCP bridge / `ScriptApi` for observations + actions, so
+      the trainer talks to the same gated surface agents and scripts already use.
 - [ ] **MCP bridge (agent I/O)** — an out-of-process **Model Context Protocol** server exposing
       the engine's *existing* capability surface as MCP tools + resources: read-only resources
       (snapshot, entity list, match/team state, `playerHealth`) and gated tools (the same

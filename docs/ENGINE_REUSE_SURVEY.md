@@ -749,13 +749,22 @@ integer/fixed-point reproducible — float/BLAS libraries are **tooling/offline 
 | **Neural-Network-from-scratch-in-Cpp** | SorawitChok/Neural-Network-from-scratch-in-Cpp | **MIT** | **Yes** | Zero-dependency pure std-C++ MLP (FC layers, ReLU/LeakyReLU/tanh/sigmoid, MSE/BCE, full backprop). Seed for the **neural-policy runtime**: port the forward pass to fixed-point for a deterministic `NpcBrain`; keep its `double` backprop for the offline trainer. | Forward pass **yes** (after fixed-point port); training no |
 | **mlpack** | mlpack/mlpack | **BSD-3-Clause** | **Yes\*** | Mature C++17 ML (NN + RL + trees), but pulls **Armadillo + ensmallen + LAPACK**. Offline **RL/imitation trainer** for the ML/learning-agents pipeline. | **No** — heavy float/BLAS deps; tooling only |
 | **Unreal_mcp** | ChiR24/Unreal_mcp | **MIT** | **Pattern only** | Reference architecture for the **MCP bridge**: one gateway tool with `search`/`describe`/`execute` verbs, capability-token auth, HTTP/SSE (Streamable) hosted by the engine + optional stdio bridge. Code is TypeScript + UE-specific → adopt the design, surface our `ScriptApi` allow-list. | N/A (out-of-process) |
+| **ml-agents** | Unity-Technologies/ml-agents | **Apache-2.0** | **Pattern + protobuf** | The reference **ML/learning-agents framework**: env↔trainer **protobuf** protocol + Agent / sensor / actuator / reward / Academy abstractions (PPO, SAC, self-play, BC + GAIL). C#+Python, so adopt the architecture + reuse the proto schema; our env side is the MCP/`ScriptApi` surface. | N/A (trainer/env) |
+| **UnrealMLAgents** | AlanLaboratory/UnrealMLAgents | **Apache-2.0** (+ LICENSE.unity) | **Pattern (C++ template)** | The **C++-engine port template** for ml-agents: how the C# Agent/RaySensor/actuator abstractions become C++, plus a reworked `ueagents_envs` Python side. **Early-stage** (no inference yet, few sensors) — a design map, not a lift. | N/A (trainer/env) |
+| **LuaNet** | Maia-jp/LuaNet | **MIT** | **Yes (tooling)** | Pure-Lua MLP (layers, backprop, predict, matrix ops). Lets Lua scripts define/run small learned behaviours through the existing sol2 layer — prototyping / script-authored brains. | **No** — Lua doubles + speed; scripting/prototype only |
+| **CPP_Neural_Network** | Krish120003/CPP_Neural_Network | **⚠️ none stated** | **No (study only)** | Pure std-C++ dense-layer NN + backprop + MNIST loader. **Unlicensed = all rights reserved**, cannot be copied; the MIT from-scratch NN already fills this need. | Study only |
+| **luann** | wixico/luann | **⚠️ none stated** | **No (study only)** | Pure-Lua NN with network hierarchies (hidden outputs feed other nets). Interesting idea but **unlicensed**; use MIT `LuaNet` instead if a Lua net is wanted. | Study only |
 
 \* Permissively licensed but heavy-dependency — vendor only in the offline tooling/training target,
 never in the authoritative server (float + BLAS = non-deterministic across platforms).
 
-**Reuse notes.** All three licenses (MIT, MIT, BSD-3) are compatible with MeatEngine's Apache-2.0;
-vendored files retain their notice in `THIRD_PARTY.md`. The from-scratch NN is the only one intended
-for the tick, and only after its `double` forward pass is reworked to integer/fixed-point so NPC
-inference reproduces bit-for-bit under the netcode's lockstep contract. mlpack and the MCP bridge live
-outside the deterministic core by design — mlpack in the trainer, the MCP server in its own process —
-so neither can perturb the authoritative simulation.
+**Reuse notes.** Usable licenses (MIT / BSD-3 / Apache-2.0) are all compatible with MeatEngine's
+Apache-2.0; vendored files retain their notice in `THIRD_PARTY.md`. **Two are unlicensed**
+(`CPP_Neural_Network`, `luann`) → all-rights-reserved, **study only, never copied** — licensed
+equivalents (`Neural-Network-from-scratch-in-Cpp`, `LuaNet`) cover the same ground. Only the
+from-scratch C++ NN's forward pass is intended for the tick, and only after the integer/fixed-point
+rework. Everything else — mlpack, the ml-agents/UnrealMLAgents framework, the MCP server, any Lua net —
+lives outside the deterministic core (trainer, env, or its own process), so none can perturb the
+authoritative simulation. ml-agents + UnrealMLAgents together define the **ML/learning-agents** item:
+adopt the Agent/sensor/actuator/reward architecture and the protobuf env protocol, with our MCP bridge
+as the environment endpoint.
