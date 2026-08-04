@@ -39,6 +39,7 @@ void runCrypto();
 void runCharacter();
 void runScripting();
 void runCrowd();
+void runMLP();
 
 } // namespace meattest
 
@@ -60,6 +61,7 @@ int main() {
     meattest::runCharacter();
     meattest::runScripting();
     meattest::runCrowd();
+    meattest::runMLP();
 
     std::printf("\n%d checks, %d failures\n", meattest::g_checks, meattest::g_failures);
     return meattest::g_failures == 0 ? 0 : 1;

@@ -159,11 +159,14 @@ integer/quantised math — never vendor-BLAS float or wall-clock). Non-determini
       bakes (`m_navmesh`), for shared RVO avoidance through doorways/corridors; replicate via a
       new `EntityArchetype::Crowd` on the existing entity-snapshot path; crowd **flow fields**
       feed spawner waves. Target: hundreds of civilians/zombies at server budget.
-- [ ] **Neural policies (embedded inference)** — the *runtime* side: drive NPC behaviour (and
+- [~] **Neural policies (embedded inference)** — the *runtime* side: drive NPC behaviour (and
       later animation) with a trained model as a drop-in `NpcBrain` beside the scripted one.
-      A **tiny quantised MLP** evaluated in integer/fixed-point so it stays deterministic on
-      the tick (perception vector → action logits). Models ship as data. Heavy runtimes (ONNX
-      Runtime / GGML) are tooling-only (dataset gen, eval), never authoritative.
+      First slice done: `engine/ai/MLP` — a self-contained feed-forward net (dense layers,
+      ReLU/tanh/sigmoid, `forward`, `argmax` action selection) that fails closed on a bad
+      model, tested against hand-computed logits. Remaining: the **integer/fixed-point** rework
+      for bit-for-bit cross-platform determinism on the tick, a data format to load trained
+      weights, and wiring it as an `NpcBrain` alongside the scripted AI. Heavy runtimes (ONNX
+      Runtime / GGML) stay tooling-only (dataset gen, eval), never authoritative.
       **Source:** `SorawitChok/Neural-Network-from-scratch-in-Cpp` (**MIT**, zero-dependency
       pure std-C++: FC layers, ReLU/tanh/sigmoid, backprop) is the seed — port its forward
       pass into a fixed-point `NpcBrain` (no BLAS ⇒ no vendor-float drift, ideal for the tick);
