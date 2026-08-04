@@ -958,6 +958,38 @@ void testDamageOverTimeKillCreditsOnce() {
           "the victim respawned at full health with the burn cleared");
 }
 
+// Access control: the onAuthenticate hook rejects a joining peer by name before it
+// is admitted, and kick() removes an already-joined peer and all its state.
+void testAccessControlHookAndKick() {
+    std::printf("onAuthenticate rejects a banned join; kick removes a live peer\n");
+    ScriptedTransport wire;
+    meat::ServerSim server;
+    meat::NetPolicy policy;
+    policy.onAuthenticate = [](std::uint32_t, const std::string& name, const std::string&) {
+        return name != "banned"; // a trivial ban-by-name for the test
+    };
+    server.setNetPolicy(policy);
+    if (!server.init(41u)) { check(false, "server booted"); return; }
+
+    // A banned name is refused: it connects but never becomes a player.
+    wire.connect(1);
+    wire.packet(1, meat::HelloMsg{meat::kProtocolVersion, "banned", "", ""});
+    server.pump(wire);
+    for (int i = 0; i < 3; ++i) server.tick(wire);
+    check(server.playerHealth(1) == 0.0f, "the banned peer was never admitted as a player");
+
+    // An allowed name joins normally.
+    wire.connect(2);
+    wire.packet(2, meat::HelloMsg{meat::kProtocolVersion, "welcome", "", ""});
+    server.pump(wire);
+    for (int i = 0; i < 5; ++i) server.tick(wire);
+    check(server.playerHealth(2) > 99.0f, "an allowed peer joins and spawns");
+
+    // Kick removes it and all its state.
+    server.kick(2, "test");
+    check(server.playerHealth(2) == 0.0f, "the kicked peer is gone from the world");
+}
+
 } // namespace
 
 namespace meattest {
@@ -989,6 +1021,7 @@ void runNetPermissions() {
     testTeamDeathmatchScoring();
     testFriendlyFireGate();
     testDamageOverTimeKillCreditsOnce();
+    testAccessControlHookAndKick();
 }
 
 } // namespace meattest

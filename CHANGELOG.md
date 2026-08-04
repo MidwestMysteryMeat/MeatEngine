@@ -18,6 +18,10 @@ All notable changes to MeatEngine are documented here. The format follows
   auto-balanced teams, per-team scoring, team frag-limit win), plus a
   **friendly-fire** toggle (`--friendly-fire`) that gates teammate damage across
   hitscan, blasts, and effects. Selectable via `--mode` / `game.json`.
+- **Access control**: `NetPolicy.onAuthenticate` — a host hook that rejects a
+  joining peer by Hello name/token before admission (ban/allow-list/account check,
+  no engine-side identity model) — plus `ServerSim::kick(peer)` to remove a live
+  peer and all its state. Refused joins now drop their pre-Hello state cleanly.
 - **AI crowds (Phase 7)**: a deterministic boids `CrowdSim` (separation /
   alignment / cohesion + goal-seek) — seeded, fixed-step, order-stable — now
   owned by the server, stepped each tick, and replicated through the entity
@@ -39,7 +43,7 @@ All notable changes to MeatEngine are documented here. The format follows
   mannequin clips all drive the canonical (Mixamo) skeleton.
 - **Persistence**: save-file schema versioning (refuses newer-engine saves).
 - **Packaging**: `cmake --install` + CPack produce a versioned game archive.
-- **Tests**: 55 → 180 headless checks across worldgen/dungeon determinism,
+- **Tests**: 55 → 183 headless checks across worldgen/dungeon determinism,
   save/load, inventory, the effect system (knockback/ignite/chain/spawn), the Lua
   effect-primitive bridge, team deathmatch + friendly fire, crowd determinism +
   flocking + replication + grid/brute equivalence at scale, MLP inference,
@@ -59,5 +63,10 @@ All notable changes to MeatEngine are documented here. The format follows
   scripts) now routes through one `killPlayer` path — so blast/effect kills credit
   a frag, all deaths eject from ship seats and fire `on_player_death`, and respawn
   clears lingering damage-over-time and buffs.
+- **`ServerSim.cpp` decomposed** 2780 → 1883 (−32%, under the god-file bar): the
+  effect system, combat/hitscan/blast/projectiles, and enemy/ally AI moved to
+  `ServerSimEffects.cpp` / `ServerSimCombat.cpp` / `ServerSimAI.cpp` (same class,
+  own translation units, behaviour byte-identical), shared helpers in
+  `ServerSimInternal.h`.
 
 <!-- Add a new "## [x.y.z] - YYYY-MM-DD" section per tagged release. -->

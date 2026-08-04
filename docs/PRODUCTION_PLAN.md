@@ -82,7 +82,11 @@ entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
 - [x] **Save schema versioning** — saves carry `kSaveVersion`; the loader refuses a
       newer-engine save and accepts a legacy versionless one as v0. Migration hooks land
       with the first real schema bump.
-- [ ] **Access control** — server password, kick/ban, `onAuthenticate` hook (ROADMAP 11.7).
+- [x] **Access control** — join password (done earlier) PLUS `NetPolicy.onAuthenticate`, a host
+      hook that rejects a joining peer by Hello name/token before admission (ban list /
+      allow-list / account check, no engine-side identity model), and `ServerSim::kick(peer)`
+      to remove an already-joined peer and all its state. Rejections now drop the pre-Hello
+      state so a refused peer can't linger or spawn. Tested (ban-by-name + kick).
 - [ ] **[consider] Luau sandbox** — swap sol2/vanilla Lua for Luau (read-only tables, per-VM
       budgets) for a public, scriptable engine (`ENGINE_REUSE_SURVEY` honorable mention).
 

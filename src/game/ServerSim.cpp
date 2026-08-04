@@ -1068,27 +1068,7 @@ void ServerSim::pump(Transport& transport) {
         }
         case NetEvent::Type::Disconnected: {
             log::info("server: peer {} disconnected", e.peer);
-            // Free any ship seat this peer held so it doesn't stay locked.
-            if (auto it = m_players.find(e.peer); it != m_players.end() && it->second) {
-                const std::uint32_t sid = it->second->pilotingShip;
-                if (sid != 0) {
-                    // Free the seat this peer actually held. Clearing the pilot
-                    // unconditionally meant a passenger disconnecting kicked the
-                    // pilot out of control until they re-boarded.
-                    for (Ship& s : m_ships) {
-                        if (s.id != sid)
-                            continue;
-                        if (s.pilot == e.peer)
-                            s.pilot = 0;
-                        if (s.passenger == e.peer)
-                            s.passenger = 0;
-                    }
-                }
-            }
-            m_players.erase(e.peer);
-            m_rejectLog.erase(e.peer);       // no state kept for a peer that is gone
-            m_clientBaselines.erase(e.peer); // its snapshot ring goes with it
-            m_frags.erase(e.peer);           // a reconnect starts from a clean score
+            removePeerState(e.peer);
             break;
         }
         case NetEvent::Type::Packet:
@@ -1096,6 +1076,30 @@ void ServerSim::pump(Transport& transport) {
             break;
         }
     }
+}
+
+void ServerSim::removePeerState(PeerId peer) {
+    // Free any ship seat this peer held so it doesn't stay locked. Clearing the
+    // pilot unconditionally would kick a co-pilot's pilot out on a passenger drop.
+    if (auto it = m_players.find(peer); it != m_players.end() && it->second) {
+        const std::uint32_t sid = it->second->pilotingShip;
+        if (sid != 0)
+            for (Ship& s : m_ships)
+                if (s.id == sid) {
+                    if (s.pilot == peer) s.pilot = 0;
+                    if (s.passenger == peer) s.passenger = 0;
+                }
+    }
+    m_players.erase(peer);
+    m_rejectLog.erase(peer);       // no state kept for a peer that is gone
+    m_clientBaselines.erase(peer); // its snapshot ring goes with it
+    m_frags.erase(peer);           // a reconnect starts from a clean score
+}
+
+void ServerSim::kick(PeerId peer, const std::string& reason) {
+    log::info("server: kicked peer {}{}", peer, reason.empty() ? "" : (" (" + reason + ")"));
+    if (m_activeTransport) m_activeTransport->disconnect(peer);
+    removePeerState(peer); // drop state now; a later Disconnected event is a no-op
 }
 
 void ServerSim::handlePacket(Transport& transport, PeerId peer,
@@ -1128,6 +1132,18 @@ void ServerSim::handlePacket(Transport& transport, PeerId peer,
             hello.password != m_netPolicy.serverPassword) {
             noteRejected(peer, "join with wrong/absent server password");
             transport.disconnect(peer);
+            removePeerState(peer); // drop the pre-Hello state so it can't spawn
+            return;
+        }
+        // Host access-control hook: the application may reject a joining peer by
+        // name/token (ban list, allow-list, account check) without the engine
+        // hardcoding an identity model. Runs after the password gate, before the
+        // peer is admitted, so a rejected peer never becomes a player.
+        if (m_netPolicy.onAuthenticate &&
+            !m_netPolicy.onAuthenticate(peer, hello.name, hello.editorToken)) {
+            noteRejected(peer, "join rejected by onAuthenticate hook");
+            transport.disconnect(peer);
+            removePeerState(peer); // drop the pre-Hello state so it can't spawn
             return;
         }
         player.helloDone = true;

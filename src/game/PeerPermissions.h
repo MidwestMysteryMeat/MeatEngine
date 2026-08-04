@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <functional>
 #include <string>
 
 // What a connected peer is allowed to do to the authoritative world.
@@ -73,6 +74,15 @@ struct NetPolicy {
     // before any per-player state is allocated, so a connection flood can't
     // exhaust the server's memory. Dedicated hosts tune this to their capacity.
     int maxPlayers = 64;
+
+    // Host access-control hook (ban list / allow-list / account check). Runs after
+    // the password gate, before a joining peer is admitted; return false to reject
+    // it by its Hello name/token. Empty = admit all. The engine keeps no identity
+    // model of its own — the application decides who is who. `peer` is a PeerId
+    // (std::uint32_t). Pair with ServerSim::kick() to remove an already-joined peer.
+    std::function<bool(std::uint32_t peer, const std::string& name,
+                       const std::string& editorToken)>
+        onAuthenticate;
 };
 
 } // namespace meat

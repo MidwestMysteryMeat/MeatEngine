@@ -88,6 +88,9 @@ public:
     // and, once someone reaches fragLimit, ends the match. Public so the kill
     // paths and tests can drive it. Sandbox mode ignores scoring.
     void registerFrag(PeerId killer, PeerId victim);
+    // Access control: forcibly remove a connected peer (admin kick / ban enforcement).
+    // Disconnects it and drops all its server state. Safe to call for an unknown peer.
+    void kick(PeerId peer, const std::string& reason = "");
     // Apply a damage-over-time (Ignite) to a player: dps for `seconds`, credited
     // to `source` on kill. Public so abilities/scripts (and tests) can drive it.
     void applyDamageOverTime(PeerId target, float dps, float seconds, PeerId source);
@@ -352,6 +355,7 @@ private:
     };
 
     void handlePacket(Transport& transport, PeerId peer, std::span<const std::byte> data);
+    void removePeerState(PeerId peer); // free ship seat + erase all per-peer maps
     void broadcastSnapshot(Transport& transport);
     void applyVoxelOp(Transport& transport, const VoxelOpMsg& op);
     // Create a world prop: sizes a static box collider from the model bounds,
