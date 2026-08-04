@@ -42,5 +42,20 @@ nlohmann::json toJson(const UIWidget& w);
 // run first. This is the editor's click-to-select and an interactive HUD's input.
 UIWidget* widgetAt(UIWidget& root, float x, float y);
 
+// Pointer-interaction state machine for Button widgets. Drives hovered/pressed
+// flags on the tree and emits a click when a press and release land on the same
+// button. One instance per interactive UI, fed one frame of pointer state each
+// call. layout() must have run so widgetAt has rects to test.
+class UIInput {
+public:
+    // Feed a frame of pointer state; returns the id of the button clicked this
+    // frame (press then release on the same button), or "" if none.
+    std::string update(UIWidget& root, float x, float y, bool down);
+
+private:
+    std::string m_pressedId; // id the current press started on
+    bool m_wasDown = false;
+};
+
 } // namespace ui
 } // namespace meat

@@ -136,5 +136,40 @@ UIWidget* widgetAt(UIWidget& root, float x, float y) {
     return &root;
 }
 
+namespace {
+void clearInteraction(UIWidget& w) {
+    w.hovered = false;
+    w.pressed = false;
+    for (UIWidget& c : w.children) clearInteraction(c);
+}
+} // namespace
+
+std::string UIInput::update(UIWidget& root, float x, float y, bool down) {
+    clearInteraction(root);
+    UIWidget* hit = widgetAt(root, x, y);
+    if (hit) hit->hovered = true;
+
+    std::string clicked;
+    const bool pressEdge = down && !m_wasDown;
+    const bool releaseEdge = !down && m_wasDown;
+
+    if (pressEdge) {
+        // A press only "arms" a click when it starts on a button.
+        m_pressedId = (hit && hit->kind == WidgetKind::Button) ? hit->id : std::string{};
+    } else if (releaseEdge) {
+        // Click fires only if the release lands on the same button the press did.
+        if (hit && hit->kind == WidgetKind::Button && !m_pressedId.empty() &&
+            hit->id == m_pressedId)
+            clicked = hit->id;
+        m_pressedId.clear();
+    }
+
+    // Show the armed button as pressed while the button is held down and hovered.
+    if (down && !m_pressedId.empty() && hit && hit->id == m_pressedId) hit->pressed = true;
+
+    m_wasDown = down;
+    return clicked;
+}
+
 } // namespace ui
 } // namespace meat

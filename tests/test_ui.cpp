@@ -172,6 +172,57 @@ void testHitTesting() {
           "outside the top widget but inside the lower one selects the lower");
 }
 
+// A HUD with a button "menu" (~centre-top) and a non-button bar "hp" (bottom-left).
+meat::UIWidget buildButtonHud() {
+    meat::UIWidget root;
+    root.id = "root";
+    root.anchor = {0.0f, 0.0f, 1.0f, 1.0f};
+    meat::UIWidget button;
+    button.id = "menu";
+    button.kind = meat::WidgetKind::Button;
+    button.anchor = {0.4f, 0.02f, 0.6f, 0.08f}; // {400,16,200,48} → centre ~ (500,40)
+    meat::UIWidget bar;
+    bar.id = "hp";
+    bar.kind = meat::WidgetKind::Bar;
+    bar.anchor = {0.02f, 0.9f, 0.3f, 0.95f}; // {20,720,280,40} → centre ~ (160,740)
+    root.children.push_back(button);
+    root.children.push_back(bar);
+    meat::ui::layout(root, kScreen);
+    return root;
+}
+
+void testButtonInteraction() {
+    std::printf("button interaction: hover, click, drag-off-cancel\n");
+    // Hover then press then release on the button = one click.
+    {
+        meat::UIWidget hud = buildButtonHud();
+        meat::ui::UIInput in;
+        check(in.update(hud, 500, 40, false).empty() && meat::ui::find(hud, "menu")->hovered,
+              "pointer over the button marks it hovered, no click yet");
+        check(in.update(hud, 500, 40, true).empty() && meat::ui::find(hud, "menu")->pressed,
+              "pressing on the button marks it pressed, no click yet");
+        check(in.update(hud, 500, 40, false) == "menu",
+              "releasing on the same button fires its click");
+    }
+    // Press on the button, drag off, release → no click.
+    {
+        meat::UIWidget hud = buildButtonHud();
+        meat::ui::UIInput in;
+        in.update(hud, 500, 40, true);        // press on button
+        in.update(hud, 5, 5, true);           // drag off (onto empty root)
+        check(in.update(hud, 5, 5, false).empty(),
+              "releasing away from the pressed button cancels the click");
+    }
+    // Press/release on a non-button widget → no click.
+    {
+        meat::UIWidget hud = buildButtonHud();
+        meat::ui::UIInput in;
+        in.update(hud, 160, 740, true);
+        check(in.update(hud, 160, 740, false).empty(),
+              "a bar (non-button) never fires a click");
+    }
+}
+
 } // namespace
 
 namespace meattest {
@@ -183,6 +234,7 @@ void runUI() {
     testParseHudDefinition();
     testSerializeRoundTrips();
     testHitTesting();
+    testButtonInteraction();
 }
 
 } // namespace meattest

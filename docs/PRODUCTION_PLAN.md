@@ -160,13 +160,14 @@ entity-registry, worldgen, dungeon, save-load, inventory, bone-retarget).
       JSON UI-def loader (author HUDs as data, not code), a **binding context** so a bar's
       fill / a label's value tracks a named signal (e.g. `player.health`), plus the editor
       primitives — **JSON serialize** (round-trips parse, so the editor can save) and
-      **hit-testing** (`widgetAt`, draw-order aware, for click-to-select and interactive
-      buttons). Panel / Bar / Label / Image / **Button**. Tested headless (anchor math,
-      nesting, bindings, parse, round-trip, hit-test overlap order). Remaining: a **renderer
+      **hit-testing** (`widgetAt`, draw-order aware) and a **`UIInput` interaction state
+      machine** (hover / press / click for Buttons, drag-off cancels). Panel / Bar / Label /
+      Image / **Button**. Tested headless (anchor math, nesting, bindings, parse, round-trip,
+      hit-test overlap order, button click/cancel). The whole non-visual toolkit — layout,
+      bindings, parse, serialize, hit-test, interaction — is done. Remaining: a **renderer
       pass** that draws the resolved rects (shares the instanced/2D path), and the **visual
-      editor** panel in `RoomEditor` — drag/place/anchor widgets on the hit-test + serialize
-      primitives now in place, bind to signals, live-preview. That editor is the UE5-UMG
-      equivalent; only the render pass gates a live preview.
+      editor** panel in `RoomEditor` (drag/place/anchor/bind/live-preview, save to `.ui.json`).
+      That editor is the UE5-UMG equivalent; only the render pass gates a live preview.
 - [ ] Living-world AI: cover-seek, spawner volumes/waves, NPC schedules/factions/world clock.
 - [ ] Destruction depth: structural-integrity collapse, reinforced blocks, radial voxel damage.
 

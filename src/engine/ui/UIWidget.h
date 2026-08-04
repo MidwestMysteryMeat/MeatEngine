@@ -40,6 +40,10 @@ struct UIWidget {
     float value = 1.0f;  // Bar fill 0..1 (overwritten by a bound signal)
 
     UIRect rect;                     // computed by layout()
+    // Runtime pointer-interaction state, set by UIInput each frame. Not authored
+    // and not serialized — purely presentation (a Button tints when hovered/pressed).
+    bool hovered = false;
+    bool pressed = false;
     std::vector<UIWidget> children;  // laid out relative to this widget's rect
 };
 
