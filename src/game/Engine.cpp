@@ -742,23 +742,52 @@ void Engine::loadNpcActor() {
             return glm::vec3(m_npcActor->transform * mdl.rootInverse *
                              glm::inverse(mdl.bones[b].offset) * glm::vec4(0, 0, 0, 1));
         };
-        glm::vec3 fwd(0.0f);
-        int contrib = 0;
+        // The old foot->toe-only heuristic is fragile: toes can sit lateral/diagonal,
+        // so forward could land 90 deg off — the "walks sideways" bug. Instead take the
+        // reliable LEFT->RIGHT axis from the widest humanoid pair (arms, else shoulders,
+        // else upper legs) and make forward PERPENDICULAR to it in the horizontal plane;
+        // use the feet only to disambiguate which of the two perpendiculars is ahead
+        // (toes lead heels).
+        const auto sideAxis = [&](const char* L, const char* R) -> glm::vec3 {
+            const int lb = boneBySuffix(L), rb = boneBySuffix(R);
+            if (lb < 0 || rb < 0) return glm::vec3(0.0f);
+            const glm::vec3 d = jointPos(rb) - jointPos(lb); // left -> right
+            return glm::vec3(d.x, 0.0f, d.z);
+        };
+        glm::vec3 side = sideAxis("LeftArm", "RightArm");
+        const char* sideSrc = "arms";
+        if (glm::length(side) < 1e-3f) { side = sideAxis("LeftShoulder", "RightShoulder"); sideSrc = "shoulders"; }
+        if (glm::length(side) < 1e-3f) { side = sideAxis("LeftUpLeg", "RightUpLeg"); sideSrc = "hips"; }
+
+        glm::vec3 footFwd(0.0f);
         for (const auto& [foot, toe] : {std::pair{"LeftFoot", "LeftToeBase"},
                                         std::pair{"RightFoot", "RightToeBase"}}) {
             const int fb = boneBySuffix(foot), tb = boneBySuffix(toe);
             if (fb < 0 || tb < 0) continue;
             const glm::vec3 d = jointPos(tb) - jointPos(fb);
-            fwd += glm::vec3(d.x, 0.0f, d.z); // horizontal foot->toe
-            ++contrib;
+            footFwd += glm::vec3(d.x, 0.0f, d.z);
         }
-        if (contrib > 0 && glm::length(fwd) > 1e-4f) {
-            fwd = glm::normalize(fwd);
-            m_humanoidYawOffset = std::atan2(fwd.x, -fwd.z); // rotates fwd onto -Z
-            log::info("humanoid facing: forward=({:.2f},{:.2f}) yawOffset={:.1f} deg (from {} feet)",
-                      fwd.x, fwd.z, glm::degrees(m_humanoidYawOffset), contrib);
+
+        glm::vec3 forward(0.0f);
+        if (glm::length(side) > 1e-3f) {
+            side = glm::normalize(side);
+            forward = glm::normalize(glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), side)); // ⟂ shoulders
+            if (glm::length(footFwd) > 1e-4f &&
+                glm::dot(forward, glm::normalize(footFwd)) < 0.0f)
+                forward = -forward; // orient toward the toes
+        } else if (glm::length(footFwd) > 1e-4f) {
+            forward = glm::normalize(footFwd); // last resort: feet only
+            sideSrc = "feet-only";
+        }
+
+        if (glm::length(forward) > 1e-4f) {
+            m_humanoidYawOffset = std::atan2(forward.x, -forward.z); // rotate forward onto -Z
+            log::info("humanoid facing: forward=({:.2f},{:.2f}) via {} (side {:.2f},{:.2f}; "
+                      "footFwd {:.2f},{:.2f}) yawOffset={:.1f} deg",
+                      forward.x, forward.z, sideSrc, side.x, side.z, footFwd.x, footFwd.z,
+                      glm::degrees(m_humanoidYawOffset));
         } else {
-            log::warn("humanoid facing: no foot/toe bones found — yaw offset stays 0");
+            log::warn("humanoid facing: no usable arm/shoulder/hip/foot bones — yaw offset stays 0");
         }
 
         // Two-bone foot-IK leg chains (hip/knee/ankle + knee hinge axis + sole offset).
